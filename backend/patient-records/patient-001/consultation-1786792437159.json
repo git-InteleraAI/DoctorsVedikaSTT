@@ -1,0 +1,218 @@
+{
+  "consultationId": "consultation-1786792437159",
+  "doctorId": "default-doctor",
+  "patientId": "patient-001",
+  "patientName": "Rahul Sharma",
+  "appointmentId": "1",
+  "consultationDate": "15 Aug 2026",
+  "consultationTime": "04:43 pm",
+  "savedAt": "2026-08-15T11:13:57.157Z",
+  "status": "Completed",
+  "completed": true,
+  "transcript": [
+    {
+      "speaker": "Patient",
+      "timestamp": "00:00",
+      "text": "Hello doctor."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:02",
+      "text": "Hello. What happened?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:05",
+      "text": "I'm having difficulty in breathing. I'm having fever since 2 days."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:13",
+      "text": "Okay, did you take any medicines?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:15",
+      "text": "No, only paracetamol doctor."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:17",
+      "text": "Okay, let me check your temperature. It looks like you have 101 degrees of fever. Let me check your mouth. Ah, it has a mild redness. Okay, you continue this paracetamol and antibiotics for 2 days. Other 2 days if the fever persists again beyond 101 degrees Celsius, then please come for a visit again. We will, I'll write for a blood test like CBC, CBP, okay? We'll do a blood test, and based on the reports we can go for further treatment."
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "01:07",
+      "text": "Ah, okay doctor, thank you."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "01:09",
+      "text": "Continue taking rest for 2 days at least and make sure to wear a mask when you go outside."
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "01:17",
+      "text": "Thank you doctor."
+    }
+  ],
+  "summary": {
+    "chief_complaint": "Difficulty breathing and fever for 2 days.",
+    "consultation_overview": "Patient presented with a 2-day history of fever and difficulty breathing. Doctor recorded a temperature of 101 degrees and noted mild oral redness upon examination. The doctor advised continuing paracetamol, starting antibiotics for 2 days, taking rest, and wearing a mask outside. A follow-up with blood tests (CBC, CBP) was recommended if the fever persists.",
+    "symptoms": [
+      "Fever",
+      "Difficulty in breathing"
+    ],
+    "history_of_present_illness": "Patient has been experiencing fever and difficulty breathing for the past 2 days. Took paracetamol prior to consultation.",
+    "past_medical_history": [],
+    "allergies": [],
+    "current_medications": [
+      "Paracetamol"
+    ],
+    "examination_findings": [
+      "Mild redness in the mouth"
+    ],
+    "vital_signs": {
+      "blood_pressure": "",
+      "heart_rate": "",
+      "temperature": "101 °F",
+      "respiratory_rate": "",
+      "oxygen_saturation": "",
+      "weight": ""
+    },
+    "investigations": [
+      "Blood test (CBC, CBP) - advised if fever persists"
+    ],
+    "assessment": "Fever with mild oral redness and respiratory difficulty.",
+    "diagnosis": [],
+    "differential_diagnosis": [],
+    "treatment_plan": "Continue paracetamol and take antibiotics for 2 days. Take rest for at least 2 days and wear a mask when going outside. If fever persists beyond 2 days or above 101 degrees, follow up for blood tests (CBC, CBP).",
+    "advice": [
+      "Rest for at least 2 days",
+      "Wear a mask when going outside"
+    ],
+    "follow_up": "Return for a follow-up visit and blood tests (CBC, CBP) if fever persists beyond 101 degrees after 2 days.",
+    "doctor_notes": "",
+    "red_flags": [],
+    "medications_discussed": [
+      {
+        "name": "Paracetamol",
+        "dosage": "",
+        "frequency": "",
+        "duration": "2 days",
+        "instructions": "Continue taking"
+      },
+      {
+        "name": "Antibiotics",
+        "dosage": "",
+        "frequency": "",
+        "duration": "2 days",
+        "instructions": ""
+      }
+    ],
+    "transcript": [
+      {
+        "speaker": "Patient",
+        "timestamp": "00:00",
+        "text": "Hello doctor."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:02",
+        "text": "Hello. What happened?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:05",
+        "text": "I'm having difficulty in breathing. I'm having fever since 2 days."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:13",
+        "text": "Okay, did you take any medicines?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:15",
+        "text": "No, only paracetamol doctor."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:17",
+        "text": "Okay, let me check your temperature. It looks like you have 101 degrees of fever. Let me check your mouth. Ah, it has a mild redness. Okay, you continue this paracetamol and antibiotics for 2 days. Other 2 days if the fever persists again beyond 101 degrees Celsius, then please come for a visit again. We will, I'll write for a blood test like CBC, CBP, okay? We'll do a blood test, and based on the reports we can go for further treatment."
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "01:07",
+        "text": "Ah, okay doctor, thank you."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "01:09",
+        "text": "Continue taking rest for 2 days at least and make sure to wear a mask when you go outside."
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "01:17",
+        "text": "Thank you doctor."
+      }
+    ],
+    "detected_language": "English"
+  },
+  "diagnosis": [],
+  "medications": [
+    {
+      "name": "Paracetamol",
+      "dosage": "",
+      "frequency": "",
+      "duration": "2 days",
+      "instructions": "Continue taking"
+    },
+    {
+      "name": "Antibiotics",
+      "dosage": "",
+      "frequency": "",
+      "duration": "2 days",
+      "instructions": ""
+    }
+  ],
+  "prescription": {
+    "medications": [
+      {
+        "name": "Paracetamol",
+        "dosage": "",
+        "frequency": "",
+        "duration": "2 days",
+        "instructions": "Continue taking"
+      },
+      {
+        "name": "Antibiotics",
+        "dosage": "",
+        "frequency": "",
+        "duration": "2 days",
+        "instructions": ""
+      }
+    ],
+    "medicines": [
+      {
+        "name": "Paracetamol",
+        "dosage": "",
+        "frequency": "",
+        "duration": "2 days",
+        "instructions": "Continue taking"
+      },
+      {
+        "name": "Antibiotics",
+        "dosage": "",
+        "frequency": "",
+        "duration": "2 days",
+        "instructions": ""
+      }
+    ],
+    "advice": "Rest for at least 2 days\nWear a mask when going outside",
+    "follow_up_date": "Return for a follow-up visit and blood tests (CBC, CBP) if fever persists beyond 101 degrees after 2 days.",
+    "follow_up": "Return for a follow-up visit and blood tests (CBC, CBP) if fever persists beyond 101 degrees after 2 days.",
+    "pdf_url": null
+  },
+  "completedAt": "2026-08-15T11:14:06.564Z"
+}

@@ -1,0 +1,40 @@
+[
+  {
+    "id": 1,
+    "patientId": "patient-001",
+    "patient": "Rahul Sharma",
+    "age": 32,
+    "gender": "Male",
+    "bloodGroup": "O+",
+    "weight": "68 kg",
+    "bloodPressure": "120/80",
+    "allergies": "None known",
+    "history": [
+      "No major chronic illness documented"
+    ],
+    "time": "10:00 AM",
+    "type": "Consultation",
+    "status": "Completed",
+    "updatedAt": "2026-08-15T06:10:16.390Z",
+    "completedAt": "2026-08-15T06:10:16.390Z",
+    "consultationId": "consultation-1786774208219",
+    "pdfUrl": "/api/v1/clinical/notes/patient-001/consultation-1786774208219/pdf"
+  },
+  {
+    "id": 2,
+    "patientId": "patient-002",
+    "patient": "Priya Desai",
+    "age": 29,
+    "gender": "Female",
+    "bloodGroup": "B+",
+    "weight": "59 kg",
+    "bloodPressure": "118/76",
+    "allergies": "Penicillin",
+    "history": [
+      "Previous outpatient treatment"
+    ],
+    "time": "11:00 AM",
+    "type": "Follow-up",
+    "status": "Confirmed"
+  }
+]

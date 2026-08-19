@@ -1,0 +1,33 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 15 Aug 2026
+Time: 03:55 pm
+
+CLINICAL NOTES
+Chief Complaint: Feeling low, weak, ill, headaches, fever, and body aches
+Consultation Overview: Patient presented with weakness, feeling ill, persistent hunger after eating, headaches, fever, and body aches following recent travel out of station for work. Doctor advised rest, proper sleep, diet, and prescribed pain relief medication.
+Symptoms: Feeling low,Weakness,Feeling ill,Hunger after eating,Headache,Fever,Body aches
+History: Patient reports feeling very low, ill, and weak for the past few days. Also experiences difficulty with persistent hunger even after eating, as well as headaches, fever, and body aches. Patient recently traveled out of station for work purposes.
+Assessment: 
+Diagnosis: 
+Treatment Plan: Doctor mentioned prescribing pain relief medicines, but specific medication names and dosages were not stated.
+Advice: Take rest for at least two days,Take pain relief medicines regularly,Maintain proper sleep,Maintain a proper diet
+Follow-up: 
+Doctor Notes: Advised patient to take care and be conscious of health to avoid further complications.
+
+TRANSCRIPT
+[00:00] Patient: Hello doctor. Hello doctor.
+[00:04] Doctor: How are you? How are you feeling?
+[00:07] Patient: I'm good.
+[00:08] Doctor: What about you? Do you have any difficulty?
+[00:12] Patient: Yeah doctor, I've been feeling very low these days. I've been feeling very ill, and I'm... like I am very weak. After... even after eating I am having very difficulty, I'm having hungry. Like I have headaches, and I'm suffering with a lot... headaches, and fever, body aches.
+[00:35] Doctor: So where did... did you went... did you had a long travel last week?
+[00:39] Patient: Yes doctor, I've been traveling to the out of station for the... on the work purpose, based on the work.
+[00:48] Doctor: Okay, you have... actually you need to take rest for few days, for at least two days. I'll prescribe some pain relief medicines. So you have to take that regularly, and maintain proper sleep, and proper diet, okay? Without this you could... you could have a very... health issues, you could have health issues, okay? Be conscious. Thank you.
+[01:15] Patient: Thank you doctor. Okay.

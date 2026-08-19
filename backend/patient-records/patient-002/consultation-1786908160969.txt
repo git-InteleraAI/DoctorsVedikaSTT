@@ -1,0 +1,32 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Priya Desai
+Patient ID: patient-002
+Doctor ID: default-doctor
+Appointment ID: 2
+Date: 17 Aug 2026
+Time: 12:49 am
+
+CLINICAL NOTES
+Chief Complaint: Fever for 3 days
+Consultation Overview: Patient presented with a complaint of fever for 3 days, disturbed sleep, and weakness. The doctor examined the patient's temperature (101°F), prescribed Paracetamol and Cetirizine tablets for 3 days, and advised a follow-up visit on the 20th of the month.
+Symptoms: Fever,Disturbed sleep / insomnia,Weakness
+History: Patient reports experiencing fever for the past 3 days, accompanied by difficulty sleeping and feeling weak.
+Assessment: Fever with weakness and sleep disturbance.
+Diagnosis: Fever
+Treatment Plan: Prescribed Paracetamol and Cetirizine tablets to be taken daily for 3 days. Follow up on the 20th of the month for temperature re-evaluation.
+Advice: Take medications daily for 3 days
+Follow-up: Return for follow-up on the 20th of this month for temperature re-check.
+Doctor Notes: Temperature checked at 101°F. Prescribed Paracetamol and Cetirizine for 3 days.
+
+TRANSCRIPT
+[00:01] Patient: హలో డాక్టర్.
+[00:03] Doctor: హలో.
+[00:05] Doctor: ఏమైందమ్మా ఏంటి ప్రాబ్లమ్ మీకు?
+[00:08] Patient: నాకు కొంచెం ఫీవర్ గా ఉంది మామ్. లైక్ నాకు ఒక త్రీ డేస్ నుంచి అసలు సరిగ్గా నిద్ర పట్టట్లేదు అండ్ ఆల్సో కొంచెం వీక్ గా అనిపిస్తుంది.
+[00:19] Doctor: ఎందుకు ఏమైందమ్మా మీకు? అసలు నేను టెంపరేచర్ చెక్ చేయనీయండి.
+[00:27] Doctor: ఇది 101 ఫీవర్ ఉంది. ఓకే.
+[00:32] Doctor: మీకు కొన్ని పారాసిటమాల్ టాబ్లెట్స్ రాసిస్తాను అండ్ ఆల్సో సెట్రిజిన్ టాబ్లెట్స్ రాసిస్తాను. రోజు వాడండి. ఓకేనా?
+[00:42] Doctor: ఒక త్రీ డేస్ వాడండి మళ్ళా తర్వాత ఫాలో అప్ కి రండి. కరెక్ట్ గా ఆన్ కరెక్ట్ గా ఆన్ 28th కి నాకు ఫాలో అప్ కి రావాలి. 20 20 20 కి రండి. ఓకేనా? ఈ మంత్ 20 కల్లా నాకు మళ్ళా ఫాలో అప్ కి కనిపించాలి. మళ్ళీ నేను టెంపరేచర్ చెక్ చేస్తా.

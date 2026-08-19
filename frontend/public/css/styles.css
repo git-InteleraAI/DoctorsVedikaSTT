@@ -1,0 +1,957 @@
+/* ==========================================================================
+   RESET & SYSTEM VARIABLE ARCHITECTURE
+   ========================================================================== */
+:root {
+    --primary: #01b6af;
+    --primary-dark: #008f89;
+    --secondary: #0ea5e9;
+    --dark-slate: #0f172a;
+    --dark-panel: #1e293b;
+    --light-bg: #f8fafc;
+    --text-main: #0f172a;
+    --text-muted: #475569;
+    --white: #ffffff;
+    --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--light-bg);
+    color: var(--text-main);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   HIGH-CONTRAST FLOATING COMMAND NAVBAR
+   ========================================================================== */
+.premium-nav {
+    position: fixed;
+    top: 1.25rem;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 0 2rem;
+}
+
+.nav-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1250px;
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 0.6rem 1.5rem;
+    border-radius: 100px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.logo-link { display: flex; align-items: center; text-decoration: none; }
+.main-logo { height: 40px; width: auto; object-fit: contain; display: block; }
+.nav-center-links { display: flex; align-items: center; gap: 0.25rem; background: rgba(15, 23, 42, 0.04); padding: 4px; border-radius: 100px; border: 1px solid rgba(15, 23, 42, 0.02); }
+.nav-item { text-decoration: none; padding: 8px 20px; font-size: 0.9rem; font-weight: 600; color: var(--text-muted); border-radius: 100px; transition: var(--transition); }
+.nav-item:hover { color: var(--dark-slate); }
+.nav-item.active { background: var(--dark-slate); color: var(--white); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15); }
+
+.btn-nav-action {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: var(--white);
+    text-decoration: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 100px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 8px 20px rgba(1, 182, 175, 0.2);
+    transition: var(--transition);
+}
+.btn-nav-action:hover { transform: translateY(-2px); box-shadow: 0 12px 24px rgba(1, 182, 175, 0.35); }
+
+/* ==========================================================================
+   HERO SEGMENT LAYOUT COMPONENT
+   ========================================================================== */
+.hero-section {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 9rem 2rem 4rem 2rem;
+    background: linear-gradient(180deg, #edf2f7 0%, var(--light-bg) 100%);
+    overflow: hidden;
+}
+
+.ambient-glow { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.4; z-index: 1; pointer-events: none; }
+.bg-blob-1 { width: 500px; height: 500px; background: rgba(1, 182, 175, 0.25); top: -100px; right: -50px; }
+.bg-blob-2 { width: 600px; height: 600px; background: rgba(14, 165, 233, 0.2); bottom: -150px; left: -50px; }
+
+.hero-container {
+    position: relative;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 4rem;
+    max-width: 1250px;
+    margin: 0 auto;
+    align-items: center;
+}
+
+.hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--white);
+    padding: 0.5rem 1.2rem;
+    border-radius: 50px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+    margin-bottom: 2rem;
+}
+
+.badge-pulse { width: 8px; height: 8px; background: var(--primary); border-radius: 50%; animation: pulse 2s infinite; }
+.badge-text { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); }
+
+/* --- PURE CSS TYPEWRITER EFFECT INTEGRATION --- */
+.hero-title {
+    font-size: clamp(2.3rem, 3.8vw, 3.5rem);
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.03em;
+    color: var(--dark-slate);
+    margin-bottom: 1.5rem;
+}
+
+.typewriter-line-1, .typewriter-line-2 {
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 3px solid transparent;
+}
+
+.typewriter-line-1 {
+    width: 0;
+    animation: typeHeading 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation-delay: 0.4s;
+}
+
+.typewriter-line-2 {
+    width: 0;
+    animation: typeHeading 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    animation-delay: 1.6s;
+}
+
+@keyframes typeHeading {
+    from { width: 0; }
+    to { width: 100%; }
+}
+
+.text-gradient { background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.hero-subtitle { font-size: 1.15rem; line-height: 1.65; color: var(--text-muted); margin-bottom: 2.5rem; max-width: 580px; }
+.hero-actions { display: flex; align-items: center; gap: 1.5rem; }
+
+.btn-hero-primary {
+    background: var(--dark-slate);
+    color: var(--white);
+    text-decoration: none;
+    padding: 1rem 2rem;
+    border-radius: 12px;
+    font-weight: 700;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.15);
+    transition: var(--transition);
+}
+.btn-hero-primary:hover { background: var(--primary); transform: translateY(-3px); box-shadow: 0 20px 40px rgba(1, 182, 175, 0.3); }
+.btn-hero-secondary { color: var(--dark-slate); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 0.5rem; transition: var(--transition); }
+.btn-hero-secondary:hover { color: var(--primary); }
+
+.lang-support-tags { margin-top: 3rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+.lang-support-tags .tag { background: rgba(15, 23, 42, 0.05); padding: 4px 12px; border-radius: 50px; border: 1px solid rgba(15, 23, 42, 0.05); color: var(--dark-slate); }
+
+/* ==========================================================================
+   RESTORED OPTIMIZED 3D ROTATING CYLINDER ENGINE
+   ========================================================================== */
+.hero-visual-anchor {
+    display: flex;
+    justify-content: flex-end;
+    overflow: visible;
+}
+
+.scene-3d-container {
+    position: relative;
+    width: 100%;
+    max-width: 450px;
+    height: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 2000px; /* Enhanced depth perception perspective rendering field */
+    overflow: visible;
+}
+
+.carousel-3d-ring {
+    position: relative;
+    width: 280px;
+    height: 140px;
+    transform-style: preserve-3d;
+    transform: rotateX(-12deg) rotateY(0deg); 
+    animation: rotateRing3D 24s linear infinite;
+    /* Hardwired rendering pipeline fixes */
+    will-change: transform;
+    backface-visibility: visible;
+}
+
+.stage-3d-card {
+    position: absolute;
+    width: 280px;
+    height: 130px;
+    background: var(--dark-slate);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 1.25rem;
+    display: grid;
+    grid-template-columns: 50px 1fr;
+    gap: 1rem;
+    align-items: center;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.4);
+    /* Prevents layout overlaps by explicitly keeping layers separate */
+    transform-style: preserve-3d;
+    will-change: transform, opacity;
+}
+
+.stage-3d-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    padding: 1.5px;
+    background: linear-gradient(135deg, transparent, var(--primary), var(--secondary), transparent);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+/* Original structural 3D alignment equations */
+.card-s1 { transform: rotateY(0deg) translateZ(240px); border-color: rgba(1, 182, 175, 0.25); }
+.card-s2 { transform: rotateY(90deg) translateZ(240px); }
+.card-s3 { transform: rotateY(180deg) translateZ(240px); }
+.card-s4 { transform: rotateY(270deg) translateZ(240px); }
+
+.stage-num-badge {
+    position: absolute;
+    top: -12px;
+    left: 20px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: var(--white);
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 10px;
+    border-radius: 50px;
+}
+
+.stage-icon-box {
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.card-s1 .stage-icon-box { color: var(--primary); background: rgba(1, 182, 175, 0.1); }
+.card-s2 .stage-icon-box { color: var(--secondary); background: rgba(14, 165, 233, 0.1); }
+.card-s3 .stage-icon-box { color: #10b981; background: rgba(16, 185, 129, 0.1); }
+.card-s4 .stage-icon-box { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+
+.stage-details h3 { color: var(--white); font-size: 1.05rem; font-weight: 700; margin-bottom: 0.25rem; }
+.stage-details p { color: #94a3b8; font-size: 0.8rem; line-height: 1.4; }
+
+/* ==========================================================================
+   ENTRY LOAD TIME PATTERNS (2.2 SECONDS SYSTEM SYSTEM TOTAL BUILD)
+   ========================================================================== */
+.entry-fade-down { opacity: 0; transform: translateY(-20px); animation: navIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes navIn { to { opacity: 1; transform: translateY(0); } }
+
+.entry-reveal-item {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: textIn 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    animation-delay: calc(0.1s + (var(--anim-order) * 0.12s));
+}
+@keyframes textIn { to { opacity: 1; transform: translateY(0); } }
+
+/* --- SMOOTH 3D CASCADE SCALE REVEAL ---
+   Isolates the reveal onto scale/opacity filters to prevent breaking geometric transformation states.
+*/
+.entry-3d-stagger {
+    opacity: 0;
+    filter: blur(6px);
+    animation: smoothScaleReveal3D 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation-delay: calc(0.8s + (var(--stage-order) * 0.15s));
+}
+
+@keyframes smoothScaleReveal3D {
+    0% {
+        opacity: 0;
+        filter: blur(6px);
+        transform: rotateY(calc(var(--stage-order) * 90deg - 90deg)) translateZ(180px) scale(0.85);
+    }
+    100% {
+        opacity: 1;
+        filter: blur(0);
+        transform: rotateY(calc(var(--stage-order) * 90deg - 90deg)) translateZ(240px) scale(1);
+    }
+}
+
+/* ==========================================================================
+   LOOPING TIMELINE MOTOR MOTIONS
+   ========================================================================== */
+@keyframes rotateRing3D {
+    0% { transform: rotateX(-12deg) rotateY(0deg); }
+    100% { transform: rotateX(-12deg) rotateY(-360deg); }
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(1, 182, 175, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(1, 182, 175, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(1, 182, 175, 0); }
+}
+
+@media (max-width: 992px) {
+    .hero-container { grid-template-columns: 1fr; gap: 4rem; text-align: center; }
+    .hero-subtitle { margin-left: auto; margin-right: auto; }
+    .hero-actions { justify-content: center; }
+    .hero-visual-anchor { justify-content: center; padding-top: 4rem; }
+    .nav-center-links { display: none; }
+    .lang-support-tags { justify-content: center; }
+    .typewriter-line-1, .typewriter-line-2 { white-space: normal; border-right: none; width: 100% !important; animation: none !important; }
+}
+
+
+
+
+/* ==========================================================================
+   SECTION 2: CLINICAL INTELLIGENCE MODULES
+   ========================================================================== */
+   
+
+/* ==========================================================================
+   SECTION 2: CLINICAL INTELLIGENCE MODULES (DARK THEME)
+   ========================================================================== */
+.clinical-intelligence-section {
+    position: relative;
+    background-color: var(--dark-slate); /* Base section is now deep slate */
+    padding: 8rem 2rem;
+    overflow: hidden;
+    border-top: 1px solid rgba(255, 255, 255, 0.05); /* Crisp divider from Hero */
+}
+
+.dark-ambient-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(1, 182, 175, 0.08) 0%, transparent 70%);
+    bottom: -150px;
+    right: -150px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.modules-container {
+    max-width: 1250px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 10;
+}
+
+.modules-header-stack {
+    margin-bottom: 4rem;
+    max-width: 600px;
+}
+
+.section-subtitle-tag {
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--primary);
+    display: inline-block;
+    margin-bottom: 0.75rem;
+}
+
+.modules-main-title {
+    font-size: clamp(2rem, 3.2vw, 2.75rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--white); /* Inverted for dark mode */
+    margin-bottom: 1rem;
+}
+
+.modules-description {
+    color: #94a3b8; /* Cool light gray for readability */
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+/* Base Bento Layout (Dark) */
+.bento-grid-layout {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+}
+
+.bento-wide {
+    grid-column: span 2;
+}
+
+.bento-card {
+    position: relative;
+    background: var(--dark-panel); /* Elevated dark background */
+    border-radius: 24px;
+    padding: 2.25rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 280px;
+}
+
+.bento-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.bento-icon-badge {
+    width: 46px;
+    height: 46px;
+    background: rgba(1, 182, 175, 0.15); /* Slightly more opaque for dark mode */
+    color: var(--primary);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+}
+
+.bento-text-content h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: 0.5rem;
+}
+
+.bento-text-content p {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+/* ==========================================================================
+   ISOMETRIC 3D MOCKUP (Wide Cards)
+   ========================================================================== */
+.bento-card.has-mockup {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 2rem;
+    align-items: center;
+    overflow: visible; 
+    padding-right: 0; 
+}
+
+.content-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    z-index: 2;
+    padding-right: 1rem;
+}
+
+.mockup-side {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1200px;
+    z-index: 1;
+}
+
+.floating-mockup {
+    width: 115%; 
+    max-width: 420px;
+    border-radius: 12px;
+    box-shadow: -20px 30px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    transform: rotateY(-18deg) rotateX(6deg) translateZ(0);
+    animation: floatMockup 6s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes floatMockup {
+    0% { transform: rotateY(-18deg) rotateX(6deg) translateY(0px) translateZ(0); }
+    50% { transform: rotateY(-18deg) rotateX(6deg) translateY(-15px) translateZ(10px); }
+    100% { transform: rotateY(-18deg) rotateX(6deg) translateY(0px) translateZ(0); }
+}
+
+/* ==========================================================================
+   GLASSMORPHISM REVEAL (Dark Overlay)
+   ========================================================================== */
+.bento-card.image-reveal {
+    overflow: hidden;
+    z-index: 1;
+}
+
+.bento-card.image-reveal .bg-image {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    z-index: -2;
+    transform: scale(1.1);
+    filter: blur(10px) brightness(0.7); /* Darkened image baseline */
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), filter 0.6s ease;
+}
+
+.bento-card.image-reveal .glass-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--dark-panel); /* Solid dark panel by default */
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    z-index: -1;
+    transition: background 0.5s ease, backdrop-filter 0.5s ease;
+}
+
+.bento-card.image-reveal .bento-card-inner {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+}
+
+/* ==========================================================================
+   Dark Mode Hover State (UPDATED FOR LIGHTER GLASS EFFECT)
+   ========================================================================== */
+
+.bento-card.image-reveal:hover .bg-image {
+    transform: scale(1);
+    /* Removed the brightness reduction so the image pops more */
+    filter: blur(0px) brightness(1); 
+}
+
+.bento-card.image-reveal:hover .glass-overlay {
+    /* Shifted to your lighter --dark-panel color and reduced opacity to 65% */
+    background: rgba(30, 41, 59, 0.65); 
+    /* Increased the blur slightly to ensure white text remains perfectly readable */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* ==========================================================================
+   GRAPHIC ELEMENTS (Dark Mode Colors)
+   ========================================================================== */
+.graphic-element {
+    margin-top: 2rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08); /* Light line on dark background */
+}
+
+/* Scribe Graphic */
+.translation-stream { display: flex; align-items: center; gap: 1rem; }
+.lang-node { font-size: 0.85rem; font-weight: 700; padding: 6px 14px; border-radius: 50px; }
+.lang-node.telugu { background: rgba(14, 165, 233, 0.15); color: #38bdf8; }
+.lang-node.english { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.stream-arrow { color: #64748b; font-size: 0.85rem; }
+
+/* Summary Graphic */
+.zonal-pill-container { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.zonal-pill {
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+    padding: 4px 12px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.4s ease, color 0.4s ease;
+}
+.zonal-pill i { color: var(--primary); }
+.bento-card.image-reveal:hover .zonal-pill {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--white);
+    backdrop-filter: blur(4px);
+}
+
+/* Rx PDF Graphic */
+.rx-action-trigger .mini-pdf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--white);
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    transition: background 0.4s;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.bento-card.image-reveal:hover .mini-pdf-btn {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+/* Timeline Graphic */
+.chronology-pipeline { display: flex; align-items: center; gap: 0.5rem; }
+.timeline-node {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.timeline-node.active { background: var(--primary); color: var(--white); }
+.timeline-line { flex-grow: 1; height: 2px; background: rgba(255, 255, 255, 0.1); }
+
+/* Responsive Overrides */
+@media (max-width: 992px) {
+    .bento-grid-layout { grid-template-columns: 1fr; }
+    .bento-wide { grid-column: span 1; }
+    
+    .bento-card.has-mockup {
+        grid-template-columns: 1fr;
+        padding-right: 2.25rem; 
+        gap: 3rem;
+    }
+    
+    .mockup-side { order: -1; min-height: 250px; }
+    .floating-mockup {
+        width: 90%;
+        transform: rotateY(0deg) rotateX(5deg) translateZ(0); 
+        animation: floatMockupMobile 6s ease-in-out infinite;
+    }
+}
+
+@keyframes floatMockupMobile {
+    0% { transform: rotateY(0deg) rotateX(5deg) translateY(0px); }
+    50% { transform: rotateY(0deg) rotateX(5deg) translateY(-10px); }
+    100% { transform: rotateY(0deg) rotateX(5deg) translateY(0px); }
+}
+
+
+/* ==========================================================================
+   SECTION 2: SCROLL ENTRY ANIMATIONS
+   ========================================================================== */
+.reveal-trigger {
+    opacity: 0;
+    transform: translateY(60px) scale(0.95);
+    /* Premium cubic-bezier for a weighty, smooth entrance */
+    transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), 
+                transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    will-change: opacity, transform;
+}
+
+.reveal-trigger.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+/* Staggered Delays for Cascade Effect */
+.delay-1 { transition-delay: 0.1s, 0.1s !important; }
+.delay-2 { transition-delay: 0.2s, 0.2s !important; }
+.delay-3 { transition-delay: 0.3s, 0.3s !important; }
+.delay-4 { transition-delay: 0.4s, 0.4s !important; }
+
+/* CRITICAL: Restore the native hover speed and remove the delay 
+   once the element is fully revealed, so interactions feel instant.
+*/
+.reveal-trigger.is-visible:hover {
+    transform: translateY(-6px) scale(1);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition-delay: 0s, 0s !important;
+}
+
+
+
+/* ==========================================================================
+   SECTION 3: PATIENT CARE & AUTOMATION (STABLE HORIZONTAL LAYOUT + ANIMATIONS)
+   ========================================================================== */
+
+.automation-section {
+    position: relative;
+    background: linear-gradient(180deg, #edf2f7 0%, var(--light-bg) 100%);
+    padding: 8rem 2rem;
+    overflow: hidden;
+    z-index: 1;
+}
+
+.aurora-container {
+    max-width: 1250px; 
+    margin: 0 auto;
+    position: relative;
+}
+
+.aurora-header-stack {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto 4rem auto;
+}
+
+.aurora-tag {
+    color: var(--secondary);
+    background: rgba(14, 165, 233, 0.1);
+    padding: 6px 16px;
+    border-radius: 50px;
+}
+
+.aurora-main-title {
+    font-size: clamp(2rem, 3.5vw, 3rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--dark-slate);
+    margin: 1rem 0;
+    line-height: 1.2;
+}
+
+.aurora-description {
+    color: var(--text-muted);
+    font-size: 1.15rem;
+    line-height: 1.6;
+}
+
+/* ---------------------------------------------------
+   Horizontal Layout Container & Cards
+   --------------------------------------------------- */
+.horizontal-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 3.5rem; /* Increased gap to give breathing room between the larger cards */
+}
+
+/* Base styling for the glassmorphism card */
+.aurora-card {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 28px;
+    padding: 3rem; 
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255,255,255,1);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.aurora-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 30px 60px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255,255,255,1);
+    background: rgba(255, 255, 255, 0.85);
+}
+
+/* Horizontal alignment - Strict Flex to prevent text squashing */
+.horizontal-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4%; /* Using percentage gap for stable responsiveness */
+}
+
+/* Reverses the flex direction for the alternating layout */
+.horizontal-card.reverse-layout {
+    flex-direction: row-reverse;
+}
+
+/* Lock text to strictly 45% of the card width */
+.aurora-content-side { 
+    flex: 0 0 45%; 
+    display: flex;
+    flex-direction: column;
+}
+
+/* Lock image to strictly 50% of the card width */
+.aurora-image-side { 
+    flex: 0 0 50%; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    position: relative;
+    z-index: 1;
+}
+
+/* ---------------------------------------------------
+   Unique Ambient Animations (Images & Glows)
+   --------------------------------------------------- */
+
+/* Animated Ambient Glow Behind the Image */
+.aurora-image-side::before {
+    content: '';
+    position: absolute;
+    width: 80%;
+    height: 80%;
+    background: radial-gradient(circle, rgba(1, 182, 175, 0.3) 0%, transparent 70%);
+    filter: blur(40px);
+    z-index: -1;
+    animation: ambientPulse 5s infinite alternate ease-in-out;
+}
+
+/* Reverse layout gets a blue glow instead of teal for variety */
+.reverse-layout .aurora-image-side::before {
+    background: radial-gradient(circle, rgba(14, 165, 233, 0.3) 0%, transparent 70%);
+}
+
+/* Rounded Feature Images - Bigger and Animated */
+.rounded-feature-img {
+    width: 100%;
+    max-width: 650px; /* Forcefully larger images */
+    border-radius: 24px;
+    object-fit: cover;
+    box-shadow: 0 25px 50px rgba(15, 23, 42, 0.15);
+    
+    /* Continuous Breathing/Floating Animation */
+    animation: floatAlive 6s ease-in-out infinite;
+    will-change: transform;
+}
+
+/* Stagger the animations so they don't all move at the exact same time */
+.horizontal-card.reverse-layout .rounded-feature-img {
+    animation-delay: -2s;
+    animation-duration: 7s;
+}
+
+.horizontal-card:nth-child(3) .rounded-feature-img {
+    animation-delay: -4s;
+    animation-duration: 6.5s;
+}
+
+/* Keyframes for the image floating & breathing */
+@keyframes floatAlive {
+    0% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(-12px) scale(1.02); } /* Moves up and slightly scales out */
+    100% { transform: translateY(0px) scale(1); }
+}
+
+/* Keyframes for the glowing aura behind the image */
+@keyframes ambientPulse {
+    0% { transform: scale(0.8); opacity: 0.3; }
+    100% { transform: scale(1.1); opacity: 0.7; }
+}
+
+/* ---------------------------------------------------
+   Card Content Styling (Icons & Typography)
+   --------------------------------------------------- */
+.aurora-icon-badge {
+    width: 54px;
+    height: 54px;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: var(--white);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 10px 20px rgba(1, 182, 175, 0.2);
+}
+
+.aurora-text-content h3 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--dark-slate);
+    margin-bottom: 0.75rem;
+}
+
+.aurora-text-content p {
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1.6;
+}
+
+/* UI Mini-Graphics */
+.aurora-graphic-element {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+/* Pathway Graphic */
+.pathway-track { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.path-node { font-size: 0.85rem; font-weight: 700; padding: 6px 14px; border-radius: 50px; display: inline-flex; align-items: center; gap: 6px; }
+.path-node.past { background: rgba(16, 185, 129, 0.1); color: #059669; }
+.path-node.current { background: var(--dark-slate); color: var(--white); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2); }
+.path-node.future { background: rgba(15, 23, 42, 0.05); color: var(--text-muted); }
+.path-line { height: 2px; width: 30px; background: rgba(15, 23, 42, 0.1); }
+.path-line.active { background: #059669; }
+
+/* Voice Wave Graphic */
+.voice-wave-container { display: flex; align-items: center; gap: 8px; background: rgba(14, 165, 233, 0.05); padding: 10px 16px; border-radius: 12px; border: 1px solid rgba(14, 165, 233, 0.1); width: fit-content; }
+.wave-bar { width: 4px; height: 16px; background: var(--secondary); border-radius: 4px; animation: waveAnim 1s infinite ease-in-out; }
+.wave-bar:nth-child(2) { animation-delay: 0.2s; height: 24px; }
+.wave-bar:nth-child(3) { animation-delay: 0.4s; }
+.call-status { font-size: 0.85rem; font-weight: 700; color: var(--secondary); margin-left: 8px; }
+
+@keyframes waveAnim {
+    0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
+/* Retention Alert Graphic */
+.retention-alert { display: flex; align-items: center; gap: 12px; background: var(--white); padding: 12px 16px; border-radius: 14px; box-shadow: 0 8px 16px rgba(15, 23, 42, 0.05); border: 1px solid rgba(15, 23, 42, 0.03); width: fit-content; }
+.bell-shake { color: #f59e0b; font-size: 1.2rem; animation: shake 3s infinite cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+.alert-text { display: flex; flex-direction: column; }
+.alert-text strong { font-size: 0.9rem; color: var(--dark-slate); }
+.alert-text span { font-size: 0.8rem; color: var(--text-muted); }
+
+@keyframes shake {
+    0%, 90%, 100% { transform: rotate(0); }
+    92% { transform: rotate(15deg); }
+    94% { transform: rotate(-15deg); }
+    96% { transform: rotate(10deg); }
+    98% { transform: rotate(-10deg); }
+}
+
+/* ---------------------------------------------------
+   Mobile Responsive Overrides
+   --------------------------------------------------- */
+@media (max-width: 992px) {
+    /* Collapse horizontal layouts on smaller screens */
+    .horizontal-card, 
+    .horizontal-card.reverse-layout {
+        flex-direction: column;
+        text-align: left;
+        gap: 3rem;
+        padding: 2rem;
+    }
+    
+    /* Release the rigid width locks on mobile so they stack fully */
+    .aurora-content-side, 
+    .aurora-image-side {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+    
+    /* Ensure the image container doesn't overflow */
+    .rounded-feature-img {
+        max-width: 100%;
+    }
+}

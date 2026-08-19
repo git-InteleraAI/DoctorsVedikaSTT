@@ -1,0 +1,56 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 16 Aug 2026
+Time: 12:02 am
+
+CLINICAL NOTES
+Chief Complaint: Itching and numbness in the right hand for 1 year.
+Consultation Overview: Patient Kavitha presented with complaints of itching and numbness in her right hand persisting for one year. She works in cooking/vegetable cutting. Doctor advised diagnostic tests, prescribed medications, and requested a follow-up in 3 days.
+Symptoms: Right hand itching,Right hand numbness (తిమ్మిరి)
+History: Patient has been experiencing severe itching and numbness specifically in her right hand for about one year. Symptoms occur even at rest/when idle and are not specifically triggered by lifting heavy objects. Hand grip is intact. She has been working as a cook (cutting vegetables) for 15 years. No prior medications taken or doctor consultations sought for this issue.
+Assessment: 
+Diagnosis: 
+Treatment Plan: Doctor mentioned prescribing medications to be taken on time until test results are reviewed, but specific medication names/dosages were not stated.
+Advice: Take prescribed medicines on time,Get the advised tests done
+Follow-up: Return to the hospital in 3 days with test reports.
+Doctor Notes: Patient is a cook with a 15-year history of kitchen work/vegetable cutting presenting with right hand itching and numbness for 1 year. Tests ordered and medications advised.
+
+TRANSCRIPT
+[00:01] Patient: ఒక సంవత్సరం నుంచి దురద ఎప్పుడో అయిపోయింది
+[00:03] Doctor: హలో
+[00:04] Patient: హలో డాక్టర్
+[00:08] Doctor: కవిత గారు ఏం ప్రాబ్లం ఉంది మీకు?
+[00:14] Doctor: చెప్పండి. ఏదైనా ప్రాబ్లం ఉందా? ఎందుకు వచ్చారు?
+[00:23] Patient: చేయి దురద పెడుతుంది.
+[00:25] Doctor: ఓన్లీ చేయి దురదనా?
+[00:27] Patient: కుడి చేయి బాగా దురద పెడుతుంది.
+[00:29] Doctor: కుడి చేయ్యా?
+[00:31] Patient: తిమ్మిరొస్తుంది.
+[00:32] Doctor: కుడి చేయి మాత్రమేనా? ఎడమ చేయి లేదా?
+[00:34] Patient: కుడి చేయి ఒక్కటే.
+[00:35] Doctor: కాళ్ళు?
+[00:36] Patient: కాళ్ళేమీ లేవు ఓన్లీ కుడి చేయి.
+[00:38] Doctor: కుడి చేయి మాత్రమే. ఏదైనా లిఫ్ట్ చేస్తుంటే దురద లాగా పడుతుందా? ఏదైనా బరువైన వస్తువులు ఎత్తేటప్పుడు?
+[00:46] Patient: నార్మల్ గా ఖాళీగా ఉన్నప్పుడే దురద వస్తుంది చేయి.
+[00:49] Doctor: హ్మ్. మీరేమైనా గ్రిప్ పట్టుకోడానికి వస్తుందా ఏదైనా?
+[00:53] Patient: ఆ వస్తుంది.
+[00:54] Doctor: ఓకే, మీరేం పని చేస్తారు?
+[00:57] Patient: వంట పని.
+[00:58] Doctor: ఆఁ?
+[00:59] Patient: వంట పని.
+[01:00] Doctor: వంట పని చేస్తారు. కూరగాయలు కట్టింగ్ చేస్తారా? ఎన్ని సంవత్సరాల నుంచి చేస్తున్నారు?
+[01:06] Patient: 15 ఇయర్స్.
+[01:07] Doctor: 15 ఇయర్స్ నుంచి చేస్తున్నారు. ఓకే, ఈ సమస్య మీకు ఎప్పటినుంచి స్టార్ట్ అయింది?
+[01:12] Patient: వన్ ఇయర్ నుంచి.
+[01:13] Doctor: వన్ ఇయర్ నుంచి ఇంతవరకు మీరు ఏం మెడిసిన్ వాడట్లేదా?
+[01:16] Patient: ఏం లేదు వాడలేదు.
+[01:17] Doctor: ఓకే, ఏ డాక్టర్ కి చూపించుకోలేదు?
+[01:19] Patient: లేదు.
+[01:20] Doctor: సరే నేను కొన్ని టెస్టులు రాస్తాను, ఆ టెస్టులు చేపించుకొని నాకు మళ్ళీ త్రీ డేస్ లో రండి హాస్పిటల్ కి. అప్పటిదాకా మీరు కొన్ని మందులు వాడాల్సి ఉంటది. టైం కి వాడండి.
+[01:34] Patient: ఓకే.

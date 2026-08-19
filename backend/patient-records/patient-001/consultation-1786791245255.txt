@@ -1,0 +1,58 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 15 Aug 2026
+Time: 04:23 pm
+
+CLINICAL NOTES
+Chief Complaint: Fever, dry cough, throat irritation, and pain when swallowing.
+Consultation Overview: Patient presented with fever, dry cough, mild cold, throat irritation, slight pain on swallowing food, headache, and weakness since yesterday evening. On examination, the doctor noted mild throat redness and dry cough, diagnosing a viral upper respiratory infection. Symptomatic medications and fluid intake were recommended.
+Symptoms: Fever,Dry cough,Mild cold,Throat irritation,Pain on swallowing food,Headache,Weakness
+History: Patient experienced fever starting yesterday at 6:00 PM, measuring around 101°F at home. Reports dry cough, mild cold, throat irritation, slight pain when eating food, headache, and weakness since morning. Breathing is currently normal, with no chest pain, vomiting, loose motions, or stomach pain. Patient traveled last night for work and has been drinking less water due to throat irritation.
+Assessment: Viral upper respiratory infection.
+Diagnosis: Viral upper respiratory infection
+Treatment Plan: Prescribed paracetamol for fever, cough syrup for dry cough, and vitamin supplements. Recommended drinking 2-3 liters of fluids daily, taking medicines on time, and getting enough sleep.
+Advice: Drink at least 2 to 3 liters of fluids daily,Take medicines on time,Get enough sleep
+Follow-up: Visit the hospital immediately if breathing difficulty, severe chest pain, continuous vomiting, confusion, or oxygen saturation below 94% develops.
+Doctor Notes: Antibiotics are not needed at present as viral infections do not require antibiotics unless there is evidence of a bacterial infection.
+
+TRANSCRIPT
+[00:00] Patient: Hello doctor.
+[00:01] Doctor: How are you? I'm good. What about you?
+[00:05] Patient: Yeah, doctor. I'm good.
+[00:07] Doctor: What happened? Tell me. What is your problem?
+[00:12] Patient: I'm having difficulty in breathing, doctor.
+[00:16] Doctor: Okay.
+[00:17] Patient: And also I'm having fever from yesterday 6:00 PM, doctor.
+[00:25] Doctor: Okay, did you check your temperature?
+[00:27] Patient: No doctor. Yes doctor, I have checked it. It is around 101 degrees fever.
+[00:33] Doctor: Apart from fever, do you have cough or cold?
+[00:36] Patient: Dry cough. Cold is cold is very mild, but throat irritation, I have throat irritation also.
+[00:46] Doctor: Sore throat or did you find difficulty in swallow by swallowing or pain?
+[00:52] Patient: Slight pain, doctor. Water taagithe ok undi, but food tine tapudu little discomfort undi.
+[01:00] Doctor: Any breathing difficulty, chest pain?
+[01:03] Patient: No doctor, breathing normal ga undi, chest pain ledu.
+[01:05] Doctor: Headache ledha dizziness unda?
+[01:07] Patient: Headache undi. Morning nunchi weakness kuda feel avtunnanu.
+[01:11] Doctor: Vomitings, loose motions or stomach pain emyna?
+[01:15] Patient: No doctor, avemi levu.
+[01:17] Doctor: Appetite ela undi? Properly tintunara?
+[01:21] Patient: Yeah, good. Good doctor. Appetite is good.
+[01:31] Doctor: Water, did you take plenty of water?
+[01:33] Patient: Not much doctor. Throat because of throat irritation, I'm taking very less water.
+[01:39] Doctor: Did you travel?
+[01:41] Patient: No doctor. Yes doctor, I had travel yesterday night.
+[01:49] Patient: On basis of work.
+[01:53] Doctor: Okay, done. Temperature is 100 degrees Celsius. Pulse is slightly high because of fever. Blood pressure is normal. Oxygen saturation is 98%, which is good.
+[02:07] Patient: Okay doctor.
+[02:08] Doctor: Please open your mouth, let me examine your throat. Your throat is mildly red. I can hear you hear a slight dry cough. At present, it looks like a viral upper respiratory infection. Most viral fevers improve within 3 days to 5 days. Antibiotics avasarama doctor? Ledhu, right now you don't need antibiotics. Viral infections usually don't require antibiotics unless there is evidence of bacterial infection, okay? I'll prescribe paracetamol for fever, cough cough syrup for dry cough, and vitamin supplements. Drink plenty of water, okay?
+[02:46] Patient: Yeah doctor.
+[02:47] Doctor: If you develop breathing difficulty, severe chest pain, continuous vomiting, confusion, or oxygen level drops below 94%, visit the hospital immediately.
+[02:57] Patient: Okay doctor, thank you.
+[02:59] Doctor: Take the medicines on time. Drink at least 2 to 3 liters of fluids and get enough sleep.
+[03:05] Patient: Okay doctor, thank you. I'll follow this.

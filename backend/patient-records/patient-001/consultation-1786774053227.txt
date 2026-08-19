@@ -1,0 +1,37 @@
+DOCTORS VEDIKA
+AI CONSULTATION REPORT & PRESCRIPTION
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 15 Aug 2026
+Time: 11:37 am
+
+CONSULTATION SUMMARY
+----------------------------------------
+Chief Complaint: Difficulty in breathing, stomach ache, and nausea.
+Overview: Patient presented with difficulty in breathing, stomach ache, and nausea after consuming fast food yesterday. Doctor examined the patient, noted mild redness in the mouth, and provided dietary and lifestyle advice.
+Symptoms: Difficulty in breathing, Stomach ache, Nausea
+History: Patient reported developing severe stomach ache, nausea, and difficulty in breathing after consuming fast food yesterday.
+Assessment: 
+Diagnosis: 
+Treatment Plan: Avoid outside food and soft drinks. Increase consumption of fruits, vegetables, and coconut water. Take rest for at least 2 days.
+Advice: Avoid outside food for now, Consume fruits and vegetables as much as possible, Avoid soft drinks, Drink healthy coconut water, Rest for at least two days
+Follow-up: 
+Doctor Notes: 
+
+PRESCRIPTION
+----------------------------------------
+
+FULL TRANSCRIPT
+----------------------------------------
+[00:00] Patient: Hello Doctor.
+[00:01] Doctor: Hello. Hello Priya, what is your problem?
+[00:09] Patient: Rahul... sorry, Rahul.
+[00:13] Doctor: Hello Rahul. What is your problem?
+[00:19] Patient: I'm having difficulty in breathing, Doctor. I... I don't know what happened.
+[00:25] Doctor: Okay, tell me where did you feel exactly? When did you feel exactly started difficulty in breathing?
+[00:35] Patient: I have had severe stomach ache. From yesterday I had fast food, from then onwards I'm feeling nausea, stomach ache, difficulty in breathing, etc.
+[00:50] Doctor: Okay, so I'll check your temperature and check your mouth. Open your mouth. Your mouth has already mildly red. So avoid taking outside food for now. Try to take fruits and vegetables as much as possible. Don't drink soft drinks. Go for healthy coconut water, and please make sure to have some rest for 2 days at least.
+[01:20] Patient: Okay Doctor, thank you.

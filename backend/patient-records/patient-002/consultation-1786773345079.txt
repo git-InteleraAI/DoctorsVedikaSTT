@@ -1,0 +1,39 @@
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Priya Desai
+Patient ID: patient-002
+Doctor ID: default-doctor
+Appointment ID: 2
+Date: 15 Aug 2026
+Time: 11:25 am
+
+CONSULTATION SUMMARY
+----------------------------------------
+Chief Complaint: Feeling dizzy and weak for the past 2 days.
+Overview: Patient presented with weakness, dizziness, fatigue, poor food intake, and breathing difficulty after returning from out of station. The doctor attributed symptoms to a weather change and prescribed antibiotics along with dietary and rest recommendations.
+Symptoms: Dizziness, Weakness, Fatigue, Poor appetite / inability to eat properly, Difficulty breathing, Fever
+History: Patient reports onset of dizziness, weakness, and fatigue for 2 days following a trip out of station where she consumed outside food. She experiences tiredness while walking outside, is unable to eat properly, and reports difficulty breathing.
+Assessment: Symptoms attributed to weather change.
+Diagnosis: 
+Treatment Plan: Prescription of antibiotics to be taken after lunch, accompanied by lifestyle advice regarding diet and sleep. Follow-up scheduled in 2 days.
+Advice: Maintain a proper diet, Ensure proper sleep
+Follow-up: Follow up in 2 days if dizziness persists after taking medicines or if fever persists.
+Doctor Notes: 
+
+PRESCRIPTION
+----------------------------------------
+1. Antibiotics | — | — | — | Take after lunch
+
+FULL TRANSCRIPT
+----------------------------------------
+[00:00] Patient: Hello doctor, how are you?
+[00:02] Doctor: I'm good, what about you?
+[00:04] Patient: Ah, yeah, I am fine, but I am feeling dizzy and weakness from past 2 days, doctor.
+[00:15] Doctor: Why, what happened? Where did you went?
+[00:17] Patient: I went to uh I went to out of station where I had a lot of stuff and foods uh outside food. Like I don't know what happened, I was little I was much tired while walking outside. I don't know what is happening, but I am feeling very tired these days and I'm unable to eat properly. I'm unable to take proper health, proper uh intake of food.
+[00:54] Doctor: Oh okay. Did you had any Did you had any difficulty in breathing?
+[01:00] Patient: Yeah doctor, I am having difficulty breathing also.
+[01:04] Doctor: Okay, it's because of weather change, no need to worry. I'll prescribe some antibiotics right now. Uh take it after having lunch, and also make sure to have proper diet and make sure to have proper sleep. We'll follow up in next 2 days if you're feeling dizzy after taking these medicines, if your fever persist again. Okay?
+[01:39] Patient: Okay doctor, thank you.
+[01:41] Doctor: Thank you.

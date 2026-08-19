@@ -1,0 +1,197 @@
+{
+  "consultationId": "consultation-1786898050518",
+  "doctorId": "default-doctor",
+  "patientId": "patient-001",
+  "patientName": "Rahul Sharma",
+  "appointmentId": "1",
+  "consultationDate": "16 Aug 2026",
+  "consultationTime": "10:03 pm",
+  "savedAt": "2026-08-16T16:34:10.517Z",
+  "status": "Completed",
+  "completed": true,
+  "transcript": [
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:00",
+      "text": "Hello Chintu, how are you?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:04",
+      "text": "I'm good doctor, what about you?"
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:07",
+      "text": "నీకేం ప్రాబ్లం ఉంది? నా.. Hello. What, what problem did you have?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:16",
+      "text": "I'm having disc problem."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:18",
+      "text": "Okay, from when did you feeling pain on your disc?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:23",
+      "text": "From past 3 months."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:26",
+      "text": "Okay, did you go to gym?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:28",
+      "text": "Yes doctor, I'll go to gym. From 4 months ago I have started going for gym."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:36",
+      "text": "Okay. Did you started eating non-veg much? Much?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:44",
+      "text": "Yeah doctor, I'm started eating much non-veg."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:51",
+      "text": "Okay, let me check your temperature."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:57",
+      "text": "There is no signs of getting severe pain. You need to rest, rest for a while, don't go to gym, try to sleep early, don't sit on the floor, try to sit on beds, usually don't lift weights, okay?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "01:23",
+      "text": "Yeah, okay doctor. Thank you."
+    }
+  ],
+  "summary": {
+    "chief_complaint": "Disc pain for 3 months.",
+    "consultation_overview": "Patient Chintu presented with disc pain for 3 months. Patient reported going to the gym for the last 4 months and increasing non-vegetarian food consumption. The doctor examined the patient's temperature and provided conservative lifestyle and posture advice.",
+    "symptoms": [
+      "Disc pain"
+    ],
+    "history_of_present_illness": "Patient has been experiencing disc pain for the past 3 months. He started attending the gym 4 months ago and recently increased his non-vegetarian diet.",
+    "past_medical_history": [],
+    "allergies": [],
+    "current_medications": [],
+    "examination_findings": [
+      "Checked temperature"
+    ],
+    "vital_signs": {
+      "blood_pressure": "",
+      "heart_rate": "",
+      "temperature": "Checked (value not explicitly stated)",
+      "respiratory_rate": "",
+      "oxygen_saturation": "",
+      "weight": ""
+    },
+    "investigations": [],
+    "assessment": "Disc pain associated with physical activity/weight lifting.",
+    "diagnosis": [],
+    "differential_diagnosis": [],
+    "treatment_plan": "Rest and avoid gym, heavy weight lifting, and sitting on the floor.",
+    "advice": [
+      "Rest for a while",
+      "Do not go to gym",
+      "Try to sleep early",
+      "Do not sit on the floor",
+      "Try to sit on bed",
+      "Do not lift weights"
+    ],
+    "follow_up": "",
+    "doctor_notes": "",
+    "red_flags": [],
+    "medications_discussed": [],
+    "transcript": [
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:00",
+        "text": "Hello Chintu, how are you?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:04",
+        "text": "I'm good doctor, what about you?"
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:07",
+        "text": "నీకేం ప్రాబ్లం ఉంది? నా.. Hello. What, what problem did you have?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:16",
+        "text": "I'm having disc problem."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:18",
+        "text": "Okay, from when did you feeling pain on your disc?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:23",
+        "text": "From past 3 months."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:26",
+        "text": "Okay, did you go to gym?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:28",
+        "text": "Yes doctor, I'll go to gym. From 4 months ago I have started going for gym."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:36",
+        "text": "Okay. Did you started eating non-veg much? Much?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:44",
+        "text": "Yeah doctor, I'm started eating much non-veg."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:51",
+        "text": "Okay, let me check your temperature."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:57",
+        "text": "There is no signs of getting severe pain. You need to rest, rest for a while, don't go to gym, try to sleep early, don't sit on the floor, try to sit on beds, usually don't lift weights, okay?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "01:23",
+        "text": "Yeah, okay doctor. Thank you."
+      }
+    ],
+    "detected_language": "Telugu + English"
+  },
+  "diagnosis": [],
+  "medications": [],
+  "prescription": {
+    "medications": [],
+    "medicines": [],
+    "advice": "Rest for a while\nDo not go to gym\nTry to sleep early\nDo not sit on the floor\nTry to sit on bed\nDo not lift weights",
+    "follow_up_date": null,
+    "follow_up": "",
+    "pdf_url": null
+  },
+  "completedAt": "2026-08-16T16:34:15.093Z"
+}

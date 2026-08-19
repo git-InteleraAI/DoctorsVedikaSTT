@@ -1,0 +1,33 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 17 Aug 2026
+Time: 12:07 am
+
+CLINICAL NOTES
+Chief Complaint: Difficulty lifting heavy weights, inability to walk for long durations, and persistent hunger after eating.
+Consultation Overview: Patient Harshini consulted the doctor presenting with difficulty lifting heavy weights, difficulty walking for long durations, and persistent hunger even after meals for the past week. The doctor advised staying at home, avoiding sun exposure, and mentioned prescribing medication.
+Symptoms: Difficulty lifting heavy weights,Inability/difficulty walking for long durations,Increased appetite/feeling hungry even after eating
+History: The patient reports experiencing difficulty lifting heavy weights, difficulty walking for long periods, and persistent hunger despite having food for the past one week. She has not consulted another doctor or taken any medications for these symptoms.
+Assessment: 
+Diagnosis: 
+Treatment Plan: Prescribe medication as planned by the doctor, stay at home, and avoid prolonged sun exposure.
+Advice: Stay in home,Do not get exposed to the sun for a long time
+Follow-up: 
+Doctor Notes: 
+
+TRANSCRIPT
+[12:07:40 AM] Patient: hello doctor
+[12:07:46 AM] Doctor: hello Harsh new what happened hello Harshini what happened
+[12:07:48 AM] Patient: Dr I am having difficult in lifting
+[12:08:03 AM] Patient: heavy weights and the money bill to walk for so long her because why Harsh what happened to you I don't know doctor I am feeling hungry even after eating even after having food
+[12:08:25 AM] Doctor: okay since when did you started feeling like this
+[12:08:25 AM] Patient: I am started feeling like this from fast one week doctor
+[12:08:25 AM] Doctor: okay did you had any medicines or anything did you consult any doctor
+[12:08:25 AM] Patient: no doctor I didn't cancel to any doctor and not taking any medicine
+[12:08:46 AM] Doctor: okay for now I am going to describe you from medicines like rated and stay in home for don't exposed to the sun for long time

@@ -1,0 +1,199 @@
+{
+  "consultationId": "consultation-1786773345079",
+  "doctorId": "default-doctor",
+  "patientId": "patient-002",
+  "patientName": "Priya Desai",
+  "appointmentId": "2",
+  "consultationDate": "15 Aug 2026",
+  "consultationTime": "11:25 am",
+  "savedAt": "2026-08-15T05:55:45.078Z",
+  "status": "Saved",
+  "completedAt": null,
+  "transcript": [
+    {
+      "speaker": "Patient",
+      "timestamp": "00:00",
+      "text": "Hello doctor, how are you?"
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:02",
+      "text": "I'm good, what about you?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:04",
+      "text": "Ah, yeah, I am fine, but I am feeling dizzy and weakness from past 2 days, doctor."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:15",
+      "text": "Why, what happened? Where did you went?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "00:17",
+      "text": "I went to uh I went to out of station where I had a lot of stuff and foods uh outside food. Like I don't know what happened, I was little I was much tired while walking outside. I don't know what is happening, but I am feeling very tired these days and I'm unable to eat properly. I'm unable to take proper health, proper uh intake of food."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "00:54",
+      "text": "Oh okay. Did you had any Did you had any difficulty in breathing?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "01:00",
+      "text": "Yeah doctor, I am having difficulty breathing also."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "01:04",
+      "text": "Okay, it's because of weather change, no need to worry. I'll prescribe some antibiotics right now. Uh take it after having lunch, and also make sure to have proper diet and make sure to have proper sleep. We'll follow up in next 2 days if you're feeling dizzy after taking these medicines, if your fever persist again. Okay?"
+    },
+    {
+      "speaker": "Patient",
+      "timestamp": "01:39",
+      "text": "Okay doctor, thank you."
+    },
+    {
+      "speaker": "Doctor",
+      "timestamp": "01:41",
+      "text": "Thank you."
+    }
+  ],
+  "summary": {
+    "chief_complaint": "Feeling dizzy and weak for the past 2 days.",
+    "consultation_overview": "Patient presented with weakness, dizziness, fatigue, poor food intake, and breathing difficulty after returning from out of station. The doctor attributed symptoms to a weather change and prescribed antibiotics along with dietary and rest recommendations.",
+    "symptoms": [
+      "Dizziness",
+      "Weakness",
+      "Fatigue",
+      "Poor appetite / inability to eat properly",
+      "Difficulty breathing",
+      "Fever"
+    ],
+    "history_of_present_illness": "Patient reports onset of dizziness, weakness, and fatigue for 2 days following a trip out of station where she consumed outside food. She experiences tiredness while walking outside, is unable to eat properly, and reports difficulty breathing.",
+    "past_medical_history": [],
+    "allergies": [],
+    "current_medications": [],
+    "examination_findings": [],
+    "vital_signs": {
+      "blood_pressure": "",
+      "heart_rate": "",
+      "temperature": "",
+      "respiratory_rate": "",
+      "oxygen_saturation": "",
+      "weight": ""
+    },
+    "investigations": [],
+    "assessment": "Symptoms attributed to weather change.",
+    "diagnosis": [],
+    "differential_diagnosis": [],
+    "treatment_plan": "Prescription of antibiotics to be taken after lunch, accompanied by lifestyle advice regarding diet and sleep. Follow-up scheduled in 2 days.",
+    "advice": [
+      "Maintain a proper diet",
+      "Ensure proper sleep"
+    ],
+    "follow_up": "Follow up in 2 days if dizziness persists after taking medicines or if fever persists.",
+    "doctor_notes": "",
+    "red_flags": [],
+    "medications_discussed": [
+      {
+        "name": "Antibiotics",
+        "dosage": "",
+        "frequency": "",
+        "duration": "",
+        "instructions": "Take after lunch"
+      }
+    ],
+    "transcript": [
+      {
+        "speaker": "Patient",
+        "timestamp": "00:00",
+        "text": "Hello doctor, how are you?"
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:02",
+        "text": "I'm good, what about you?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:04",
+        "text": "Ah, yeah, I am fine, but I am feeling dizzy and weakness from past 2 days, doctor."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:15",
+        "text": "Why, what happened? Where did you went?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "00:17",
+        "text": "I went to uh I went to out of station where I had a lot of stuff and foods uh outside food. Like I don't know what happened, I was little I was much tired while walking outside. I don't know what is happening, but I am feeling very tired these days and I'm unable to eat properly. I'm unable to take proper health, proper uh intake of food."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "00:54",
+        "text": "Oh okay. Did you had any Did you had any difficulty in breathing?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "01:00",
+        "text": "Yeah doctor, I am having difficulty breathing also."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "01:04",
+        "text": "Okay, it's because of weather change, no need to worry. I'll prescribe some antibiotics right now. Uh take it after having lunch, and also make sure to have proper diet and make sure to have proper sleep. We'll follow up in next 2 days if you're feeling dizzy after taking these medicines, if your fever persist again. Okay?"
+      },
+      {
+        "speaker": "Patient",
+        "timestamp": "01:39",
+        "text": "Okay doctor, thank you."
+      },
+      {
+        "speaker": "Doctor",
+        "timestamp": "01:41",
+        "text": "Thank you."
+      }
+    ],
+    "detected_language": "English"
+  },
+  "diagnosis": [],
+  "medications": [
+    {
+      "name": "Antibiotics",
+      "dosage": "",
+      "frequency": "",
+      "duration": "",
+      "instructions": "Take after lunch"
+    }
+  ],
+  "prescription": {
+    "medications": [
+      {
+        "name": "Antibiotics",
+        "dosage": "",
+        "frequency": "",
+        "duration": "",
+        "instructions": "Take after lunch"
+      }
+    ],
+    "medicines": [
+      {
+        "name": "Antibiotics",
+        "dosage": "",
+        "frequency": "",
+        "duration": "",
+        "instructions": "Take after lunch"
+      }
+    ],
+    "advice": "Maintain a proper diet\nEnsure proper sleep",
+    "follow_up_date": "Follow up in 2 days if dizziness persists after taking medicines or if fever persists.",
+    "follow_up": "Follow up in 2 days if dizziness persists after taking medicines or if fever persists.",
+    "pdf_url": null
+  },
+  "pdfFileName": null,
+  "pdfUrl": null
+}

@@ -1,0 +1,33 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 15 Aug 2026
+Time: 04:43 pm
+
+CLINICAL NOTES
+Chief Complaint: Difficulty breathing and fever for 2 days.
+Consultation Overview: Patient presented with a 2-day history of fever and difficulty breathing. Doctor recorded a temperature of 101 degrees and noted mild oral redness upon examination. The doctor advised continuing paracetamol, starting antibiotics for 2 days, taking rest, and wearing a mask outside. A follow-up with blood tests (CBC, CBP) was recommended if the fever persists.
+Symptoms: Fever,Difficulty in breathing
+History: Patient has been experiencing fever and difficulty breathing for the past 2 days. Took paracetamol prior to consultation.
+Assessment: Fever with mild oral redness and respiratory difficulty.
+Diagnosis: 
+Treatment Plan: Continue paracetamol and take antibiotics for 2 days. Take rest for at least 2 days and wear a mask when going outside. If fever persists beyond 2 days or above 101 degrees, follow up for blood tests (CBC, CBP).
+Advice: Rest for at least 2 days,Wear a mask when going outside
+Follow-up: Return for a follow-up visit and blood tests (CBC, CBP) if fever persists beyond 101 degrees after 2 days.
+Doctor Notes: 
+
+TRANSCRIPT
+[00:00] Patient: Hello doctor.
+[00:02] Doctor: Hello. What happened?
+[00:05] Patient: I'm having difficulty in breathing. I'm having fever since 2 days.
+[00:13] Doctor: Okay, did you take any medicines?
+[00:15] Patient: No, only paracetamol doctor.
+[00:17] Doctor: Okay, let me check your temperature. It looks like you have 101 degrees of fever. Let me check your mouth. Ah, it has a mild redness. Okay, you continue this paracetamol and antibiotics for 2 days. Other 2 days if the fever persists again beyond 101 degrees Celsius, then please come for a visit again. We will, I'll write for a blood test like CBC, CBP, okay? We'll do a blood test, and based on the reports we can go for further treatment.
+[01:07] Patient: Ah, okay doctor, thank you.
+[01:09] Doctor: Continue taking rest for 2 days at least and make sure to wear a mask when you go outside.
+[01:17] Patient: Thank you doctor.
