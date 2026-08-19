@@ -318,73 +318,59 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     drawPatientDetailsCard();
 
     // =========================================================================
-    // SECTION CARD BUILDER
+    // SECTION BUILDERS (Page-Safe Modular Design)
     // =========================================================================
     function drawSectionHeader(title, iconText) {
-        checkPageBreak(40);
+        checkPageBreak(36);
         const cardX = PAGE.marginX;
         const startY = doc.y;
 
-        doc.circle(cardX + 15, startY + 10, 5.5).fillColor(COLORS.cyanLight).fill();
-        doc.fillColor(COLORS.tealDark).font(fontBold).fontSize(7.5)
-            .text(iconText || '•', cardX + 12.5, startY + 6.5);
+        doc.circle(cardX + 12, startY + 8, 5).fillColor(COLORS.cyanLight).fill();
+        doc.fillColor(COLORS.tealDark).font(fontBold).fontSize(7.2)
+            .text(iconText || '•', cardX + 9.5, startY + 4.8);
 
-        doc.fillColor(COLORS.navy).font(fontBold).fontSize(8.5)
-            .text(title.toUpperCase(), cardX + 26, startY + 6.5);
+        doc.fillColor(COLORS.navy).font(fontBold).fontSize(8.2)
+            .text(title.toUpperCase(), cardX + 22, startY + 4.8);
 
         doc.strokeColor(COLORS.borderLight).lineWidth(0.5)
-            .moveTo(cardX + 10, startY + 19).lineTo(cardX + PAGE.contentWidth - 10, startY + 19).stroke();
+            .moveTo(cardX, startY + 16).lineTo(cardX + PAGE.contentWidth, startY + 16).stroke();
 
-        doc.y = startY + 24;
-        doc.x = cardX + 12;
+        doc.y = startY + 20;
+        doc.x = cardX + 6;
     }
 
-    function drawSectionCard(title, iconText, drawBodyFn) {
-        checkPageBreak(45);
-        const cardX = PAGE.marginX;
-        const cardW = PAGE.contentWidth;
-        const startY = doc.y;
-
-        drawSectionHeader(title, iconText);
-
-        const bodyStartX = cardX + 12;
-        const bodyWidth = cardW - 24;
-        doc.x = bodyStartX;
-
-        drawBodyFn(bodyStartX, bodyWidth);
-
-        // Only draw border on current page if not broken
-        const cardH = Math.max(32, doc.y - startY + 6);
-        doc.roundedRect(cardX, startY, cardW, cardH, 6)
-            .strokeColor(COLORS.border)
-            .lineWidth(0.7)
-            .stroke();
-
-        doc.y = startY + cardH + 8;
-    }
-
-    function drawFieldBlock(label, val, contentW) {
+    function drawFieldBlock(label, val, contentW = PAGE.contentWidth - 12) {
         if (!hasValue(val)) return;
-        checkPageBreak(24);
-        doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.8)
-            .text(label, doc.x, doc.y, { width: contentW });
+        const text = cleanString(val);
+        const textH = doc.heightOfString(text, { width: contentW, font: fontRegular, fontSize: 7.4, lineGap: 1.5 });
+        checkPageBreak(textH + 18);
+
+        const curX = PAGE.marginX + 6;
+        doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5)
+            .text(label, curX, doc.y, { width: contentW });
         doc.y += 2;
-        doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.5)
-            .text(cleanString(val), doc.x, doc.y, { width: contentW, lineGap: 2 });
+        doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.4)
+            .text(text, curX, doc.y, { width: contentW, lineGap: 1.5 });
         doc.y += 5;
     }
 
-    function drawBulletsBlock(items, contentW) {
+    function drawBulletsBlock(items, contentW = PAGE.contentWidth - 12) {
         const list = Array.isArray(items) ? items : String(items || '').split(/\n|•/).map((x) => x.trim()).filter(Boolean);
         if (!list.length) return;
+
+        const curX = PAGE.marginX + 6;
         list.forEach((item) => {
             if (!hasValue(item)) return;
-            checkPageBreak(14);
-            doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.2).text('• ', doc.x, doc.y, { continued: true });
-            doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.5).text(cleanString(item), { width: contentW, lineGap: 1.5 });
-            doc.y += 2;
+            const text = cleanString(item);
+            const textH = doc.heightOfString(text, { width: contentW - 12, font: fontRegular, fontSize: 7.4, lineGap: 1.5 });
+            checkPageBreak(textH + 6);
+
+            const rowY = doc.y;
+            doc.fillColor(COLORS.tealDark).font(fontBold).fontSize(7.5).text('• ', curX, rowY);
+            doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.4).text(text, curX + 10, rowY, { width: contentW - 10, lineGap: 1.5 });
+            doc.y = rowY + Math.max(12, textH + 3);
         });
-        doc.y += 3;
+        doc.y += 2;
     }
 
     // =========================================================================
@@ -392,109 +378,117 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     // =========================================================================
     const hasOverview = hasValue(chiefComplaint) || hasValue(overview) || hasValue(historyOfIllness);
     if (hasOverview) {
-        drawSectionCard('1. Consultation Overview', '1', (contentX, contentW) => {
-            if (hasValue(chiefComplaint)) {
-                drawFieldBlock('Chief Complaint', chiefComplaint, contentW);
-            }
-            if (hasValue(overview)) {
-                drawFieldBlock('Consultation Overview', overview, contentW);
-            }
-            if (hasValue(historyOfIllness)) {
-                drawFieldBlock('History of Present Illness', historyOfIllness, contentW);
-            }
-        });
+        drawSectionHeader('1. Consultation Overview', '1');
+        if (hasValue(chiefComplaint)) {
+            drawFieldBlock('Chief Complaint', chiefComplaint);
+        }
+        if (hasValue(overview)) {
+            drawFieldBlock('Consultation Overview', overview);
+        }
+        if (hasValue(historyOfIllness)) {
+            drawFieldBlock('History of Present Illness', historyOfIllness);
+        }
+        doc.y += 4;
     }
 
     // =========================================================================
-    // 2. CLINICAL HISTORY (Only if filled)
+    // 2. PATIENT HISTORY & OBSERVATIONS (Only if filled)
     // =========================================================================
     const hasHistory = hasValue(symptoms) || hasValue(pastHistory) || hasValue(allergies) || hasValue(currentMeds);
     if (hasHistory) {
-        drawSectionCard('2. Clinical History', '2', (contentX, contentW) => {
-            if (hasValue(symptoms)) {
-                doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.8).text('Symptoms', doc.x, doc.y);
-                doc.y += 2;
-                drawBulletsBlock(symptoms, contentW);
-            }
-            const printInlinePair = (lbl, val) => {
-                if (!hasValue(val)) return;
-                checkPageBreak(14);
-                doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.2).text(lbl, doc.x, doc.y, { width: 110, continued: true });
-                doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.5).text(`:  ${cleanString(val)}`, { width: contentW - 110 });
-                doc.y += 3;
-            };
-            printInlinePair('Past Medical History', pastHistory);
-            printInlinePair('Allergies', allergies);
-            printInlinePair('Current Medications', currentMeds);
-        });
+        drawSectionHeader('2. Patient History & Symptoms', '2');
+        if (hasValue(symptoms)) {
+            const sympList = Array.isArray(symptoms) ? symptoms : [symptoms];
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Symptoms Reported', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(sympList);
+        }
+        if (hasValue(pastHistory)) {
+            const pastList = Array.isArray(pastHistory) ? pastHistory : [pastHistory];
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Past Medical History', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(pastList);
+        }
+        if (hasValue(allergies)) {
+            const allList = Array.isArray(allergies) ? allergies : [allergies];
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Known Allergies', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(allList);
+        }
+        if (hasValue(currentMeds)) {
+            const curList = Array.isArray(currentMeds) ? currentMeds : [currentMeds];
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Pre-existing Regular Medications', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(curList);
+        }
+        doc.y += 4;
     }
 
     // =========================================================================
-    // 3. EXAMINATION & VITALS (Only if filled)
+    // 3. CLINICAL EXAMINATION & VITALS (Only if filled)
     // =========================================================================
-    const hasExamination = hasValue(examination);
     const vitalsList = [
-        ['Temperature', vitalsData.temperature || vitalsData.temp],
         ['Blood Pressure', vitalsData.blood_pressure || vitalsData.bloodPressure || vitalsData.bp],
-        ['Heart Rate / Pulse', vitalsData.heart_rate || vitalsData.heartRate || vitalsData.pulse],
-        ['SpO2', vitalsData.oxygen_saturation || vitalsData.oxygenSaturation || vitalsData.spo2],
-        ['Weight', vitalsData.weight],
+        ['Heart Rate', vitalsData.heart_rate || vitalsData.heartRate || vitalsData.pulse],
+        ['Temperature', vitalsData.temperature || vitalsData.temp],
+        ['Oxygen Saturation', vitalsData.oxygen_saturation || vitalsData.oxygenSaturation || vitalsData.spo2],
         ['Respiratory Rate', vitalsData.respiratory_rate || vitalsData.respiratoryRate],
+        ['Weight', vitalsData.weight],
     ].filter(([, v]) => hasValue(v));
 
-    if (hasExamination || vitalsList.length > 0 || hasValue(investigations)) {
-        drawSectionCard('3. Examination & Vitals', '3', (contentX, contentW) => {
-            if (hasExamination) {
-                doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.8).text('Examination Findings', doc.x, doc.y);
-                doc.y += 2;
-                drawBulletsBlock(examination, contentW);
+    const hasExam = hasValue(examination) || vitalsList.length > 0 || hasValue(investigations);
+    if (hasExam) {
+        drawSectionHeader('3. Clinical Examination & Vitals', '3');
+
+        if (hasValue(examination)) {
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Physical Examination Findings', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(Array.isArray(examination) ? examination : [examination]);
+        }
+
+        // Vitals Grid
+        if (vitalsList.length > 0) {
+            checkPageBreak(40);
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Recorded Vital Signs', PAGE.marginX + 6, doc.y);
+            doc.y += 4;
+
+            const gridStartX = PAGE.marginX + 6;
+            const gridW = PAGE.contentWidth - 12;
+            const numCols = Math.min(3, vitalsList.length);
+            const boxW = (gridW - (numCols - 1) * 8) / numCols;
+            const boxH = 22;
+
+            for (let i = 0; i < vitalsList.length; i += numCols) {
+                checkPageBreak(boxH + 4);
+                const rowItems = vitalsList.slice(i, i + numCols);
+                const rowY = doc.y;
+
+                rowItems.forEach(([lbl, val], colIdx) => {
+                    const bx = gridStartX + colIdx * (boxW + 8);
+                    doc.roundedRect(bx, rowY, boxW, boxH, 4)
+                        .fillColor(COLORS.softBlue)
+                        .fill();
+                    doc.roundedRect(bx, rowY, boxW, boxH, 4)
+                        .strokeColor(COLORS.borderLight)
+                        .lineWidth(0.5)
+                        .stroke();
+
+                    doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
+                        .text(lbl, bx + 5, rowY + 3, { width: boxW - 10 });
+                    doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.5)
+                        .text(cleanString(val), bx + 5, rowY + 11, { width: boxW - 10 });
+                });
+
+                doc.y = rowY + boxH + 6;
             }
+        }
 
-            if (vitalsList.length > 0) {
-                checkPageBreak(35);
-                const colW = contentW / 4;
-                const tableX = contentX;
-                let tableY = doc.y;
-
-                doc.rect(tableX, tableY, contentW, 15).fillColor(COLORS.softBlue).fill();
-                doc.rect(tableX, tableY, contentW, 15).strokeColor(COLORS.borderLight).stroke();
-
-                doc.fillColor(COLORS.navy).font(fontBold).fontSize(7)
-                    .text('Vital Signs', tableX + 5, tableY + 3.5, { width: colW - 8 })
-                    .text('Value', tableX + colW + 5, tableY + 3.5, { width: colW - 8 })
-                    .text('Parameter', tableX + colW * 2 + 5, tableY + 3.5, { width: colW - 8 })
-                    .text('Value', tableX + colW * 3 + 5, tableY + 3.5, { width: colW - 8 });
-
-                tableY += 15;
-
-                for (let i = 0; i < vitalsList.length; i += 2) {
-                    const rowH = 14;
-                    const v1 = vitalsList[i];
-                    const v2 = vitalsList[i + 1] || ['', ''];
-
-                    doc.rect(tableX, tableY, contentW, rowH).strokeColor(COLORS.borderLight).stroke();
-                    doc.fillColor(COLORS.navy).font(fontRegular).fontSize(7)
-                        .text(cleanString(v1[0]), tableX + 5, tableY + 3, { width: colW - 8 });
-                    doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7)
-                        .text(cleanString(v1[1], '-'), tableX + colW + 5, tableY + 3, { width: colW - 8 });
-
-                    if (v2[0]) {
-                        doc.fillColor(COLORS.navy).font(fontRegular).fontSize(7)
-                            .text(cleanString(v2[0]), tableX + colW * 2 + 5, tableY + 3, { width: colW - 8 });
-                        doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7)
-                            .text(cleanString(v2[1], '-'), tableX + colW * 3 + 5, tableY + 3, { width: colW - 8 });
-                    }
-
-                    tableY += rowH;
-                }
-
-                doc.y = tableY + 5;
-            }
-
-            if (hasValue(investigations)) {
-                drawFieldBlock('Investigations', investigations, contentW);
-            }
-        });
+        if (hasValue(investigations)) {
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Investigations / Diagnostic Tests', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(Array.isArray(investigations) ? investigations : [investigations]);
+        }
+        doc.y += 4;
     }
 
     // =========================================================================
@@ -508,36 +502,39 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     ].filter(([, v]) => hasValue(v));
 
     if (planItems.length > 0) {
-        drawSectionCard('4. Clinical Assessment & Plan', '4', (contentX, contentW) => {
-            const pillW = 100;
-            const valW = contentW - pillW - 12;
+        drawSectionHeader('4. Clinical Assessment & Diagnosis', '4');
+        const pillW = 95;
+        const valW = PAGE.contentWidth - pillW - 20;
 
-            planItems.forEach(([lbl, val]) => {
-                checkPageBreak(24);
-                const rowY = doc.y;
-                const valText = cleanString(val);
-                const textH = doc.heightOfString(valText, { width: valW, font: 'Helvetica', fontSize: 7.5, lineGap: 1.5 });
-                const rowH = Math.max(18, textH + 6);
+        planItems.forEach(([lbl, val]) => {
+            const valText = cleanString(val);
+            const textH = doc.heightOfString(valText, { width: valW, font: fontRegular, fontSize: 7.4, lineGap: 1.5 });
+            const rowH = Math.max(16, textH + 4);
+            checkPageBreak(rowH + 6);
 
-                doc.roundedRect(contentX, rowY, pillW, Math.min(rowH, 18), 3)
-                    .fillColor(COLORS.softBlue)
-                    .fill();
-                doc.roundedRect(contentX, rowY, pillW, Math.min(rowH, 18), 3)
-                    .strokeColor(COLORS.borderLight)
-                    .stroke();
+            const rowY = doc.y;
+            const contentX = PAGE.marginX + 6;
 
-                doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.2)
-                    .text(lbl, contentX + 5, rowY + 4, { width: pillW - 10 });
+            doc.roundedRect(contentX, rowY, pillW, Math.min(rowH, 16), 3)
+                .fillColor(COLORS.softBlue)
+                .fill();
+            doc.roundedRect(contentX, rowY, pillW, Math.min(rowH, 16), 3)
+                .strokeColor(COLORS.borderLight)
+                .lineWidth(0.5)
+                .stroke();
 
-                doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.2)
-                    .text(':', contentX + pillW + 3, rowY + 4);
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.2)
+                .text(lbl, contentX + 4, rowY + 3.5, { width: pillW - 8 });
 
-                doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.5)
-                    .text(valText, contentX + pillW + 12, rowY + 4, { width: valW, lineGap: 1.5 });
+            doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.2)
+                .text(':', contentX + pillW + 2, rowY + 3.5);
 
-                doc.y = rowY + rowH + 3;
-            });
+            doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(7.4)
+                .text(valText, contentX + pillW + 10, rowY + 3.5, { width: valW, lineGap: 1.5 });
+
+            doc.y = rowY + rowH + 3;
         });
+        doc.y += 4;
     }
 
     // =========================================================================
@@ -545,95 +542,104 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     // =========================================================================
     const hasAdvice = hasValue(advice) || hasValue(followUp) || hasValue(doctorNotes) || hasValue(redFlags);
     if (hasAdvice) {
-        drawSectionCard('5. Advice & Follow-Up', '5', (contentX, contentW) => {
-            if (hasValue(advice)) {
-                doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.8).text('Advice', doc.x, doc.y);
-                doc.y += 2;
-                drawBulletsBlock(advice, contentW);
-            }
-            if (hasValue(followUp)) {
-                drawFieldBlock('Follow-up', followUp, contentW);
-            }
-            if (hasValue(doctorNotes)) {
-                drawFieldBlock('Doctor Notes', doctorNotes, contentW);
-            }
-            if (hasValue(redFlags)) {
-                drawFieldBlock('Red Flags / Warnings', redFlags, contentW);
-            }
-        });
+        drawSectionHeader('5. Medical Advice & Follow-Up', '5');
+        if (hasValue(advice)) {
+            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Doctor Advice', PAGE.marginX + 6, doc.y);
+            doc.y += 2;
+            drawBulletsBlock(advice);
+        }
+        if (hasValue(followUp)) {
+            drawFieldBlock('Follow-up Review', followUp);
+        }
+        if (hasValue(doctorNotes)) {
+            drawFieldBlock('Doctor Clinical Notes', doctorNotes);
+        }
+        if (hasValue(redFlags)) {
+            drawFieldBlock('Red Flags / Warning Signs', redFlags);
+        }
+        doc.y += 4;
     }
 
     // =========================================================================
-    // 6. PRESCRIPTION TABLE (Only if filled)
+    // 6. PRESCRIPTION TABLE (Page-Safe Row by Row)
     // =========================================================================
     if (prescriptionMeds.length > 0) {
-        drawSectionCard('6. Prescription', 'Rx', (contentX, contentW) => {
-            checkPageBreak(40);
-            const cols = [0.08, 0.28, 0.16, 0.16, 0.14, 0.18].map((p) => contentW * p);
-            const headers = ['S. No.', 'Medicine', 'Dosage', 'Frequency', 'Duration', 'Instructions'];
-            const tableX = contentX;
-            let tableY = doc.y;
+        drawSectionHeader('6. Prescription', 'Rx');
+        const contentW = PAGE.contentWidth;
+        const tableX = PAGE.marginX;
+        const cols = [0.08, 0.28, 0.16, 0.16, 0.14, 0.18].map((p) => contentW * p);
+        const headers = ['S. No.', 'Medicine', 'Dosage', 'Frequency', 'Duration', 'Instructions'];
 
-            doc.rect(tableX, tableY, contentW, 16).fillColor(COLORS.softBlue).fill();
-            doc.rect(tableX, tableY, contentW, 16).strokeColor(COLORS.borderLight).stroke();
+        const drawTableHeader = () => {
+            const hY = doc.y;
+            doc.rect(tableX, hY, contentW, 16).fillColor(COLORS.softBlue).fill();
+            doc.rect(tableX, hY, contentW, 16).strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
 
             let curX = tableX;
             headers.forEach((h, idx) => {
                 doc.fillColor(COLORS.navy).font(fontBold).fontSize(7)
-                    .text(h, curX + 4, tableY + 4, { width: cols[idx] - 8, align: idx === 0 ? 'center' : 'left' });
+                    .text(h, curX + 4, hY + 4, { width: cols[idx] - 8, align: idx === 0 ? 'center' : 'left' });
                 curX += cols[idx];
             });
+            doc.y = hY + 16;
+        };
 
-            tableY += 16;
+        checkPageBreak(36);
+        drawTableHeader();
 
-            prescriptionMeds.forEach((med, mIdx) => {
-                const values = [
-                    `${mIdx + 1}`,
-                    cleanString(med.name, 'Medicine'),
-                    cleanString(med.dosage, '-'),
-                    cleanString(med.frequency, '-'),
-                    cleanString(med.duration, '-'),
-                    cleanString(med.instructions, '-'),
-                ];
+        prescriptionMeds.forEach((med, mIdx) => {
+            const values = [
+                `${mIdx + 1}`,
+                cleanString(med.name, 'Medicine'),
+                cleanString(med.dosage, '-'),
+                cleanString(med.frequency, '-'),
+                cleanString(med.duration, '-'),
+                cleanString(med.instructions, '-'),
+            ];
 
-                const heights = values.map((v, i) => doc.heightOfString(v, {
-                    width: cols[i] - 8,
-                    font: 'Helvetica',
-                    fontSize: 7.2,
-                }));
-                const rowH = Math.max(16, Math.max(...heights) + 6);
+            const heights = values.map((v, i) => doc.heightOfString(v, {
+                width: cols[i] - 8,
+                font: fontRegular,
+                fontSize: 7.2,
+            }));
+            const rowH = Math.max(16, Math.max(...heights) + 5);
 
-                doc.rect(tableX, tableY, contentW, rowH).strokeColor(COLORS.borderLight).stroke();
+            if (checkPageBreak(rowH + 4)) {
+                drawTableHeader();
+            }
 
-                let rx = tableX;
-                values.forEach((v, i) => {
-                    doc.fillColor(COLORS.textDark).font(i === 1 ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.2)
-                        .text(v, rx + 4, tableY + 3.5, { width: cols[i] - 8, align: i === 0 ? 'center' : 'left' });
-                    rx += cols[i];
-                });
+            const rowY = doc.y;
+            doc.rect(tableX, rowY, contentW, rowH).strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
 
-                tableY += rowH;
+            let rx = tableX;
+            values.forEach((v, i) => {
+                doc.fillColor(COLORS.textDark).font(i === 1 ? fontBold : fontRegular).fontSize(7.2)
+                    .text(v, rx + 4, rowY + 3.5, { width: cols[i] - 8, align: i === 0 ? 'center' : 'left' });
+                rx += cols[i];
             });
 
-            doc.y = tableY + 6;
-
-            // Important Note callout box
-            checkPageBreak(25);
-            const calloutY = doc.y;
-            doc.roundedRect(tableX, calloutY, contentW, 22, 3)
-                .fillColor(COLORS.softBlue)
-                .fill();
-            doc.roundedRect(tableX, calloutY, contentW, 22, 3)
-                .strokeColor(COLORS.borderLight)
-                .stroke();
-
-            doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7)
-                .text('Important Note', tableX + 6, calloutY + 3);
-            doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(6.8)
-                .text('This prescription is based on the current consultation only. Do not self-medicate. Consult again if symptoms persist or worsen.', tableX + 6, calloutY + 11.5, { width: contentW - 12 });
-
-            doc.y = calloutY + 28;
+            doc.y = rowY + rowH;
         });
+
+        doc.y += 6;
+
+        // Important Note Callout Box
+        checkPageBreak(26);
+        const calloutY = doc.y;
+        doc.roundedRect(tableX, calloutY, contentW, 20, 3)
+            .fillColor(COLORS.softBlue)
+            .fill();
+        doc.roundedRect(tableX, calloutY, contentW, 20, 3)
+            .strokeColor(COLORS.borderLight)
+            .lineWidth(0.5)
+            .stroke();
+
+        doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7)
+            .text('Important Note', tableX + 6, calloutY + 3);
+        doc.fillColor(COLORS.textDark).font(fontRegular).fontSize(6.6)
+            .text('This prescription is based on the current consultation only. Do not self-medicate. Consult again if symptoms persist or worsen.', tableX + 6, calloutY + 10.5, { width: contentW - 12 });
+
+        doc.y = calloutY + 26;
     }
 
     // =========================================================================

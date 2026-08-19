@@ -1,0 +1,54 @@
+========================================
+DOCTORS VEDIKA
+CONSULTATION REPORT
+========================================
+Patient: Rahul Sharma
+Patient ID: patient-001
+Doctor ID: default-doctor
+Appointment ID: 1
+Date: 19 Aug 2026
+Time: 03:42 pm
+
+CLINICAL NOTES
+Chief Complaint: Upper abdominal pain for 1 week
+Consultation Overview: The patient presented with upper abdominal pain of one week's duration, which worsens after meals. On physical examination, mild tenderness was noted in the upper abdomen. The patient was diagnosed with suspected gastritis or an acid-related disorder and was prescribed a proton pump inhibitor and an antacid suspension along with dietary modifications.
+Symptoms: Upper abdominal pain,Burning sensation in the stomach,Decreased appetite
+History: The patient reports upper abdominal pain for the past week, which is exacerbated after eating. It is occasionally associated with a burning sensation. Appetite is slightly decreased, but there is no history of weight loss, vomiting, loose motions, fever, or blood in the stool. A similar episode occurred 2 months ago, which resolved with over-the-counter medication.
+Assessment: Gastritis / Acid-related disorder
+Diagnosis: Gastritis
+Treatment Plan: Initiate medical therapy with a proton pump inhibitor and an antacid. Advise dietary modifications and monitor response.
+Advice: Avoid spicy and oily foods,Avoid coffee and alcohol,Avoid very late-night meals,Eat smaller, more frequent meals,Drink plenty of water
+Follow-up: Review in 2 weeks, or sooner if symptoms worsen.
+Doctor Notes: No immediate investigations are required based on today's examination. If symptoms do not improve with treatment, further evaluation will be considered.
+
+TRANSCRIPT
+[00:03] Doctor: Hello. Hello. నమస్కారం. Please have a seat. What problem are you having?
+[00:17] Patient: నమస్కారం డాక్టర్. నాకు లాస్ట్ వన్ వీక్ నుంచి స్టమక్ పెయిన్ ఉంది. ఫుడ్ తిన్న తర్వాత పెయిన్ ఎక్కువగా ఉంది.
+[00:28] Doctor: Okay, exactly where is the pain? Upper abdomen or lower abdomen?
+[00:34] Patient: Upper abdomen. స్టమక్ మధ్యలో పెయిన్ వస్తుంది. సం టైమ్స్ బర్నింగ్ సెన్సేషన్ కూడా ఉంటుంది.
+[00:43] Doctor: Okay, do you have vomiting, loose motions, fever, or blood in the stool?
+[00:51] Patient: వాంట్టింగ్ లేదు, లూజ్ మోషన్స్ కూడా లేవు, ఫీవర్ లేదు, బ్లడ్ కూడా చూడలేదు.
+[00:58] Doctor: How is your appetite? Any weight loss recently?
+[01:02] Patient: అప్పిటైట్ కొంచెం తగ్గింది, కానీ వెయిట్ లాస్ ఏమీ లేదు.
+[01:06] Doctor: Have you had this problem before?
+[01:09] Patient: Yes డాక్టర్, ఇలానే టూ మంత్స్ బ్యాక్ కూడా వచ్చింది. అప్పట్లో ఫార్మసీ నుంచి మెడిసిన్ తీసుకున్నాను, కానీ పేరు గుర్తులేదు.
+[01:21] Doctor: Do you have diabetes, BP, or any other medical conditions?
+[01:25] Patient: లేదు డాక్టర్, నాకు డయాబెటిస్ లేదా బీపీ ఏమీ లేవు.
+[01:30] Doctor: Are you currently taking any regular medicines?
+[01:34] Patient: No డాక్టర్, రెగ్యులర్ మెడిసిన్స్ ఏమీ తీసుకోవడం లేదు.
+[01:37] Doctor: Any known drug allergies?
+[01:39] Patient: No, no known allergies, డాక్టర్.
+[01:44] Doctor: Okay, let me examine you. Your abdomen, please lie down, relax your stomach. On examination, there is a mild tenderness in the upper abdomen, no severe tenderness or guarding.
+[02:00] Patient: డాక్టర్, ఇది గ్యాస్ట్రిక్ ప్రాబ్లమా?
+[02:03] Doctor: మీ సింప్టమ్స్ చూస్తే గ్యాస్ట్రిక్, గ్యాస్ట్రైటిస్ ఆర్ యాసిడ్ రిలేటెడ్ ప్రాబ్లమ్ అయ్యే అవకాశం ఉంది. For now, we will start treatment and observe your response.
+[02:14] Patient: Okay డాక్టర్, ఏ మెడిసిన్స్ తీసుకోవాలి?
+[02:17] Doctor: I am prescribing Pantoprazole 40 mg once daily for 14 days, take it 30 minutes before breakfast. I am also prescribing an antacid suspension, 10 ml after meals and at bedtime for 7 days.
+[02:37] Patient: ఫుడ్ విషయంలో ఏమైనా ప్రికాషన్స్ తీసుకోవాలా?
+[02:41] Doctor: Yes, avoid spicy and oily foods, coffee, alcohol, and very late-night meals. Eat smaller meals and drink enough water.
+[02:52] Patient: ఏమైనా టెస్ట్ చేయించుకోవాలా?
+[02:55] Doctor: If the symptoms do not improve, we may consider further evaluation. For now, no immediate investigation is required based on today's examination. Okay?
+[03:08] Patient: Okay డాక్టర్.
+[03:09] Patient: When should I come for review?
+[03:12] Doctor: Review after 2 weeks, but if you develop severe abdominal pain, repeated vomiting, vomiting blood, black stools, or significant worsening, seek medical attention immediately, okay?
+[03:30] Patient: Okay డాక్టర్, థాంక్యూ.
+[03:31] Doctor: You're welcome, take care.

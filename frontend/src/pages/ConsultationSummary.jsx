@@ -477,11 +477,29 @@ const ConsultationSummary = () => {
                     rawSummary.history
                 ),
 
-            past_medical_history:
-                arrayValue(
+            past_medical_history: (() => {
+                const direct = arrayValue(
                     rawSummary.past_medical_history ||
-                    rawSummary.pastMedicalHistory
-                ),
+                    rawSummary.pastMedicalHistory ||
+                    rawSummary.past_history ||
+                    rawSummary.pastHistory ||
+                    rawSummary.medical_history
+                );
+                if (direct && direct.length > 0) return direct;
+
+                // Fallback: check if history_of_present_illness mentions prior recurrence or OTC medications
+                const hpi = firstAvailable(
+                    rawSummary.history_of_present_illness,
+                    rawSummary.historyOfPresentIllness,
+                    rawSummary.history
+                );
+                if (hpi && /similar|months ago|weeks ago|years ago|previous|past episode|prior episode|self-treated|over-the-counter|pharmacy/i.test(hpi)) {
+                    const sentences = hpi.split(/(?<=[.?!])\s+/);
+                    const match = sentences.find((s) => /similar|months ago|weeks ago|years ago|previous|past|prior|self-treated|over-the-counter|pharmacy/i.test(s));
+                    if (match && match.trim()) return [match.trim()];
+                }
+                return [];
+            })(),
 
             allergies:
                 arrayValue(

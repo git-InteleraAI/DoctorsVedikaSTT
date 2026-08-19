@@ -7,6 +7,34 @@ const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL || "ws://localhost:8005
 const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
 
+const PROCESSING_STEPS = [
+    {
+        title: "Analyzing Multimodal Audio",
+        desc: "Processing audio waveform & speech nuances",
+        icon: "fa-solid fa-wave-square",
+    },
+    {
+        title: "Native Script Transcription",
+        desc: "Transcribing Telugu, Hindi & English verbatim with speaker diarization",
+        icon: "fa-solid fa-language",
+    },
+    {
+        title: "Clinical Entity & History Extraction",
+        desc: "Extracting chief complaints, past medical history, symptoms & vitals",
+        icon: "fa-solid fa-file-medical",
+    },
+    {
+        title: "Formulating Prescriptions & Advice",
+        desc: "Structuring medications, dosages, frequency & follow-up instructions",
+        icon: "fa-solid fa-prescription-bottle-medical",
+    },
+    {
+        title: "Finalizing Clinical Summary",
+        desc: "Preparing comprehensive medical chart for doctor's review",
+        icon: "fa-solid fa-sparkles",
+    },
+];
+
 const Consultation = () => {
     const { patientId } = useParams();
     const navigate = useNavigate();
@@ -46,6 +74,12 @@ const Consultation = () => {
     const [error, setError] = useState("");
 
     const [language, setLanguage] = useState("auto");
+    const [isPaused, setIsPaused] = useState(false);
+
+    // Summary progress states
+    const [summaryProgress, setSummaryProgress] = useState(0);
+    const [summaryStage, setSummaryStage] = useState(0);
+    const [summaryElapsedSeconds, setSummaryElapsedSeconds] = useState(0);
 
     // ============================================================
     // REFS & HELPERS
@@ -59,6 +93,7 @@ const Consultation = () => {
     const recognitionActiveRef = useRef(false);
     const timerIntervalRef = useRef(null);
     const startTimeRef = useRef(null);
+    const summaryIntervalRef = useRef(null);
 
     const formatDuration = (totalSecs = 0) => {
         const total = Math.max(0, Math.floor(Number(totalSecs) || 0));
@@ -91,11 +126,31 @@ const Consultation = () => {
     }, []);
 
     useEffect(() => {
+        if (!isGeneratingSummary) {
+            return;
+        }
+
+        if (summaryProgress < 22) setSummaryStage(0);
+        else if (summaryProgress < 48) setSummaryStage(1);
+        else if (summaryProgress < 72) setSummaryStage(2);
+        else if (summaryProgress < 92) setSummaryStage(3);
+        else setSummaryStage(4);
+    }, [summaryProgress, isGeneratingSummary]);
+
+    useEffect(() => {
         if (transcriptContainerRef.current) {
             transcriptContainerRef.current.scrollTop =
                 transcriptContainerRef.current.scrollHeight;
         }
     }, [transcript, liveInterimText]);
+
+    useEffect(() => {
+        if (isRecording && !isPaused && sessionActiveRef.current) {
+            console.log("[Consultation] Language updated during recording:", language);
+            stopBrowserSpeechRecognition();
+            startBrowserSpeechRecognition();
+        }
+    }, [language]);
 
     // ============================================================
     // CLEANUP
@@ -103,6 +158,12 @@ const Consultation = () => {
 
     const cleanupRecording = () => {
         sessionActiveRef.current = false;
+        setIsPaused(false);
+
+        if (summaryIntervalRef.current) {
+            clearInterval(summaryIntervalRef.current);
+            summaryIntervalRef.current = null;
+        }
 
         if (timerIntervalRef.current) {
             clearInterval(timerIntervalRef.current);
@@ -162,6 +223,92 @@ const Consultation = () => {
         websocketRef.current = null;
         mediaRecorderRef.current = null;
         mediaStreamRef.current = null;
+    };
+
+    // ============================================================
+    // PAUSE & RESUME CONSULTATION
+    // ============================================================
+
+    const pauseConsultation = () => {
+        if (!isRecording || isPaused) return;
+
+        console.log("[Consultation] Pausing consultation...");
+        setIsPaused(true);
+        setIsListening(false);
+
+        // Pause timer
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
+
+        // Pause MediaRecorder
+        try {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                mediaRecorderRef.current.pause();
+                console.log("[Consultation] MediaRecorder paused.");
+            }
+        } catch (e) {
+            console.warn("Pause MediaRecorder warning:", e);
+        }
+
+        // Pause Speech Recognition
+        try {
+            stopBrowserSpeechRecognition();
+        } catch (e) {
+            console.warn("Pause SpeechRecognition warning:", e);
+        }
+
+        // Send pause to Python WebSocket
+        try {
+            if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+                websocketRef.current.send(JSON.stringify({ type: "pause" }));
+            }
+        } catch (e) {
+            console.warn("Pause WS warning:", e);
+        }
+    };
+
+    const resumeConsultation = () => {
+        if (!isRecording || !isPaused) return;
+
+        console.log("[Consultation] Resuming consultation...");
+        setIsPaused(false);
+        setIsListening(true);
+
+        // Resume timer
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = setInterval(() => {
+            setRecordingSeconds((prev) => prev + 1);
+        }, 1000);
+
+        // Resume MediaRecorder
+        try {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
+                mediaRecorderRef.current.resume();
+                console.log("[Consultation] MediaRecorder resumed.");
+            } else if (mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
+                mediaRecorderRef.current.start(1500);
+            }
+        } catch (e) {
+            console.warn("Resume MediaRecorder warning:", e);
+        }
+
+        // Resume Speech Recognition
+        try {
+            startBrowserSpeechRecognition();
+        } catch (e) {
+            console.warn("Resume SpeechRecognition warning:", e);
+        }
+
+        // Send resume to Python WebSocket
+        try {
+            if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+                websocketRef.current.send(JSON.stringify({ type: "resume" }));
+            }
+        } catch (e) {
+            console.warn("Resume WS warning:", e);
+        }
     };
 
     // ============================================================
@@ -722,7 +869,24 @@ const Consultation = () => {
 
         setError("");
         setIsGeneratingSummary(true);
+        setSummaryProgress(10);
+        setSummaryStage(0);
+        setSummaryElapsedSeconds(0);
         sessionActiveRef.current = false;
+
+        if (summaryIntervalRef.current) clearInterval(summaryIntervalRef.current);
+        const progressStartTime = Date.now();
+        summaryIntervalRef.current = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - progressStartTime) / 1000);
+            setSummaryElapsedSeconds(elapsed);
+            setSummaryProgress((prev) => {
+                if (prev < 25) return prev + 3.5;
+                if (prev < 50) return prev + 2.2;
+                if (prev < 75) return prev + 1.4;
+                if (prev < 94) return Math.min(94, prev + 0.6);
+                return prev;
+            });
+        }, 250);
 
         const recorder = mediaRecorderRef.current;
         const stream = mediaStreamRef.current;
@@ -1058,6 +1222,13 @@ const Consultation = () => {
             // OPEN FINAL SUMMARY
             // --------------------------------------------------------
 
+            setSummaryProgress(100);
+            setSummaryStage(4);
+            if (summaryIntervalRef.current) {
+                clearInterval(summaryIntervalRef.current);
+                summaryIntervalRef.current = null;
+            }
+
             navigate(
                 `/consultation/${patient.id}/summary`,
                 {
@@ -1077,6 +1248,10 @@ const Consultation = () => {
                 "Unable to generate the final AI consultation report."
             );
         } finally {
+            if (summaryIntervalRef.current) {
+                clearInterval(summaryIntervalRef.current);
+                summaryIntervalRef.current = null;
+            }
             setIsGeneratingSummary(false);
         }
     };
@@ -1111,9 +1286,19 @@ const Consultation = () => {
                     </button>
 
                     {isRecording && (
-                        <div className="recording-indicator">
-                            <i className="fa-solid fa-circle blink"></i>
-                            Live Consultation
+                        <div
+                            className="recording-indicator"
+                            style={{
+                                borderColor: isPaused ? "rgba(245, 158, 11, 0.5)" : undefined,
+                                color: isPaused ? "#fbbf24" : undefined,
+                                background: isPaused ? "rgba(245, 158, 11, 0.12)" : undefined
+                            }}
+                        >
+                            <i
+                                className={`fa-solid ${isPaused ? "fa-pause" : "fa-circle blink"}`}
+                                style={{ color: isPaused ? "#f59e0b" : "#ef4444" }}
+                            ></i>
+                            {isPaused ? "Consultation Paused" : "Live Consultation"}
                         </div>
                     )}
 
@@ -1151,152 +1336,125 @@ const Consultation = () => {
 
                         <div
                             style={{
-                                width: "80px",
-                                height: "80px",
-                                borderRadius: "50%",
                                 display: "flex",
-                                alignItems:
-                                    "center",
-                                justifyContent:
-                                    "center",
-                                background:
-                                    "rgba(0,210,255,0.12)",
+                                alignItems: "center",
+                                gap: "15px",
                                 marginBottom:
-                                    "15px",
-                            }}
-                        >
-                            <i
-                                className="fa-solid fa-user"
-                                style={{
-                                    fontSize:
-                                        "30px",
-                                    color:
-                                        "var(--primary)",
-                                }}
-                            ></i>
-                        </div>
-
-                        <h2
-                            style={{
-                                margin: 0,
-                            }}
-                        >
-                            {patient.name}
-                        </h2>
-
-                        <p
-                            style={{
-                                color:
-                                    "var(--text-muted)",
-                            }}
-                        >
-                            {patient.gender} •{" "}
-                            {patient.age} Years
-                        </p>
-
-
-                        <div className="vitals-grid">
-
-                            <div className="vital-box">
-                                <span>
-                                    Blood Group
-                                </span>
-
-                                <strong>
-                                    {patient.bloodGroup}
-                                </strong>
-                            </div>
-
-
-                            <div className="vital-box">
-                                <span>
-                                    Weight
-                                </span>
-
-                                <strong>
-                                    {patient.weight}
-                                </strong>
-                            </div>
-
-
-                            <div className="vital-box">
-                                <span>
-                                    BP
-                                </span>
-
-                                <strong>
-                                    {patient.bloodPressure}
-                                </strong>
-                            </div>
-
-
-                            <div className="vital-box">
-                                <span>
-                                    Allergies
-                                </span>
-
-                                <strong>
-                                    {patient.allergies}
-                                </strong>
-                            </div>
-
-                        </div>
-
-
-                        <div
-                            style={{
-                                marginTop:
                                     "25px",
                             }}
                         >
 
-                            <h4>
-                                Medical History
-                            </h4>
+                            <div
+                                style={{
+                                    width: "55px",
+                                    height: "55px",
+                                    borderRadius:
+                                        "50%",
+                                    background:
+                                        "linear-gradient(135deg, var(--primary), var(--secondary))",
+                                    display:
+                                        "flex",
+                                    alignItems:
+                                        "center",
+                                    justifyContent:
+                                        "center",
+                                    fontSize:
+                                        "22px",
+                                    fontWeight:
+                                        "bold",
+                                    color: "white",
+                                }}
+                            >
+                                {patient.name
+                                    ? patient.name[0]
+                                    : "P"}
+                            </div>
 
-                            {patient.history.map(
-                                (
-                                    item,
-                                    index
-                                ) => (
-                                    <p
-                                        key={
-                                            index
-                                        }
-                                        style={{
-                                            color:
-                                                "var(--text-muted)",
-                                        }}
-                                    >
-                                        • {item}
-                                    </p>
-                                )
-                            )}
+                            <div>
+                                <h3
+                                    style={{
+                                        margin: 0,
+                                    }}
+                                >
+                                    {
+                                        patient.name
+                                    }
+                                </h3>
 
+                                <span
+                                    style={{
+                                        color: "var(--text-muted)",
+                                        fontSize:
+                                            "0.85rem",
+                                    }}
+                                >
+                                    {
+                                        patient.age
+                                    }{" "}
+                                    years •{" "}
+                                    {
+                                        patient.gender
+                                    }
+                                </span>
+                            </div>
+
+                        </div>
+
+                        {/* Patient Quick Vitals / Info */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Blood Group</div>
+                                <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "2px", color: "var(--primary)" }}>{patient.bloodGroup || "O+"}</div>
+                            </div>
+                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Weight</div>
+                                <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "2px", color: "#ffffff" }}>{patient.weight || "65 kg"}</div>
+                            </div>
+                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Blood Pressure</div>
+                                <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "2px", color: "#ffffff" }}>{patient.bloodPressure || "120/80"}</div>
+                            </div>
+                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Allergies</div>
+                                <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px", color: "#f87171" }}>{patient.allergies || "None"}</div>
+                            </div>
+                        </div>
+
+                        {/* Known Medical History */}
+                        <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "14px", borderRadius: "12px" }}>
+                            <div style={{ fontSize: "0.8rem", color: "var(--primary)", fontWeight: 700, marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                                <i className="fa-solid fa-notes-medical"></i> Medical Background
+                            </div>
+                            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: "1.5" }}>
+                                {patient.history || "No prior major chronic conditions on record."}
+                            </div>
                         </div>
 
                     </aside>
 
 
                     {/* ====================================================
-                        WORKSPACE
+                        TRANSCRIPTION AREA
                     ==================================================== */}
 
-                    <div className="workspace">
+                    <div className="transcription-area">
 
-                        <div className="transcription-box">
+                        <div className="panel">
 
-                            {/* HEADER */}
+                            {/* PANEL HEADER */}
 
                             <div
                                 style={{
-                                    display:
-                                        "flex",
+                                    display: "flex",
                                     alignItems:
                                         "center",
-                                    gap: "10px",
+                                    gap: "15px",
                                     marginBottom:
                                         "20px",
+                                    paddingBottom:
+                                        "15px",
+                                    borderBottom:
+                                        "1px solid var(--glass-border)",
                                 }}
                             >
 
@@ -1306,9 +1464,11 @@ const Consultation = () => {
                                         fontSize:
                                             "24px",
                                         color:
-                                            isListening
-                                                ? "var(--primary)"
-                                                : "#666",
+                                            isPaused
+                                                ? "#f59e0b"
+                                                : isListening
+                                                    ? "var(--primary)"
+                                                    : "#666",
                                     }}
                                 ></i>
 
@@ -1326,9 +1486,9 @@ const Consultation = () => {
                                         {isRecording && (
                                             <span
                                                 style={{
-                                                    background: "rgba(239, 68, 68, 0.15)",
-                                                    color: "#f87171",
-                                                    border: "1px solid rgba(239, 68, 68, 0.35)",
+                                                    background: isPaused ? "rgba(245, 158, 11, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                                                    color: isPaused ? "#fbbf24" : "#f87171",
+                                                    border: isPaused ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(239, 68, 68, 0.35)",
                                                     padding: "2px 10px",
                                                     borderRadius: "12px",
                                                     fontSize: "0.8rem",
@@ -1338,8 +1498,8 @@ const Consultation = () => {
                                                     gap: "6px"
                                                 }}
                                             >
-                                                <i className="fa-solid fa-circle blink" style={{ fontSize: "8px", color: "#ef4444" }}></i>
-                                                REC {formatDuration(recordingSeconds)}
+                                                <i className={`fa-solid ${isPaused ? "fa-pause" : "fa-circle blink"}`} style={{ fontSize: "8px", color: isPaused ? "#f59e0b" : "#ef4444" }}></i>
+                                                {isPaused ? `PAUSED (${formatDuration(recordingSeconds)})` : `REC ${formatDuration(recordingSeconds)}`}
                                             </span>
                                         )}
                                     </div>
@@ -1347,18 +1507,22 @@ const Consultation = () => {
                                     <span
                                         style={{
                                             color:
-                                                "var(--text-muted)",
+                                                isPaused
+                                                    ? "#fbbf24"
+                                                    : "var(--text-muted)",
                                             fontSize:
                                                 "0.85rem",
                                             display: "block",
                                             marginTop: "4px"
                                         }}
                                     >
-                                        {isListening
-                                            ? "Listening..."
-                                            : isGeneratingSummary
-                                                ? "Synthesizing AI medical report in seconds..."
-                                                : "Microphone inactive"}
+                                        {isPaused
+                                            ? "Consultation paused. Click 'Resume Consultation' to continue recording."
+                                            : isListening
+                                                ? "Listening..."
+                                                : isGeneratingSummary
+                                                    ? "Synthesizing AI medical report in seconds..."
+                                                    : "Microphone inactive"}
                                     </span>
                                 </div>
 
@@ -1383,7 +1547,6 @@ const Consultation = () => {
                                             )
                                         }
                                         disabled={
-                                            isRecording ||
                                             isGeneratingSummary
                                         }
                                         style={{
@@ -1397,6 +1560,7 @@ const Consultation = () => {
                                                 "white",
                                             border:
                                                 "1px solid var(--glass-border)",
+                                            cursor: isGeneratingSummary ? "not-allowed" : "pointer"
                                         }}
                                     >
 
@@ -1406,7 +1570,7 @@ const Consultation = () => {
                                                 color: "black",
                                             }}
                                         >
-                                            Auto Detect
+                                            Auto Detect (All Languages)
                                         </option>
 
                                         <option
@@ -1419,21 +1583,21 @@ const Consultation = () => {
                                         </option>
 
                                         <option
-                                            value="hi-IN"
-                                            style={{
-                                                color: "black",
-                                            }}
-                                        >
-                                            Hindi
-                                        </option>
-
-                                        <option
                                             value="te-IN"
                                             style={{
                                                 color: "black",
                                             }}
                                         >
-                                            Telugu
+                                            Telugu (తెలుగు)
+                                        </option>
+
+                                        <option
+                                            value="hi-IN"
+                                            style={{
+                                                color: "black",
+                                            }}
+                                        >
+                                            Hindi (हिन्दी)
                                         </option>
 
                                     </select>
@@ -1487,15 +1651,38 @@ const Consultation = () => {
                                             ></i>
 
                                             <p>
-                                                Start the
-                                                consultation
-                                                to begin
-                                                live
-                                                transcription.
+                                                Start the consultation to begin live transcription.
                                             </p>
 
                                         </div>
                                     )}
+
+                                {isRecording && transcript.length === 0 && !liveInterimText && (
+                                    <div
+                                        style={{
+                                            textAlign: "center",
+                                            padding: "80px 20px",
+                                            color: "var(--primary)",
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            alignItems: "center",
+                                            gap: "14px"
+                                        }}
+                                    >
+                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span style={{ width: "4px", height: "18px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
+                                            <span style={{ width: "4px", height: "30px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
+                                            <span style={{ width: "4px", height: "24px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
+                                            <span style={{ width: "4px", height: "16px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
+                                        </div>
+                                        <div style={{ fontSize: "1.1rem", fontWeight: 600, color: "#ffffff" }}>
+                                            Listening to Doctor & Patient Speech...
+                                        </div>
+                                        <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "420px", lineHeight: "1.5" }}>
+                                            Speak in Telugu, Hindi, or English. Spoken words will type out live here on your screen.
+                                        </p>
+                                    </div>
+                                )}
 
 
                                 {transcript.map(
@@ -1510,6 +1697,10 @@ const Consultation = () => {
                                             style={{
                                                 marginBottom:
                                                     "18px",
+                                                background: "rgba(255, 255, 255, 0.02)",
+                                                border: "1px solid rgba(255, 255, 255, 0.05)",
+                                                padding: "12px 16px",
+                                                borderRadius: "10px"
                                             }}
                                         >
 
@@ -1518,13 +1709,22 @@ const Consultation = () => {
                                                     fontSize:
                                                         "0.75rem",
                                                     color:
-                                                        "var(--text-muted)",
+                                                        line.speaker?.toLowerCase().includes("doctor")
+                                                            ? "var(--primary)"
+                                                            : "#10b981",
+                                                    fontWeight: 700,
                                                     marginBottom:
-                                                        "4px",
+                                                        "6px",
+                                                    display: "flex",
+                                                    justifyContent: "space-between"
                                                 }}
                                             >
-                                                {line.speaker ||
-                                                    "Conversation"}
+                                                <span>{line.speaker || "Conversation"}</span>
+                                                {line.timestamp && (
+                                                    <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                                                        {line.timestamp}
+                                                    </span>
+                                                )}
                                             </div>
 
 
@@ -1534,6 +1734,7 @@ const Consultation = () => {
                                                         "1.05rem",
                                                     lineHeight:
                                                         "1.6",
+                                                    color: "#ffffff"
                                                 }}
                                             >
                                                 {
@@ -1545,22 +1746,26 @@ const Consultation = () => {
                                     )
                                 )}
 
-                                {liveInterimText && (
+                                {liveInterimText && !isPaused && (
                                     <div
                                         style={{
-                                            marginTop: "10px",
+                                            marginTop: "12px",
                                             marginBottom: "20px",
-                                            padding: "12px 15px",
-                                            borderLeft: "3px solid var(--primary)",
-                                            background: "rgba(0, 210, 255, 0.06)",
-                                            borderRadius: "6px",
+                                            padding: "14px 18px",
+                                            borderLeft: "4px solid var(--primary)",
+                                            background: "rgba(0, 210, 255, 0.08)",
+                                            borderRadius: "10px",
+                                            border: "1px solid rgba(0, 210, 255, 0.25)",
+                                            boxShadow: "0 0 15px rgba(0, 210, 255, 0.1)"
                                         }}
                                     >
-                                        <div style={{ fontSize: "0.75rem", color: "var(--primary)", marginBottom: "5px" }}>
-                                            Listening...
+                                        <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--primary)", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <i className="fa-solid fa-microphone-lines fa-fade"></i>
+                                            Speaking now:
                                         </div>
-                                        <div style={{ fontSize: "1.05rem", lineHeight: "1.6", opacity: 0.8, fontStyle: "italic" }}>
+                                        <div style={{ fontSize: "1.1rem", lineHeight: "1.6", color: "#ffffff", fontWeight: 500 }}>
                                             {liveInterimText}
+                                            <span style={{ display: "inline-block", width: "2px", height: "1em", background: "var(--primary)", marginLeft: "4px", verticalAlign: "middle" }}></span>
                                         </div>
                                     </div>
                                 )}
@@ -1613,25 +1818,57 @@ const Consultation = () => {
 
                                 {isRecording && (
                                     <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", justifyContent: "center" }}>
+                                        {/* Timer Badge */}
                                         <div
                                             style={{
                                                 display: "flex",
                                                 alignItems: "center",
                                                 gap: "8px",
-                                                background: "rgba(255, 255, 255, 0.05)",
-                                                border: "1px solid var(--glass-border)",
+                                                background: isPaused ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                                                border: isPaused ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid var(--glass-border)",
                                                 padding: "10px 18px",
                                                 borderRadius: "10px",
-                                                color: "#f87171",
+                                                color: isPaused ? "#fbbf24" : "#f87171",
                                                 fontWeight: 700,
                                                 fontSize: "1.05rem",
                                                 letterSpacing: "1px"
                                             }}
                                         >
-                                            <i className="fa-solid fa-stopwatch" style={{ color: "var(--primary)" }}></i>
+                                            <i className={isPaused ? "fa-solid fa-pause" : "fa-solid fa-stopwatch"} style={{ color: isPaused ? "#f59e0b" : "var(--primary)" }}></i>
                                             <span>{formatDuration(recordingSeconds)}</span>
+                                            {isPaused && (
+                                                <span style={{ fontSize: "0.72rem", background: "#f59e0b", color: "#000", fontWeight: 800, padding: "1px 6px", borderRadius: "4px", marginLeft: "4px" }}>
+                                                    PAUSED
+                                                </span>
+                                            )}
                                         </div>
 
+                                        {/* Pause / Resume Button */}
+                                        <button
+                                            className="btn"
+                                            onClick={isPaused ? resumeConsultation : pauseConsultation}
+                                            style={{
+                                                padding: "12px 24px",
+                                                background: isPaused
+                                                    ? "linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.4))"
+                                                    : "linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.4))",
+                                                borderColor: isPaused ? "#10b981" : "#f59e0b",
+                                                color: "#ffffff",
+                                                fontWeight: 600,
+                                                borderRadius: "10px",
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "8px",
+                                                boxShadow: isPaused ? "0 0 15px rgba(16, 185, 129, 0.3)" : "0 0 15px rgba(245, 158, 11, 0.3)",
+                                                cursor: "pointer",
+                                                transition: "all 0.2s ease"
+                                            }}
+                                        >
+                                            <i className={`fa-solid ${isPaused ? "fa-play" : "fa-pause"}`}></i>
+                                            {isPaused ? "Resume Consultation" : "Pause Consultation"}
+                                        </button>
+
+                                        {/* End Consultation Button */}
                                         <button
                                             className="btn btn-secondary"
                                             onClick={
@@ -1644,7 +1881,9 @@ const Consultation = () => {
                                                 borderColor: "#ef4444",
                                                 color: "#ffffff",
                                                 fontWeight: 600,
-                                                boxShadow: "0 0 15px rgba(239, 68, 68, 0.25)"
+                                                borderRadius: "10px",
+                                                boxShadow: "0 0 15px rgba(239, 68, 68, 0.25)",
+                                                cursor: "pointer"
                                             }}
                                         >
                                             <i className="fa-solid fa-stop"></i>
@@ -1691,6 +1930,199 @@ const Consultation = () => {
                     </div>
 
                 </div>
+
+                {/* ============================================================
+                    AI SUMMARY GENERATION PROGRESS MODAL OVERLAY
+                ============================================================ */}
+                {isGeneratingSummary && (
+                    <div
+                        style={{
+                            position: "fixed",
+                            inset: 0,
+                            zIndex: 99999,
+                            backgroundColor: "rgba(3, 7, 18, 0.88)",
+                            backdropFilter: "blur(16px)",
+                            WebkitBackdropFilter: "blur(16px)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "20px",
+                        }}
+                    >
+                        <div
+                            style={{
+                                width: "100%",
+                                maxWidth: "580px",
+                                background: "linear-gradient(145deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.98))",
+                                border: "1px solid rgba(0, 210, 255, 0.35)",
+                                borderRadius: "24px",
+                                padding: "34px 28px",
+                                boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 50px rgba(0, 210, 255, 0.18)",
+                                color: "#ffffff",
+                                textAlign: "center",
+                                position: "relative",
+                                overflow: "hidden"
+                            }}
+                        >
+                            {/* Ambient Glow */}
+                            <div
+                                style={{
+                                    position: "absolute",
+                                    top: "-80px",
+                                    left: "50%",
+                                    transform: "translateX(-50%)",
+                                    width: "280px",
+                                    height: "160px",
+                                    background: "radial-gradient(circle, rgba(0, 210, 255, 0.3) 0%, transparent 70%)",
+                                    pointerEvents: "none"
+                                }}
+                            />
+
+                            {/* Glowing Heart Pulse Icon */}
+                            <div style={{ position: "relative", display: "inline-block", marginBottom: "18px" }}>
+                                <div
+                                    style={{
+                                        width: "72px",
+                                        height: "72px",
+                                        borderRadius: "50%",
+                                        background: "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 60%, #00f2fe 100%)",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        boxShadow: "0 0 35px rgba(0, 210, 255, 0.65)",
+                                    }}
+                                >
+                                    <i className="fa-solid fa-heart-pulse" style={{ fontSize: "32px", color: "#ffffff" }}></i>
+                                </div>
+                            </div>
+
+                            <h2 style={{ fontSize: "1.45rem", fontWeight: 700, margin: "0 0 6px 0", letterSpacing: "-0.3px", color: "#ffffff" }}>
+                                Generating AI Consultation Summary
+                            </h2>
+                            <p style={{ color: "#94a3b8", fontSize: "0.9rem", margin: "0 0 24px 0", lineHeight: "1.4" }}>
+                                Gemini 3.5 Flash is analyzing your consultation audio & extracting clinical insights
+                            </p>
+
+                            {/* Progress Bar Header */}
+                            <div style={{ marginBottom: "20px" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                    <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#00d2ff", display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                        {PROCESSING_STEPS[summaryStage]?.title || "Processing..."}
+                                    </span>
+                                    <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "#ffffff", letterSpacing: "0.5px" }}>
+                                        {Math.round(summaryProgress)}%
+                                    </span>
+                                </div>
+
+                                {/* Glowing Progress Bar */}
+                                <div
+                                    style={{
+                                        width: "100%",
+                                        height: "12px",
+                                        backgroundColor: "rgba(255, 255, 255, 0.08)",
+                                        borderRadius: "10px",
+                                        overflow: "hidden",
+                                        padding: "2px",
+                                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                                        boxSizing: "border-box"
+                                    }}
+                                >
+                                    <div
+                                        style={{
+                                            height: "100%",
+                                            width: `${summaryProgress}%`,
+                                            background: "linear-gradient(90deg, #00d2ff 0%, #3a7bd5 50%, #00f2fe 100%)",
+                                            borderRadius: "8px",
+                                            transition: "width 0.3s ease-out",
+                                            boxShadow: "0 0 15px rgba(0, 210, 255, 0.85)"
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Step-by-Step Checklist */}
+                            <div
+                                style={{
+                                    background: "rgba(255, 255, 255, 0.03)",
+                                    border: "1px solid rgba(255, 255, 255, 0.07)",
+                                    borderRadius: "14px",
+                                    padding: "12px 18px",
+                                    textAlign: "left",
+                                    marginBottom: "20px"
+                                }}
+                            >
+                                {PROCESSING_STEPS.map((step, idx) => {
+                                    const isCompleted = summaryStage > idx || summaryProgress >= 100;
+                                    const isCurrent = summaryStage === idx && summaryProgress < 100;
+
+                                    return (
+                                        <div
+                                            key={idx}
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "12px",
+                                                padding: "6px 0",
+                                                opacity: isCompleted ? 0.75 : isCurrent ? 1 : 0.3,
+                                                transition: "all 0.3s ease"
+                                            }}
+                                        >
+                                            <div
+                                                style={{
+                                                    width: "22px",
+                                                    height: "22px",
+                                                    borderRadius: "50%",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    fontSize: "0.75rem",
+                                                    background: isCompleted
+                                                        ? "rgba(16, 185, 129, 0.25)"
+                                                        : isCurrent
+                                                            ? "rgba(0, 210, 255, 0.25)"
+                                                            : "rgba(255, 255, 255, 0.05)",
+                                                    color: isCompleted
+                                                        ? "#10b981"
+                                                        : isCurrent
+                                                            ? "#00d2ff"
+                                                            : "#64748b",
+                                                    flexShrink: 0
+                                                }}
+                                            >
+                                                {isCompleted ? (
+                                                    <i className="fa-solid fa-check"></i>
+                                                ) : isCurrent ? (
+                                                    <i className="fa-solid fa-spinner fa-spin"></i>
+                                                ) : (
+                                                    <i className={step.icon}></i>
+                                                )}
+                                            </div>
+
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontSize: "0.85rem", fontWeight: isCurrent ? 700 : 500, color: isCurrent ? "#ffffff" : isCompleted ? "#cbd5e1" : "#64748b" }}>
+                                                    {step.title}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Footer Metrics */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.78rem", color: "#94a3b8", flexWrap: "wrap", gap: "8px" }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <i className="fa-solid fa-clock" style={{ color: "#38bdf8" }}></i>
+                                    Elapsed: <strong style={{ color: "#ffffff" }}>{summaryElapsedSeconds}s</strong> &nbsp;(Expected ~5–10s)
+                                </span>
+                                <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "#10b981", fontWeight: 600 }}>
+                                    <i className="fa-solid fa-shield-halved"></i>
+                                    Auto-redirecting on finish
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </main>
 
