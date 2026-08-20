@@ -105,6 +105,19 @@ app.get("/", (req, res) => {
     });
 });
 
+app.get("/health", (req, res) => {
+    res.status(200).send("OK");
+});
+
+app.head("/health", (req, res) => {
+    res.status(200).end();
+});
+
+app.get("/ping", (req, res) => {
+    res.status(200).send("pong");
+});
+
+
 // =====================================================
 // APPOINTMENTS
 // =====================================================
