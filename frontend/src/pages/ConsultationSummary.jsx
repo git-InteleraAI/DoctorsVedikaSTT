@@ -63,7 +63,7 @@ const durationOptions = [
 
 const NODE_API_URL =
     import.meta.env.VITE_NODE_API_URL ||
-    "http://localhost:5000";
+    "http://localhost:5001";
 
 const FALLBACK_TEXT =
     "Not documented in this consultation.";
