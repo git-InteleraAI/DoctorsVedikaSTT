@@ -4,7 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { mockPatients } from "../data/mockPatients";
 
 const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL || "ws://localhost:8005/ws/live";
-const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:5001";
 
 
 const PROCESSING_STEPS = [
