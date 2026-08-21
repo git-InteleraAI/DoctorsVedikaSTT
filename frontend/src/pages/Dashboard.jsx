@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5001";
 
 const Dashboard = () => {
     const navigate = useNavigate();
