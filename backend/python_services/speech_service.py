@@ -94,7 +94,7 @@ PROCESS_EVERY_CHUNKS = int(
 AUDIO_WINDOW_SECONDS = int(
     os.getenv(
         "AUDIO_WINDOW_SECONDS",
-        "8",
+        "4",
     )
 )
 
@@ -648,6 +648,7 @@ async def transcribe_with_sarvam(
         "model": SARVAM_STT_MODEL,
         "mode": SARVAM_STT_MODE,
         "language_code": language,
+        "prompt": "Medical consultation context. Doctor prescribing tablets, medicines, dosages, mg, ml, tests, and discussing patient health and symptoms.",
     }
 
     started_at = time.perf_counter()
