@@ -30,7 +30,7 @@ jobs:
 
             echo "Fetching latest production-update branch..."
 
-            git -c http.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" fetch origin production-update
+            git -c credential.helper="!f() { echo username=x-access-token; echo password=\$GITHUB_TOKEN; }; f" fetch origin production-update
 
             echo "Resetting EC2 code to GitHub production-update..."
 
