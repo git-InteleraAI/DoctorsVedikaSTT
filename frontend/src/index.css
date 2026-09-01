@@ -1,21 +1,366 @@
-/* Doctors Vedika Global Root Styles */
+@import "tailwindcss";
+
+/* Doctors Vedika Global Root & Autofill Overrides */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #050b14;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #08265F;
+  background-color: #F8FBFF;
 }
 
-body {
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100vh;
   margin: 0;
   padding: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background-color: #050b14;
+  background-color: #F8FBFF;
+  overflow-x: hidden;
+}
+
+/* Force browser autofill background to stay clean white */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #08265F !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+@keyframes premium-glow-pulse {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 5px rgba(8, 174, 184, 0.4));
+  }
+
+  50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 15px rgba(8, 174, 184, 0.9));
+  }
+
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 5px rgba(8, 174, 184, 0.4));
+  }
+}
+
+.premium-glow-pulse {
+  animation: premium-glow-pulse 2s infinite ease-in-out;
+}
+
+/* Holographic Onboarding Specific Styles */
+.holo-onboarding-wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 40px 20px;
+  background: url('./assets/holographic_doctor_bg.jpg') no-repeat center center fixed;
+  background-size: cover;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.holo-onboarding-wrapper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(8, 43, 111, 0.4), rgba(8, 174, 184, 0.3));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.holo-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 900px;
+  background: rgba(45, 57, 79, 0.7);
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  border: 1px solid rgba(8, 174, 184, 0.4);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  color: #fff;
+  transition: all 0.4s ease;
+}
+
+.holo-card h1 {
+  font-weight: 700;
+  font-size: 2.2rem;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 8px;
+  text-shadow: 0 0 15px rgba(8, 174, 184, 0.8);
+}
+
+.holo-card p.subtitle {
+  text-align: center;
+  color: #94A3B8;
+  font-size: 1.1rem;
+  margin-bottom: 40px;
+}
+
+/* Stepper UI */
+.holo-stepper {
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  margin-bottom: 40px;
+}
+
+.holo-stepper::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-50%);
+  z-index: 0;
+}
+
+.holo-stepper-progress {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 2px;
+  background: #08AEB8;
+  transform: translateY(-50%);
+  z-index: 1;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 10px #08AEB8;
+}
+
+.holo-step {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.holo-step-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(11, 43, 111, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #94A3B8;
+  transition: all 0.4s ease;
+}
+
+.holo-step.active .holo-step-circle,
+.holo-step.completed .holo-step-circle {
+  background: #08AEB8;
+  border-color: #08AEB8;
+  color: #fff;
+  box-shadow: 0 0 15px rgba(8, 174, 184, 0.6);
+}
+
+.holo-step-label {
+  font-size: 0.9rem;
+  color: #94A3B8;
+  font-weight: 500;
+  transition: color 0.4s ease;
+}
+
+.holo-step.active .holo-step-label,
+.holo-step.completed .holo-step-label {
+  color: #fff;
+}
+
+/* Inputs */
+.holo-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.holo-input-group label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #E2E8F0;
+}
+
+.holo-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.holo-input-wrapper i {
+  position: absolute;
+  left: 16px;
+  color: #08AEB8;
+  font-size: 1.1rem;
+}
+
+.holo-input-wrapper input,
+.holo-input-wrapper select,
+.holo-input-wrapper textarea {
+  width: 100%;
+  padding: 14px 14px 14px 45px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1rem;
+  outline: none;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.holo-input-wrapper select option {
+  background-color: #F8FBFF;
+  color: #08265F;
+}
+
+/* Custom Dropdown UI */
+.holo-custom-dropdown {
+  position: relative;
+  width: 100%;
+  padding: 14px 14px 14px 45px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.3s ease;
+}
+
+.holo-custom-dropdown:hover,
+.holo-custom-dropdown.open {
+  border-color: #08AEB8;
+  background: rgba(8, 174, 184, 0.05);
+  box-shadow: 0 0 15px rgba(8, 174, 184, 0.3);
+}
+
+.holo-custom-dropdown .holo-selected-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 20px;
+}
+
+.holo-custom-dropdown .holo-dropdown-arrow {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #08AEB8;
+  transition: transform 0.3s ease;
+}
+
+.holo-custom-dropdown .holo-dropdown-arrow.open {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.holo-dropdown-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  max-height: 250px;
+  overflow-y: auto;
+  background: rgba(11, 43, 111, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(8, 174, 184, 0.4);
+  border-radius: 12px;
+  padding: 8px 0;
+  margin: 0;
+  list-style: none;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.holo-dropdown-list li {
+  padding: 12px 20px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.holo-dropdown-list li:hover {
+  background: rgba(8, 174, 184, 0.2);
+}
+
+.holo-input-wrapper input:focus,
+.holo-input-wrapper select:focus,
+.holo-input-wrapper textarea:focus {
+  border-color: #08AEB8;
+  background: rgba(8, 174, 184, 0.05);
+  box-shadow: 0 0 15px rgba(8, 174, 184, 0.3);
+}
+
+.holo-input-wrapper input::placeholder,
+.holo-input-wrapper textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Buttons */
+.holo-btn-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.holo-btn {
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  outline: none;
+  border: none;
+}
+
+.holo-btn-outline {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.holo-btn-outline:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #fff;
+}
+
+.holo-btn-primary {
+  background: linear-gradient(135deg, #08AEB8, #0B2B6F);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(8, 174, 184, 0.4);
+}
+
+.holo-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(8, 174, 184, 0.6);
+}
+
+.holo-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

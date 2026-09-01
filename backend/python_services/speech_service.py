@@ -6,246 +6,784 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+
+import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from faster_whisper import WhisperModel
 
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-HOST = "0.0.0.0"
-PORT = 8005
+HOST = os.getenv("SPEECH_HOST", "0.0.0.0")
+PORT = int(os.getenv("SPEECH_PORT", "8005"))
 
-# SMALLER MODEL = MUCH FASTER LIVE TRANSCRIPTION.
-# Final complete transcription is still done by Gemini.
-MODEL_SIZE = "base"
 
-DEVICE = "cpu"
-COMPUTE_TYPE = "int8"
+# ============================================================
+# SARVAM CONFIGURATION
+# ============================================================
 
-# Process live audio roughly every 2 chunks.
-# The React client sends one chunk every 2 seconds.
-LIVE_PROCESS_EVERY_CHUNKS = 2
+SARVAM_API_KEY = os.getenv(
+    "SARVAM_API_KEY",
+    "",
+).strip()
 
-# Whisper only sees the most recent few seconds instead of
-# retranscribing the complete consultation every time.
-LIVE_WINDOW_SECONDS = 6
+# Sarvam example currently being used in your integration:
+# saaras:v3 + mode=transcribe
+SARVAM_STT_MODEL = os.getenv(
+    "SARVAM_STT_MODEL",
+    "saaras:v3",
+).strip()
+
+SARVAM_STT_MODE = os.getenv(
+    "SARVAM_STT_MODE",
+    "transcribe",
+).strip()
+
+SARVAM_STT_URL = os.getenv(
+    "SARVAM_STT_URL",
+    "https://api.sarvam.ai/speech-to-text",
+).strip()
+
+
+# ============================================================
+# LANGUAGE
+# ============================================================
+
+# unknown = Sarvam determines the language.
+#
+# Do NOT force Telugu/Hindi/English because a consultation can
+# contain mixed Telugu + Hindi + English.
+SARVAM_LANGUAGE_CODE = os.getenv(
+    "SARVAM_LANGUAGE_CODE",
+    "unknown",
+).strip()
+
+
+# ============================================================
+# AUDIO PROCESSING
+# ============================================================
+
+# Your frontend currently sends approximately one MediaRecorder
+# chunk every 2 seconds.
+AUDIO_CHUNK_SECONDS = 2
+
+
+# Process approximately every 1 chunks.
+#
+# 1 chunks × ~2 seconds = ~2 seconds.
+#
+# This provides a reasonable balance between:
+# - live responsiveness
+# - Sarvam API calls
+# - production concurrency
+PROCESS_EVERY_CHUNKS = int(
+    os.getenv(
+        "PROCESS_EVERY_CHUNKS",
+        "1",
+    )
+)
+
+
+# Every Sarvam request receives a slightly larger overlapping
+# window. This reduces word loss at chunk boundaries.
+AUDIO_WINDOW_SECONDS = int(
+    os.getenv(
+        "AUDIO_WINDOW_SECONDS",
+        "8",
+    )
+)
+
+
+# ============================================================
+# HTTP TIMEOUTS
+# ============================================================
+
+SARVAM_CONNECT_TIMEOUT = float(
+    os.getenv(
+        "SARVAM_CONNECT_TIMEOUT",
+        "5",
+    )
+)
+
+SARVAM_WRITE_TIMEOUT = float(
+    os.getenv(
+        "SARVAM_WRITE_TIMEOUT",
+        "15",
+    )
+)
+
+SARVAM_READ_TIMEOUT = float(
+    os.getenv(
+        "SARVAM_READ_TIMEOUT",
+        "30",
+    )
+)
+
+SARVAM_POOL_TIMEOUT = float(
+    os.getenv(
+        "SARVAM_POOL_TIMEOUT",
+        "5",
+    )
+)
+
+
+# ============================================================
+# PRODUCTION CONCURRENCY
+# ============================================================
+
+# This is NOT a per-consultation lock.
+#
+# Different doctors can have independent consultations.
+#
+# The semaphore simply prevents an unlimited number of outgoing
+# Sarvam requests from being created simultaneously.
+MAX_CONCURRENT_SARVAM_REQUESTS = int(
+    os.getenv(
+        "MAX_CONCURRENT_SARVAM_REQUESTS",
+        "20",
+    )
+)
+
+sarvam_semaphore = asyncio.Semaphore(
+    MAX_CONCURRENT_SARVAM_REQUESTS
+)
 
 
 # ============================================================
 # FASTAPI
 # ============================================================
 
-app = FastAPI(title="Doctors Vedika Speech Service")
-
-
-# ============================================================
-# LOAD WHISPER MODEL ONCE
-# ============================================================
-
-print("Loading Faster-Whisper model...")
-print(f"Model: {MODEL_SIZE}")
-print(f"Device: {DEVICE}")
-print(f"Compute type: {COMPUTE_TYPE}")
-
-model = WhisperModel(
-    MODEL_SIZE,
-    device=DEVICE,
-    compute_type=COMPUTE_TYPE,
+app = FastAPI(
+    title="Doctors Vedika Speech Service",
+    version="3.0.0",
 )
 
-print("Faster-Whisper model loaded successfully.")
+
+# ============================================================
+# SHARED HTTP CLIENT
+# ============================================================
+
+http_client: Optional[httpx.AsyncClient] = None
 
 
-# Faster-Whisper inference is CPU-heavy. Keep one inference at
-# a time and move it to a worker thread so WebSocket messages
-# are not blocked while Whisper is running.
-model_lock = asyncio.Lock()
+@app.on_event("startup")
+async def startup_event():
+    global http_client
+
+    timeout = httpx.Timeout(
+        connect=SARVAM_CONNECT_TIMEOUT,
+        read=SARVAM_READ_TIMEOUT,
+        write=SARVAM_WRITE_TIMEOUT,
+        pool=SARVAM_POOL_TIMEOUT,
+    )
+
+    http_client = httpx.AsyncClient(
+        timeout=timeout,
+        limits=httpx.Limits(
+            max_connections=100,
+            max_keepalive_connections=50,
+        ),
+    )
+
+    print("")
+    print("==============================================")
+    print(" Doctors Vedika Speech Service")
+    print("==============================================")
+    print(f"STT Provider: Sarvam AI")
+    print(f"STT Model: {SARVAM_STT_MODEL}")
+    print(f"STT Mode: {SARVAM_STT_MODE}")
+    print(f"STT URL: {SARVAM_STT_URL}")
+    print(
+        f"API Key configured: "
+        f"{bool(SARVAM_API_KEY)}"
+    )
+    print(
+        f"Max concurrent Sarvam requests: "
+        f"{MAX_CONCURRENT_SARVAM_REQUESTS}"
+    )
+    print("==============================================")
+    print("")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global http_client
+
+    if http_client is not None:
+        await http_client.aclose()
+        http_client = None
 
 
 # ============================================================
-# HELPERS
+# LANGUAGE HELPERS
 # ============================================================
 
 def normalize_language(language):
-    """Convert frontend language names to Whisper language codes."""
+    """
+    Convert frontend language values to Sarvam language codes.
 
-    value = (language or "").strip().lower()
+    Auto / unknown:
+        unknown
+
+    Telugu:
+        te-IN
+
+    Hindi:
+        hi-IN
+
+    English:
+        en-IN
+
+    For your consultation flow we normally keep this as
+    "unknown" so Sarvam can detect the language.
+    """
+
+    value = str(language or "").strip().lower()
+
+    if not value:
+        return "unknown"
+
+    if value in {
+        "auto",
+        "automatic",
+        "unknown",
+        "detect",
+        "detected",
+        "all",
+        "all-languages",
+    }:
+        return "unknown"
 
     mapping = {
-        "telugu": "te",
-        "te": "te",
-        "te-in": "te",
-        "hindi": "hi",
-        "hi": "hi",
-        "hi-in": "hi",
-        "english": "en",
-        "en": "en",
-        "en-in": "en",
+        "telugu": "te-IN",
+        "te": "te-IN",
+        "te-in": "te-IN",
+
+        "hindi": "hi-IN",
+        "hi": "hi-IN",
+        "hi-in": "hi-IN",
+
+        "english": "en-IN",
+        "en": "en-IN",
+        "en-in": "en-IN",
     }
 
-    return mapping.get(value)
-
-
-def extract_recent_audio(source_path, output_path):
-    """
-    Extract only the most recent LIVE_WINDOW_SECONDS from the
-    growing WebM recording and convert it to 16 kHz mono WAV.
-
-    FFmpeg is already available in this project.
-    """
-
-    command = [
-        "ffmpeg",
-        "-y",
-        "-sseof",
-        f"-{LIVE_WINDOW_SECONDS}",
-        "-i",
-        str(source_path),
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-c:a",
-        "pcm_s16le",
-        "-f",
-        "wav",
-        str(output_path),
-    ]
-
-    try:
-        result = subprocess.run(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        if result.returncode != 0:
-            return
-    except Exception:
-        return
-
-
-def transcribe_file_sync(audio_path, language_code):
-    """
-    Synchronous Whisper inference. This function is executed
-    inside asyncio.to_thread().
-    """
-
-    segments, info = model.transcribe(
-        str(audio_path),
-        language=language_code,
-        beam_size=1,
-        best_of=1,
-        temperature=0,
-        vad_filter=True,
-        condition_on_previous_text=False,
-        without_timestamps=False,
+    return mapping.get(
+        value,
+        "unknown",
     )
 
-    result = []
 
-    for segment in segments:
-        text = segment.text.strip()
+# ============================================================
+# TEXT HELPERS
+# ============================================================
 
-        if text:
-            result.append({
-                "start": round(segment.start, 2),
-                "end": round(segment.end, 2),
-                "text": text,
-            })
+def clean_text(text):
+    """
+    Normalize whitespace without changing the actual language.
 
-    detected_language = (
-        info.language
-        if getattr(info, "language", None)
-        else ""
+    Important:
+    We DO NOT translate Telugu/Hindi into English.
+    """
+
+    if text is None:
+        return ""
+
+    return " ".join(
+        str(text).strip().split()
     )
 
-    return result, detected_language
+
+def normalize_for_comparison(text):
+    return clean_text(text).lower()
 
 
-async def transcribe_recent_audio(
-    source_path,
-    language_code,
-    temp_dir,
+# ============================================================
+# TRANSCRIPT DEDUPLICATION
+# ============================================================
+
+def get_new_text(
+    current_text,
+    previous_text,
 ):
     """
-    Whisper sees only the recent window, not the entire
-    consultation. This is the main speed improvement.
+    Extract only the newly appearing portion of a rolling
+    Sarvam transcription window.
+
+    Example:
+
+        Previous:
+        patient has fever since yesterday
+
+        Current:
+        fever since yesterday and headache
+
+        Result:
+        and headache
+
+    The function is deliberately conservative.
+
+    If an overlap cannot be confidently established, we do not
+    aggressively delete text because losing medical speech is
+    worse than temporarily having duplicate text.
     """
 
-    recent_wav = Path(temp_dir) / "live_recent.wav"
-
-    await asyncio.to_thread(
-        extract_recent_audio,
-        source_path,
-        recent_wav,
+    current_text = clean_text(
+        current_text
     )
 
-    if not recent_wav.exists() or recent_wav.stat().st_size < 1000:
-        return [], ""
+    previous_text = clean_text(
+        previous_text
+    )
 
-    async with model_lock:
-        segments, detected_language = await asyncio.to_thread(
-            transcribe_file_sync,
-            recent_wav,
-            language_code,
-        )
+    if not current_text:
+        return ""
 
-    return segments, detected_language
+    if not previous_text:
+        return current_text
 
+    if (
+        normalize_for_comparison(current_text)
+        ==
+        normalize_for_comparison(previous_text)
+    ):
+        return ""
 
-def get_new_text(full_text, previous_text):
-    """
-    The live window overlaps previous results. Remove the
-    largest word overlap and return only newly spoken words.
-    """
-
-    current_words = " ".join((full_text or "").split()).split()
-    previous_words = " ".join((previous_text or "").split()).split()
+    current_words = current_text.split()
+    previous_words = previous_text.split()
 
     if not current_words:
         return ""
 
     if not previous_words:
-        return " ".join(current_words)
+        return current_text
 
-    if current_words == previous_words:
-        return ""
-
-    # Find the largest suffix of the previous window that is
-    # also a prefix of the current window.
     max_overlap = min(
-        len(previous_words),
         len(current_words),
+        len(previous_words),
     )
 
-    for overlap in range(max_overlap, 0, -1):
-        old_tail = [
-            word.lower()
-            for word in previous_words[-overlap:]
-        ]
+    import difflib
 
-        new_head = [
-            word.lower()
-            for word in current_words[:overlap]
-        ]
+    # --------------------------------------------------------
+    # Exact or fuzzy suffix -> prefix overlap
+    # --------------------------------------------------------
 
-        if old_tail == new_head:
-            new_words = current_words[overlap:]
-            return " ".join(new_words).strip()
+    for overlap in range(
+        max_overlap,
+        0,
+        -1,
+    ):
+        previous_tail_str = " ".join(previous_words[-overlap:]).lower()
+        current_head_str = " ".join(current_words[:overlap]).lower()
 
-    # If Whisper changed the wording between windows, avoid
-    # displaying a completely identical result.
-    current_lower = " ".join(current_words).lower()
-    previous_lower = " ".join(previous_words).lower()
+        ratio = difflib.SequenceMatcher(None, previous_tail_str, current_head_str).ratio()
 
-    if current_lower == previous_lower:
-        return ""
+        # If they are at least 80% similar, we consider it a match
+        if ratio > 0.8:
+            new_words = current_words[
+                overlap:
+            ]
 
-    return " ".join(current_words).strip()
+            return clean_text(
+                " ".join(new_words)
+            )
+
+    # --------------------------------------------------------
+    # Conservative fallback
+    # --------------------------------------------------------
+    #
+    # Do NOT attempt aggressive fuzzy deletion here.
+    #
+    # Sarvam may change transliteration between requests,
+    # especially with Telugu/Hindi mixed speech.
+    #
+    # Returning the current text is safer than silently
+    # deleting medically relevant words.
+    # --------------------------------------------------------
+
+    return current_text
+
+
+# ============================================================
+# AUDIO EXTRACTION
+# ============================================================
+
+def extract_recent_audio(
+    source_path: Path,
+    output_path: Path,
+    window_seconds: int,
+):
+    """
+    Extract the latest portion of the growing WebM recording
+    and convert it into a standard 16 kHz mono WAV.
+
+    The browser continues sending WebM chunks.
+
+    Sarvam receives the normalized WAV.
+    """
+
+    ffmpeg_cmd = shutil.which("ffmpeg") or r"C:\Users\harshini\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Essentials_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-essentials_build\bin\ffmpeg.exe"
+
+    # Step 1: Convert the entire growing WebM file into a full WAV file.
+    # We do this because ffmpeg's -sseof fails on live WebM streams that 
+    # lack a duration header, causing it to extract from the beginning instead.
+    temp_wav_path = output_path.with_suffix(".full.wav")
+    
+    cmd_convert = [
+        ffmpeg_cmd,
+        "-y",
+        "-i", str(source_path),
+        "-vn",
+        "-ac", "1",
+        "-ar", "16000",
+        "-c:a", "pcm_s16le",
+        "-f", "wav",
+        str(temp_wav_path),
+    ]
+
+    res_convert = subprocess.run(
+        cmd_convert,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    if res_convert.returncode != 0:
+        raise RuntimeError(
+            "FFmpeg failed while converting WebM to WAV: "
+            + res_convert.stderr[-2000:]
+        )
+
+    # Step 2: Now that we have a proper WAV file with duration, 
+    # we can safely use -sseof to extract the exact window from the end.
+    cmd_extract = [
+        ffmpeg_cmd,
+        "-y",
+        "-sseof", f"-{window_seconds}",
+        "-i", str(temp_wav_path),
+        "-c", "copy",
+        str(output_path),
+    ]
+
+    res_extract = subprocess.run(
+        cmd_extract,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    # Clean up the intermediate full WAV file
+    try:
+        temp_wav_path.unlink()
+    except Exception:
+        pass
+
+    if res_extract.returncode != 0:
+        raise RuntimeError(
+            "FFmpeg failed while extracting window from WAV: "
+            + res_extract.stderr[-2000:]
+        )
+
+
+async def extract_recent_audio_async(
+    source_path: Path,
+    output_path: Path,
+    window_seconds: int,
+):
+    await asyncio.to_thread(
+        extract_recent_audio,
+        source_path,
+        output_path,
+        window_seconds,
+    )
+
+
+# ============================================================
+# SARVAM RESPONSE PARSER
+# ============================================================
+
+def parse_sarvam_response(data):
+    """
+    Parse Sarvam STT response safely.
+
+    We intentionally support a few possible response shapes
+    because response metadata can vary between API versions.
+
+    No translation is performed.
+    """
+
+    if not isinstance(data, dict):
+        return {
+            "transcript": "",
+            "language": "",
+        }
+
+    transcript = ""
+
+    # --------------------------------------------------------
+    # Normal response
+    # --------------------------------------------------------
+
+    if isinstance(
+        data.get("transcript"),
+        str,
+    ):
+        transcript = data.get(
+            "transcript",
+            "",
+        )
+
+    # --------------------------------------------------------
+    # Some APIs may return transcript-like data nested inside
+    # another object.
+    # --------------------------------------------------------
+
+    if not transcript:
+        result = data.get("result")
+
+        if isinstance(result, dict):
+            nested_transcript = result.get(
+                "transcript",
+                "",
+            )
+
+            if isinstance(
+                nested_transcript,
+                str,
+            ):
+                transcript = nested_transcript
+
+    # --------------------------------------------------------
+    # Language metadata
+    # --------------------------------------------------------
+
+    language = (
+        data.get("language_code")
+        or data.get("language")
+        or ""
+    )
+
+    if not language:
+        result = data.get("result")
+
+        if isinstance(result, dict):
+            language = (
+                result.get("language_code")
+                or result.get("language")
+                or ""
+            )
+
+    return {
+        "transcript": clean_text(
+            transcript
+        ),
+        "language": str(
+            language or ""
+        ).strip(),
+    }
+
+
+# ============================================================
+# SARVAM STT
+# ============================================================
+
+async def transcribe_with_sarvam(
+    audio_path: Path,
+    language_code: str,
+):
+    """
+    Send one short audio window to Sarvam AI.
+
+    IMPORTANT:
+
+    Gemini is NOT involved here.
+
+    This keeps speech recognition completely separate from
+    consultation summarization.
+    """
+
+    if not SARVAM_API_KEY:
+        raise RuntimeError(
+            "SARVAM_API_KEY is not configured."
+        )
+
+    if http_client is None:
+        raise RuntimeError(
+            "Sarvam HTTP client is not initialized."
+        )
+
+    if not audio_path.exists():
+        return {
+            "transcript": "",
+            "language": "",
+        }
+
+    if audio_path.stat().st_size < 1000:
+        return {
+            "transcript": "",
+            "language": "",
+        }
+
+    headers = {
+        "api-subscription-key": SARVAM_API_KEY,
+    }
+
+    language = (
+        language_code
+        if language_code
+        else SARVAM_LANGUAGE_CODE
+    )
+
+    # --------------------------------------------------------
+    # Sarvam request fields
+    # --------------------------------------------------------
+
+    data = {
+        "model": SARVAM_STT_MODEL,
+        "mode": SARVAM_STT_MODE,
+        "language_code": language,
+    }
+
+    started_at = time.perf_counter()
+
+    # --------------------------------------------------------
+    # Production concurrency protection
+    # --------------------------------------------------------
+
+    async with sarvam_semaphore:
+
+        with open(
+            audio_path,
+            "rb",
+        ) as audio_file:
+
+            files = {
+                "file": (
+                    "consultation.wav",
+                    audio_file,
+                    "audio/wav",
+                )
+            }
+
+            response = await http_client.post(
+                SARVAM_STT_URL,
+                headers=headers,
+                data=data,
+                files=files,
+            )
+
+    elapsed_ms = (
+        time.perf_counter()
+        - started_at
+    ) * 1000
+
+    print(
+        "[Speech] Sarvam request completed "
+        f"in {elapsed_ms:.0f} ms"
+    )
+
+    # --------------------------------------------------------
+    # HTTP error
+    # --------------------------------------------------------
+
+    if response.status_code >= 400:
+
+        body = response.text[:3000]
+
+        raise RuntimeError(
+            "Sarvam STT request failed "
+            f"(HTTP {response.status_code}): "
+            f"{body}"
+        )
+
+    # --------------------------------------------------------
+    # JSON response
+    # --------------------------------------------------------
+
+    try:
+        result = response.json()
+
+    except Exception as error:
+
+        raise RuntimeError(
+            "Sarvam returned a non-JSON response."
+        ) from error
+
+    parsed = parse_sarvam_response(
+        result
+    )
+
+    print(
+        "[Speech] Sarvam transcript:",
+        parsed.get(
+            "transcript",
+            "",
+        ),
+    )
+
+    if parsed.get("language"):
+        print(
+            "[Speech] Sarvam language:",
+            parsed["language"],
+        )
+
+    return parsed
+
+
+# ============================================================
+# PROCESS ONE AUDIO WINDOW
+# ============================================================
+
+async def process_audio_window(
+    source_audio_path: Path,
+    temp_dir: Path,
+    language_code: str,
+):
+    """
+    Extract the latest audio window and send it to Sarvam.
+    """
+
+    wav_path = (
+        temp_dir
+        / f"window-{time.time_ns()}.wav"
+    )
+
+    try:
+
+        await extract_recent_audio_async(
+            source_audio_path,
+            wav_path,
+            AUDIO_WINDOW_SECONDS,
+        )
+
+        if (
+            not wav_path.exists()
+            or wav_path.stat().st_size < 1000
+        ):
+            return {
+                "transcript": "",
+                "language": "",
+            }
+
+        return await transcribe_with_sarvam(
+            wav_path,
+            language_code,
+        )
+
+    finally:
+
+        try:
+            if wav_path.exists():
+                wav_path.unlink()
+
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -254,25 +792,56 @@ def get_new_text(full_text, previous_text):
 
 @app.get("/")
 async def root():
+
     return {
         "success": True,
         "service": "Doctors Vedika Speech Service",
         "status": "running",
-        "model": MODEL_SIZE,
+        "provider": "sarvam",
+        "model": SARVAM_STT_MODEL,
+        "mode": SARVAM_STT_MODE,
         "websocket": "/ws/live",
+        "api_key_configured": bool(
+            SARVAM_API_KEY
+        ),
+        "max_concurrent_requests":
+            MAX_CONCURRENT_SARVAM_REQUESTS,
+    }
+
+
+@app.get("/health")
+async def health():
+
+    return {
+        "success": True,
+        "status": "healthy",
+        "provider": "sarvam",
+        "model": SARVAM_STT_MODEL,
+        "api_key_configured": bool(
+            SARVAM_API_KEY
+        ),
     }
 
 
 # ============================================================
-# WEBSOCKET
+# LIVE WEBSOCKET
 # ============================================================
 
 @app.websocket("/ws/live")
-async def live_transcription(websocket: WebSocket):
+async def live_transcription(
+    websocket: WebSocket,
+):
 
     await websocket.accept()
 
-    print("WebSocket client connected.")
+    print("")
+    print("----------------------------------------------")
+    print("[Speech] WebSocket client connected.")
+    print("----------------------------------------------")
+
+    # ========================================================
+    # SESSION INFORMATION
+    # ========================================================
 
     doctor_id = websocket.query_params.get(
         "doctor_id",
@@ -284,45 +853,127 @@ async def live_transcription(websocket: WebSocket):
         "default-patient",
     )
 
-    language = websocket.query_params.get(
-        "language",
-        "auto",
+    requested_language = (
+        websocket.query_params.get(
+            "language",
+            "auto",
+        )
     )
 
-    language_code = normalize_language(language)
+    language_code = normalize_language(
+        requested_language
+    )
 
     print(
-        f"Doctor: {doctor_id} | "
-        f"Patient: {patient_id} | "
-        f"Language: {language} | "
-        f"Whisper language: {language_code or 'auto'}"
+        f"[Speech] Doctor: {doctor_id}"
     )
 
-    temp_dir = tempfile.mkdtemp(
-        prefix="doctors_vedika_"
+    print(
+        f"[Speech] Patient: {patient_id}"
     )
 
-    audio_path = Path(temp_dir) / "consultation.webm"
+    print(
+        "[Speech] Requested language:",
+        requested_language,
+    )
+
+    print(
+        "[Speech] Sarvam language:",
+        language_code,
+    )
+
+    # ========================================================
+    # SESSION TEMP DIRECTORY
+    # ========================================================
+
+    temp_dir = Path(
+        tempfile.mkdtemp(
+            prefix="doctors_vedika_speech_"
+        )
+    )
+
+    audio_path = (
+        temp_dir
+        / "consultation.webm"
+    )
+
+    # ========================================================
+    # SESSION STATE
+    # ========================================================
 
     chunk_count = 0
+
     last_processed_chunk = 0
+
     previous_live_text = ""
-    latest_language = language_code or ""
+
+    latest_language = (
+        ""
+        if language_code == "unknown"
+        else language_code
+    )
+
+    # ========================================================
+    # COMPLETE TRANSCRIPT
+    # ========================================================
+    #
+    # This is extremely important.
+    #
+    # We keep every successfully emitted live transcript
+    # segment for this consultation.
+    #
+    # The final consultation should NOT depend on the last
+    # 8-second window.
+    # ========================================================
+
+    accumulated_transcript = []
+
+    # ========================================================
+    # PER SESSION PROCESSING LOCK
+    # ========================================================
+
+    processing_lock = asyncio.Lock()
+
+    processing_task = None
+
+    stopped = False
+
+    # ========================================================
+    # SEND CONNECTED EVENT
+    # ========================================================
 
     try:
 
         await websocket.send_json({
             "type": "connected",
-            "message": "Speech processing server connected.",
+
+            "message":
+                "Speech processing server connected.",
+
+            "provider":
+                "sarvam",
+
+            "model":
+                SARVAM_STT_MODEL,
+
+            "mode":
+                SARVAM_STT_MODE,
+
+            "language":
+                language_code,
         })
 
-        while True:
+        # ====================================================
+        # MAIN MESSAGE LOOP
+        # ====================================================
+
+        while not stopped:
 
             message = await websocket.receive()
 
-            # ------------------------------------------------
+            # =================================================
             # TEXT MESSAGE
-            # ------------------------------------------------
+            # =================================================
 
             if message.get("text") is not None:
 
@@ -330,40 +981,276 @@ async def live_transcription(websocket: WebSocket):
 
                 try:
                     data = json.loads(text)
+
                 except json.JSONDecodeError:
+
                     data = {
                         "type": "text",
                         "text": text,
                     }
 
-                message_type = data.get("type")
+                message_type = data.get(
+                    "type"
+                )
+
+                # -------------------------------------------------
+                # PING
+                # -------------------------------------------------
 
                 if message_type == "ping":
+
                     await websocket.send_json({
                         "type": "pong",
                     })
+
                     continue
+
+                # -------------------------------------------------
+                # STOP
+                # -------------------------------------------------
 
                 if message_type == "stop":
 
-                    print("Stopping live transcription.")
+                    print(
+                        "[Speech] Stop requested."
+                    )
+
+                    stopped = True
+
+                    # =============================================
+                    # FINAL FLUSH
+                    # =============================================
+                    #
+                    # Process the latest window once more.
+                    #
+                    # The complete transcript is already stored in
+                    # accumulated_transcript.
+                    #
+                    # This final request only attempts to capture
+                    # speech that happened immediately before Stop.
+                    # =============================================
+
+                    try:
+
+                        if audio_path.exists():
+
+                            async with processing_lock:
+
+                                final_result = (
+                                    await process_audio_window(
+                                        audio_path,
+                                        temp_dir,
+                                        language_code,
+                                    )
+                                )
+
+                            final_text = clean_text(
+                                final_result.get(
+                                    "transcript",
+                                    "",
+                                )
+                            )
+
+                            if final_result.get(
+                                "language"
+                            ):
+
+                                latest_language = (
+                                    final_result[
+                                        "language"
+                                    ]
+                                )
+
+                            if final_text:
+
+                                new_text = get_new_text(
+                                    final_text,
+                                    previous_live_text,
+                                )
+
+                                if new_text:
+
+                                    accumulated_transcript.append(
+                                        {
+                                            "text":
+                                                new_text,
+
+                                            "language":
+                                                latest_language,
+
+                                            "timestamp":
+                                                time.time(),
+
+                                            "isFinal":
+                                                True,
+                                        }
+                                    )
+
+                                    await websocket.send_json({
+                                        "type":
+                                            "transcript",
+
+                                        "speaker":
+                                            "Unknown",
+
+                                        "timestamp":
+                                            time.time(),
+
+                                        "text":
+                                            new_text,
+
+                                        "language":
+                                            latest_language,
+
+                                        "isFinal":
+                                            True,
+
+                                        "final":
+                                            True,
+
+                                        "provider":
+                                            "sarvam",
+                                    })
+
+                    except Exception as final_error:
+
+                        print(
+                            "[Speech] Final audio flush failed:",
+                            final_error,
+                        )
+
+                    # =============================================
+                    # SEND COMPLETE TRANSCRIPT
+                    # =============================================
+
+                    complete_transcript = []
+
+                    for item in accumulated_transcript:
+
+                        text_value = clean_text(
+                            item.get(
+                                "text",
+                                "",
+                            )
+                        )
+
+                        if not text_value:
+                            continue
+
+                        complete_transcript.append({
+                            "speaker":
+                                "Unknown",
+
+                            "timestamp":
+                                item.get(
+                                    "timestamp"
+                                ),
+
+                            "text":
+                                text_value,
+
+                            "language":
+                                item.get(
+                                    "language",
+                                    latest_language,
+                                ),
+
+                            "isFinal":
+                                True,
+                        })
+
+                    complete_text = clean_text(
+                        " ".join(
+                            item["text"]
+                            for item
+                            in complete_transcript
+                        )
+                    )
+
+                    print("")
+                    print(
+                        "=============================================="
+                    )
+                    print(
+                        "[Speech] COMPLETE TRANSCRIPT"
+                    )
+                    print(
+                        "=============================================="
+                    )
+                    print(
+                        complete_text
+                    )
+                    print(
+                        "=============================================="
+                    )
+                    print("")
+
+                    # =============================================
+                    # COMPLETE EVENT
+                    # =============================================
 
                     await websocket.send_json({
-                        "type": "stopped",
-                        "message": "Speech processing stopped.",
+                        "type":
+                            "transcript_complete",
+
+                        "transcript":
+                            complete_transcript,
+
+                        "fullTranscript":
+                            complete_text,
+
+                        "language":
+                            latest_language,
+
+                        "provider":
+                            "sarvam",
+
+                        "isFinal":
+                            True,
                     })
+
+                    # =============================================
+                    # STOP EVENT
+                    # =============================================
+
+                    try:
+
+                        await websocket.send_json({
+                            "type":
+                                "stopped",
+
+                            "message":
+                                "Speech processing stopped.",
+
+                            "language":
+                                latest_language,
+
+                            "provider":
+                                "sarvam",
+
+                            "transcript":
+                                complete_transcript,
+
+                            "fullTranscript":
+                                complete_text,
+                        })
+
+                    except Exception:
+                        pass
 
                     break
 
                 continue
 
-            # ------------------------------------------------
+            # =================================================
             # AUDIO MESSAGE
-            # ------------------------------------------------
+            # =================================================
 
             if message.get("bytes") is not None:
 
-                audio_bytes = message["bytes"]
+                audio_bytes = message[
+                    "bytes"
+                ]
 
                 if not audio_bytes:
                     continue
@@ -371,104 +1258,275 @@ async def live_transcription(websocket: WebSocket):
                 chunk_count += 1
 
                 print(
-                    f"Received audio chunk #{chunk_count}: "
+                    f"[Speech] Audio chunk "
+                    f"#{chunk_count}: "
                     f"{len(audio_bytes)} bytes"
                 )
 
-                with open(audio_path, "ab") as audio_file:
-                    audio_file.write(audio_bytes)
+                # =============================================
+                # SAVE COMPLETE CONSULTATION AUDIO TEMPORARILY
+                # =============================================
 
-                # Don't start Whisper for every tiny chunk.
-                # This prevents the CPU from constantly falling
-                # behind the microphone.
+                with open(
+                    audio_path,
+                    "ab",
+                ) as audio_file:
+
+                    audio_file.write(
+                        audio_bytes
+                    )
+
+                # =============================================
+                # WAIT FOR ENOUGH AUDIO
+                # =============================================
+
                 if (
-                    chunk_count - last_processed_chunk
-                    < LIVE_PROCESS_EVERY_CHUNKS
+                    chunk_count
+                    - last_processed_chunk
+                    < PROCESS_EVERY_CHUNKS
                 ):
                     continue
 
-                last_processed_chunk = chunk_count
+                # =============================================
+                # DO NOT OVERLAP SAME SESSION REQUESTS
+                # =============================================
 
-                try:
-
-                    segments, detected_language = (
-                        await transcribe_recent_audio(
-                            audio_path,
-                            language_code,
-                            temp_dir,
-                        )
-                    )
-
-                    if detected_language:
-                        latest_language = detected_language
-
-                    if not segments:
-                        continue
-
-                    # Combine the recent window into one readable
-                    # piece of text.
-                    current_text = " ".join(
-                        segment["text"]
-                        for segment in segments
-                    ).strip()
-
-                    new_text = get_new_text(
-                        current_text,
-                        previous_live_text,
-                    )
-
-                    # Keep the complete current window for the
-                    # next overlap comparison.
-                    previous_live_text = current_text
-
-                    if not new_text:
-                        continue
-
-                    latest_segment = segments[-1]
-
-                    await websocket.send_json({
-                        "type": "transcript",
-                        "speaker": "Unknown",
-                        "timestamp": round(
-                            latest_segment["end"],
-                            2,
-                        ),
-                        "text": new_text,
-                        "language": latest_language,
-                    })
-
-                except Exception as transcription_error:
+                if processing_lock.locked():
 
                     print(
-                        "Live transcription error:",
-                        transcription_error,
+                        "[Speech] Previous Sarvam "
+                        "request still running."
                     )
 
-                    # Keep WebSocket alive.
                     continue
+
+                last_processed_chunk = (
+                    chunk_count
+                )
+
+                # =============================================
+                # PROCESS ASYNCHRONOUSLY
+                # =============================================
+
+                async def process_current_window():
+
+                    nonlocal previous_live_text
+                    nonlocal latest_language
+
+                    try:
+
+                        async with processing_lock:
+
+                            started_at = (
+                                time.perf_counter()
+                            )
+
+                            result = (
+                                await process_audio_window(
+                                    audio_path,
+                                    temp_dir,
+                                    language_code,
+                                )
+                            )
+
+                            elapsed_ms = (
+                                (
+                                    time.perf_counter()
+                                    - started_at
+                                )
+                                * 1000
+                            )
+
+                        current_text = clean_text(
+                            result.get(
+                                "transcript",
+                                "",
+                            )
+                        )
+
+                        if not current_text:
+                            return
+
+                        detected_language = (
+                            result.get(
+                                "language",
+                                "",
+                            )
+                        )
+
+                        if detected_language:
+
+                            latest_language = (
+                                detected_language
+                            )
+
+                        new_text = get_new_text(
+                            current_text,
+                            previous_live_text,
+                        )
+
+                        # Store the current rolling window.
+                        previous_live_text = (
+                            current_text
+                        )
+
+                        if not new_text:
+                            return
+
+                        # =========================================
+                        # STORE TRANSCRIPT
+                        # =========================================
+
+                        transcript_item = {
+                            "text":
+                                new_text,
+
+                            "language":
+                                latest_language,
+
+                            "timestamp":
+                                time.time(),
+
+                            "isFinal":
+                                True,
+                        }
+
+                        accumulated_transcript.append(
+                            transcript_item
+                        )
+
+                        print(
+                            "[Speech] Sarvam completed "
+                            f"in {elapsed_ms:.0f} ms"
+                        )
+
+                        print(
+                            "[Speech] New transcript:",
+                            new_text,
+                        )
+
+                        # =========================================
+                        # SEND LIVE TRANSCRIPT
+                        # =========================================
+
+                        await websocket.send_json({
+                            "type":
+                                "transcript",
+
+                            "speaker":
+                                "Unknown",
+
+                            "timestamp":
+                                time.time(),
+
+                            "text":
+                                new_text,
+
+                            "language":
+                                latest_language,
+
+                            "isFinal":
+                                True,
+
+                            "final":
+                                True,
+
+                            "provider":
+                                "sarvam",
+                        })
+
+                    except asyncio.CancelledError:
+
+                        raise
+
+                    except Exception as error:
+
+                        print(
+                            "[Speech] Sarvam "
+                            "transcription error:",
+                            error,
+                        )
+
+                        # Do not kill the consultation if
+                        # one STT request fails.
+
+                        try:
+
+                            await websocket.send_json({
+                                "type":
+                                    "speech_warning",
+
+                                "message":
+                                    "Temporary transcription "
+                                    "delay. Continuing "
+                                    "consultation.",
+
+                                "provider":
+                                    "sarvam",
+                            })
+
+                        except Exception:
+                            pass
+
+                processing_task = asyncio.create_task(
+                    process_current_window()
+                )
 
     except WebSocketDisconnect:
 
-        print("WebSocket client disconnected.")
+        print(
+            "[Speech] WebSocket client disconnected."
+        )
 
     except Exception as error:
 
         print(
-            "WebSocket server error:",
+            "[Speech] WebSocket server error:",
             error,
         )
 
         try:
+
             await websocket.send_json({
-                "type": "error",
-                "message": str(error),
+                "type":
+                    "error",
+
+                "message":
+                    str(error),
             })
+
         except Exception:
             pass
 
     finally:
 
+        # ========================================================
+        # WAIT FOR CURRENT STT REQUEST
+        # ========================================================
+
+        if processing_task:
+
+            try:
+
+                await processing_task
+
+            except asyncio.CancelledError:
+                pass
+
+            except Exception as error:
+
+                print(
+                    "[Speech] Background task "
+                    "cleanup error:",
+                    error,
+                )
+
+        # ========================================================
+        # DELETE TEMPORARY AUDIO
+        # ========================================================
+
         try:
+
             if audio_path.exists():
                 audio_path.unlink()
 
@@ -477,10 +1535,16 @@ async def live_transcription(websocket: WebSocket):
                 ignore_errors=True,
             )
 
-        except Exception:
-            pass
+        except Exception as cleanup_error:
 
-        print("Speech session finished.")
+            print(
+                "[Speech] Cleanup warning:",
+                cleanup_error,
+            )
+
+        print(
+            "[Speech] Speech session finished."
+        )
 
 
 # ============================================================
@@ -495,9 +1559,25 @@ if __name__ == "__main__":
     print("==============================================")
     print(" Doctors Vedika Speech Service")
     print("==============================================")
-    print(f" Server: http://localhost:{PORT}")
-    print(f" WebSocket: ws://localhost:{PORT}/ws/live")
-    print(f" Live model: {MODEL_SIZE}")
+    print(
+        f"Server: http://{HOST}:{PORT}"
+    )
+    print(
+        f"WebSocket: ws://localhost:{PORT}/ws/live"
+    )
+    print(
+        "STT Provider: Sarvam AI"
+    )
+    print(
+        f"STT Model: {SARVAM_STT_MODEL}"
+    )
+    print(
+        f"STT Mode: {SARVAM_STT_MODE}"
+    )
+    print(
+        f"API Key configured: "
+        f"{bool(SARVAM_API_KEY)}"
+    )
     print("==============================================")
     print("")
 

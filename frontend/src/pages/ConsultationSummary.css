@@ -1,0 +1,431 @@
+/* ==========================================================================
+   CONSULTATION SUMMARY - LIGHT THEME (PHASE 2)
+   ========================================================================== */
+
+.consultation-summary-page {
+    min-height: 100vh;
+    background-color: #F5FBFD;
+    color: #0f172a;
+    font-family: 'Outfit', Inter, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- HEADER NAVBAR --- */
+.cs-navbar {
+    height: 70px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.cs-nav-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cs-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: #0f172a;
+}
+
+.cs-logo-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #01b6af, #0ea5e9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.cs-nav-center {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cs-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.cs-nav-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cs-nav-profile-info {
+    text-align: right;
+}
+
+.cs-nav-profile-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #0f172a;
+}
+
+.cs-nav-profile-role {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.cs-nav-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    object-fit: cover;
+}
+
+/* --- TWO COLUMN LAYOUT --- */
+.cs-main-layout {
+    display: grid;
+    grid-template-columns: 1fr 450px;
+    gap: 32px;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 32px;
+    align-items: start;
+    flex: 1;
+}
+
+/* --- LEFT COLUMN --- */
+.cs-left-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.cs-editable-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 20px;
+}
+
+.cs-transcript-section {
+    grid-column: 1 / -1; 
+    margin-top: 10px;
+}
+
+/* --- RIGHT COLUMN --- */
+.cs-right-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    position: sticky;
+    top: 94px; /* navbar height + padding */
+    height: calc(100vh - 110px);
+    overflow-y: auto;
+    padding-right: 8px;
+    padding-bottom: 24px;
+}
+
+/* --- CARDS --- */
+.cs-card {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    padding: 28px;
+    box-shadow: 0 10px 25px -5px rgba(11, 43, 111, 0.05);
+    margin-bottom: 24px;
+}
+
+.cs-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.cs-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: #0f172a;
+    font-size: 1.05rem;
+}
+
+.cs-card-icon {
+    color: #01b6af;
+    font-size: 1.1rem;
+}
+
+/* --- NEXT STEP TRACKER --- */
+.cs-step-tracker {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.cs-step-tracker::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    bottom: 20px;
+    left: 17px;
+    width: 2px;
+    background: #e2e8f0;
+    z-index: 1;
+}
+
+.cs-step {
+    display: flex;
+    gap: 16px;
+    position: relative;
+    z-index: 2;
+    margin-bottom: 24px;
+}
+.cs-step:last-child {
+    margin-bottom: 0;
+}
+
+.cs-step-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.cs-step.completed .cs-step-icon {
+    border-color: #01b6af;
+    color: #01b6af;
+}
+
+.cs-step.active .cs-step-icon {
+    border-color: #01b6af;
+    background: #01b6af;
+    color: #ffffff;
+    box-shadow: 0 0 0 4px rgba(1, 182, 175, 0.15);
+}
+
+.cs-step-content {
+    padding-top: 6px;
+}
+
+.cs-step-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #0f172a;
+    margin-bottom: 4px;
+}
+.cs-step.active .cs-step-title {
+    color: #01b6af;
+}
+
+.cs-step-desc {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+/* --- PATIENT DETAILS CARD --- */
+.cs-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+.cs-detail-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.cs-detail-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.cs-detail-value {
+    font-weight: 500;
+    color: #0f172a;
+    font-size: 0.9rem;
+}
+
+/* --- BUTTONS --- */
+.cs-button {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: none;
+    transition: all 0.2s;
+}
+
+.cs-button-outline {
+    background: transparent;
+    border: 1px solid #01b6af;
+    color: #01b6af;
+}
+.cs-button-outline:hover {
+    background: rgba(1, 182, 175, 0.05);
+}
+
+.cs-button-primary {
+    background: #01b6af;
+    color: white;
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+}
+.cs-button-primary:hover {
+    background: #008f89;
+}
+
+.cs-button-secondary {
+    background: #ffffff;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+}
+.cs-button-secondary:hover {
+    background: #f1f5f9;
+}
+
+.cs-actions-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+/* --- EDITABLE FIELDS --- */
+.cs-textarea {
+    width: 100%;
+    min-height: 80px;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: #334155;
+    resize: vertical;
+    transition: all 0.2s;
+}
+.cs-textarea:hover, .cs-textarea:focus {
+    border-color: #cbd5e1;
+    background: #ffffff;
+    outline: none;
+}
+
+.cs-list-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.cs-list-row:last-child {
+    margin-bottom: 0;
+}
+
+.cs-btn-remove {
+    padding: 0 12px;
+    background: transparent;
+    border: 1px solid #fecaca;
+    color: #ef4444;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+}
+.cs-btn-remove:hover {
+    background: #fef2f2;
+}
+
+.cs-btn-add {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid #01b6af;
+    color: #01b6af;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.85rem;
+    margin-top: 4px;
+}
+.cs-btn-add:hover {
+    background: rgba(1, 182, 175, 0.05);
+}
+
+/* --- TRANSCRIPT --- */
+.cs-transcript-box {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.cs-transcript-line {
+    display: flex;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+.cs-transcript-line:last-child {
+    border-bottom: none;
+}
+
+.cs-speaker-badge {
+    min-width: 70px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #01b6af;
+}
+.cs-speaker-badge.patient {
+    color: #6366f1;
+}
+
+.cs-transcript-content {
+    color: #334155;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.cs-info-banner {
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(1, 182, 175, 0.05);
+    border: 1px solid rgba(1, 182, 175, 0.2);
+    border-radius: 12px;
+    color: #0f172a;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+}
+.cs-info-banner i {
+    color: #01b6af;
+    font-size: 1.2rem;
+}

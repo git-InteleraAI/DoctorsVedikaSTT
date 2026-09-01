@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { mockPatients } from "../data/mockPatients";
 
-const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL || "ws://localhost:8005/ws/live";
-const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+
+const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL;
+const NODE_API_URL = import.meta.env.VITE_NODE_API_URL;
 
 
 const PROCESSING_STEPS = [
@@ -43,21 +43,33 @@ const Consultation = () => {
     const appointmentId = location.state?.appointmentId || searchParams.get("appointmentId") || null;
     const doctorId = location.state?.doctorId || "default-doctor";
     const appointmentPatient = location.state?.patient;
-    const mockPatient = mockPatients.find((p) => p.id === patientId) || mockPatients[0];
     const patient = appointmentPatient
         ? {
-            ...mockPatient,
             id: appointmentPatient.patientId || patientId,
-            name: appointmentPatient.patient || mockPatient.name,
-            age: appointmentPatient.age ?? mockPatient.age,
-            gender: appointmentPatient.gender ?? mockPatient.gender,
-            bloodGroup: appointmentPatient.bloodGroup ?? mockPatient.bloodGroup,
-            weight: appointmentPatient.weight ?? mockPatient.weight,
-            bloodPressure: appointmentPatient.bloodPressure ?? mockPatient.bloodPressure,
-            allergies: appointmentPatient.allergies ?? mockPatient.allergies,
-            history: appointmentPatient.history ?? mockPatient.history,
+            name: appointmentPatient.patientName || appointmentPatient.fullName || "Unknown Patient",
+            age: appointmentPatient.age || "Not Available",
+            gender: appointmentPatient.gender || "Not Available",
+            bloodGroup: appointmentPatient.bloodGroup || "Not Available",
+            weight: appointmentPatient.weight || "Not Available",
+            bloodPressure: appointmentPatient.bloodPressure || "Not Available",
+            allergies: appointmentPatient.allergies || "None documented",
+            history: appointmentPatient.history || "None documented",
+            reason: appointmentPatient.reason || "None documented",
+            isVerified: true
         }
-        : mockPatient;
+        : {
+            id: patientId,
+            name: "Unknown Patient",
+            age: "Not Available",
+            gender: "Not Available",
+            bloodGroup: "Not Available",
+            weight: "Not Available",
+            bloodPressure: "Not Available",
+            allergies: "None documented",
+            history: "None documented",
+            reason: "None documented",
+            isVerified: false
+        };
 
     // ============================================================
     // STATE
@@ -65,9 +77,16 @@ const Consultation = () => {
 
     const [isRecording, setIsRecording] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [isReviewing, setIsReviewing] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] =
         useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+    // Stable ID for this consultation session.
+    // This will be used by the backend in the next optimization phase.
+    const [consultationId] = useState(
+        () => `consultation-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    );
 
     const [transcript, setTranscript] = useState([]);
     const [liveInterimText, setLiveInterimText] = useState("");
@@ -109,8 +128,15 @@ const Consultation = () => {
     // Store the COMPLETE recording.
     const audioChunksRef = useRef([]);
 
+    // Always keep the latest transcript outside React state as well.
+    // This prevents the End/Process flow from reading a stale state snapshot.
+    const transcriptRef = useRef([]);
+
     // Prevent duplicate live transcript lines.
     const lastTranscriptRef = useRef("");
+
+    // Resolves when the Python speech service confirms that it has stopped.
+    const websocketStopResolverRef = useRef(null);
 
     // Used to prevent stale WebSocket messages after stopping.
     const sessionActiveRef = useRef(false);
@@ -138,19 +164,52 @@ const Consultation = () => {
     }, [summaryProgress, isGeneratingSummary]);
 
     useEffect(() => {
+        if (isRecording && language) {
+            console.log("[Consultation] Language updated during recording:", language);
+            // stopBrowserSpeechRecognition();
+            // startBrowserSpeechRecognition();
+        }
+    }, [language]);
+
+    // Auto-scroll transcript to bottom
+    useEffect(() => {
         if (transcriptContainerRef.current) {
-            transcriptContainerRef.current.scrollTop =
-                transcriptContainerRef.current.scrollHeight;
+            transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
         }
     }, [transcript, liveInterimText]);
 
+    // ============================================================
+    // BACKGROUND AI SUMMARY SYNC
+    // ============================================================
     useEffect(() => {
-        if (isRecording && !isPaused && sessionActiveRef.current) {
-            console.log("[Consultation] Language updated during recording:", language);
-            stopBrowserSpeechRecognition();
-            startBrowserSpeechRecognition();
-        }
-    }, [language]);
+        if (!isListening || !sessionActiveRef.current) return;
+
+        const syncInterval = setInterval(async () => {
+            const currentTranscript = transcriptRef.current;
+            if (!currentTranscript || currentTranscript.length === 0) return;
+
+            try {
+                await fetch(`${NODE_API_URL}/api/consultation/prepare`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        doctorId: doctorId,
+                        patientId: patient.id,
+                        appointmentId: String(appointmentId),
+                        consultationId: consultationId,
+                        liveTranscript: currentTranscript,
+                        patientReason: patient.reason,
+                    }),
+                });
+            } catch (error) {
+                console.warn("[Background Sync] Failed to sync transcript:", error);
+            }
+        }, 30000); // Sync every 30 seconds
+
+        return () => clearInterval(syncInterval);
+    }, [isListening, doctorId, patient.id, appointmentId, consultationId]);
 
     // ============================================================
     // CLEANUP
@@ -294,12 +353,12 @@ const Consultation = () => {
             console.warn("Resume MediaRecorder warning:", e);
         }
 
-        // Resume Speech Recognition
-        try {
-            startBrowserSpeechRecognition();
-        } catch (e) {
-            console.warn("Resume SpeechRecognition warning:", e);
-        }
+        // Resume Speech Recognition removed (relying exclusively on Sarvam STT)
+        // try {
+        //     startBrowserSpeechRecognition();
+        // } catch (e) {
+        //     console.warn("Resume SpeechRecognition warning:", e);
+        // }
 
         // Send resume to Python WebSocket
         try {
@@ -437,12 +496,15 @@ const Consultation = () => {
                             isFinal: true,
                         };
 
-                        setTranscript(
-                            (previous) => [
+                        setTranscript((previous) => {
+                            const nextTranscript = [
                                 ...previous,
                                 newLine,
-                            ]
-                        );
+                            ];
+
+                            transcriptRef.current = nextTranscript;
+                            return nextTranscript;
+                        });
 
                         return;
                     }
@@ -471,12 +533,16 @@ const Consultation = () => {
                     // STOPPED
                     // --------------------------------------------
 
-                    if (
-                        message.type === "stopped"
-                    ) {
+                    if (message.type === "stopped") {
                         console.log(
                             "[Consultation] Python service stopped"
                         );
+
+                        if (websocketStopResolverRef.current) {
+                            const resolveStop = websocketStopResolverRef.current;
+                            websocketStopResolverRef.current = null;
+                            resolveStop();
+                        }
                     }
                 } catch (error) {
                     console.error(
@@ -561,9 +627,11 @@ const Consultation = () => {
                         setTranscript((previous) => {
                             const lastLine = previous[previous.length - 1];
                             if (lastLine && lastLine.text.trim().toLowerCase() === text.toLowerCase()) {
+                                transcriptRef.current = previous;
                                 return previous;
                             }
-                            return [
+
+                            const nextTranscript = [
                                 ...previous,
                                 {
                                     speaker: "Conversation",
@@ -572,6 +640,9 @@ const Consultation = () => {
                                     isFinal: true,
                                 },
                             ];
+
+                            transcriptRef.current = nextTranscript;
+                            return nextTranscript;
                         });
                         setLiveInterimText("");
                     } else {
@@ -640,6 +711,7 @@ const Consultation = () => {
         setError("");
 
         setTranscript([]);
+        transcriptRef.current = [];
         setLiveInterimText("");
 
         audioChunksRef.current = [];
@@ -688,8 +760,8 @@ const Consultation = () => {
 
             mediaStreamRef.current = stream;
 
-            // Start live Web Speech API on screen
-            startBrowserSpeechRecognition();
+            // Start live Web Speech API on screen removed (relying exclusively on Sarvam STT)
+            // startBrowserSpeechRecognition();
 
             // Connect Python WebSocket in background
             connectWebSocket().catch((err) => {
@@ -857,22 +929,113 @@ const Consultation = () => {
     // END CONSULTATION
     // ============================================================
 
-    const endConsultation = async () => {
-        if (!isRecording) {
-            return;
-        }
+    const stopRecording = async () => {
+        if (!isRecording) return;
 
         if (timerIntervalRef.current) {
             clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
         }
 
+        const recorder = mediaRecorderRef.current;
+        const stream = mediaStreamRef.current;
+        const websocket = websocketRef.current;
+
+        try {
+            if (recorder && recorder.state !== "inactive") {
+                await new Promise((resolve) => {
+                    let resolved = false;
+                    const finish = () => { if (resolved) return; resolved = true; resolve(); };
+                    const originalOnStop = recorder.onstop;
+                    recorder.onstop = (event) => {
+                        console.log("[Consultation] Audio recording stopped");
+                        setIsRecording(false);
+                        if (typeof originalOnStop === "function") {
+                            try { originalOnStop(event); } catch (e) { }
+                        }
+                        finish();
+                    };
+                    try { recorder.requestData(); } catch (e) { }
+                    try { recorder.stop(); } catch (e) { finish(); }
+                    setTimeout(finish, 1500);
+                });
+            }
+            if (stream) stream.getTracks().forEach((track) => track.stop());
+            setIsRecording(false);
+            setIsListening(false);
+
+            // Ask the speech service to flush its final audio/transcript before
+            // closing the socket. The previous fixed 200ms delay could close the
+            // connection before the final Whisper segment arrived.
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                await new Promise((resolve) => {
+                    let settled = false;
+
+                    const finish = () => {
+                        if (settled) return;
+                        settled = true;
+                        if (websocketStopResolverRef.current === finish) {
+                            websocketStopResolverRef.current = null;
+                        }
+                        resolve();
+                    };
+
+                    websocketStopResolverRef.current = finish;
+
+                    try {
+                        websocket.send(JSON.stringify({ type: "stop" }));
+                    } catch (e) {
+                        console.warn("[Consultation] Final WS stop warning:", e);
+                        finish();
+                        return;
+                    }
+
+                    // Never block the UI indefinitely if the speech service does
+                    // not send its stopped acknowledgement.
+                    setTimeout(finish, 2000);
+                });
+            }
+
+            websocketStopResolverRef.current = null;
+
+            try {
+                if (websocket) websocket.close();
+            } catch (e) { }
+
+            websocketRef.current = null;
+            mediaRecorderRef.current = null;
+            mediaStreamRef.current = null;
+
+            setIsReviewing(true);
+            sessionActiveRef.current = false;
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const discardRecording = () => {
+        cleanupRecording();
+        setTranscript([]);
+        transcriptRef.current = [];
+        setLiveInterimText("");
+        setRecordingSeconds(0);
+        audioChunksRef.current = [];
+        setIsReviewing(false);
+        setIsRecording(false);
+        setIsListening(false);
+        setIsPaused(false);
         setError("");
-        setIsGeneratingSummary(true);
-        setSummaryProgress(10);
+    };
+
+    const processRecording = async () => {
+        if (!isReviewing) {
+            return;
+        }
+
+        setError("");
+        // setIsGeneratingSummary(true); // User requested no processing bar, wants it to feel instant
         setSummaryStage(0);
         setSummaryElapsedSeconds(0);
-        sessionActiveRef.current = false;
 
         if (summaryIntervalRef.current) clearInterval(summaryIntervalRef.current);
         const progressStartTime = Date.now();
@@ -888,339 +1051,116 @@ const Consultation = () => {
             });
         }, 250);
 
-        const recorder = mediaRecorderRef.current;
-        const stream = mediaStreamRef.current;
-        const websocket = websocketRef.current;
-
         try {
-            // --------------------------------------------------------
-            // STOP RECORDER AND WAIT FOR THE FINAL AUDIO CHUNK
-            // --------------------------------------------------------
-
-            if (recorder && recorder.state !== "inactive") {
-                await new Promise((resolve) => {
-                    let resolved = false;
-
-                    const finish = () => {
-                        if (resolved) return;
-                        resolved = true;
-                        resolve();
-                    };
-
-                    const originalOnStop = recorder.onstop;
-
-                    recorder.onstop = (event) => {
-                        console.log(
-                            "[Consultation] Audio recording stopped"
-                        );
-
-                        setIsRecording(false);
-
-                        if (typeof originalOnStop === "function") {
-                            try {
-                                originalOnStop(event);
-                            } catch (error) {
-                                console.warn(
-                                    "Previous onstop handler error:",
-                                    error
-                                );
-                            }
-                        }
-
-                        finish();
-                    };
-
-                    try {
-                        recorder.requestData();
-                    } catch (error) {
-                        console.warn(
-                            "requestData failed:",
-                            error
-                        );
-                    }
-
-                    try {
-                        recorder.stop();
-                    } catch (error) {
-                        console.warn(
-                            "Recorder stop error:",
-                            error
-                        );
-                        finish();
-                    }
-
-                    // Safety timeout so the UI never gets stuck.
-                    setTimeout(finish, 1500);
-                });
-            }
-
-            // --------------------------------------------------------
-            // STOP MICROPHONE
-            // --------------------------------------------------------
-
-            if (stream) {
-                stream
-                    .getTracks()
-                    .forEach((track) => track.stop());
-            }
-
-            setIsRecording(false);
-            setIsListening(false);
-
-            // --------------------------------------------------------
-            // STOP PYTHON LIVE TRANSCRIPTION
-            // --------------------------------------------------------
-
-            try {
-                if (
-                    websocket &&
-                    websocket.readyState === WebSocket.OPEN
-                ) {
-                    websocket.send(
-                        JSON.stringify({
-                            type: "stop",
-                        })
-                    );
-                }
-            } catch (error) {
-                console.warn(
-                    "Could not send stop to Python:",
-                    error
-                );
-            }
-
-            // Give the final WebSocket message a moment to arrive.
-            await new Promise((resolve) =>
-                setTimeout(resolve, 200)
-            );
-
-            try {
-                if (websocket) {
-                    websocket.close();
-                }
-            } catch (error) {
-                console.warn(
-                    "WebSocket close error:",
-                    error
-                );
-            }
-
-            websocketRef.current = null;
-            mediaRecorderRef.current = null;
-            mediaStreamRef.current = null;
-
-            // --------------------------------------------------------
-            // BUILD COMPLETE AUDIO
-            // --------------------------------------------------------
-
             const chunks = audioChunksRef.current;
-
-            console.log(
-                "[Consultation] Total audio chunks:",
-                chunks.length
-            );
-
+            console.log("[Consultation] Total audio chunks:", chunks.length);
             if (!chunks.length) {
-                throw new Error(
-                    "No audio was recorded. Please try the consultation again."
-                );
+                throw new Error("No audio was recorded. Please try the consultation again.");
             }
 
-            const completeAudio = new Blob(chunks, {
-                type: "audio/webm",
-            });
-
-            console.log(
-                "[Consultation] Complete audio size:",
-                completeAudio.size,
-                "bytes"
-            );
-
-            if (completeAudio.size < 1000) {
-                throw new Error(
-                    "The consultation recording is too short or empty."
-                );
-            }
-
-            // --------------------------------------------------------
-            // SEND COMPLETE AUDIO TO NODE -> GEMINI
-            // --------------------------------------------------------
-
+            // We no longer upload the heavy audio file to the backend, drastically speeding up the save process!
+            // We only send the transcript data now.
             const formData = new FormData();
+            // formData.append("audio", completeAudio, `consultation-${Date.now()}.webm`);
+            formData.append("doctorId", doctorId);
+            formData.append("patientId", patient.id);
+            formData.append("appointmentId", String(appointmentId));
 
-            formData.append(
-                "audio",
-                completeAudio,
-                `consultation-${Date.now()}.webm`
-            );
+            // Use the ref so the exact latest transcript is sent even if a
+            // WebSocket/browser recognition result arrived immediately before
+            // this function was called.
+            const latestTranscript = Array.isArray(transcriptRef.current)
+                ? transcriptRef.current
+                : transcript;
 
-            formData.append(
-                "doctorId",
-                doctorId
-            );
+            formData.append("liveTranscript", JSON.stringify(latestTranscript));
+            formData.append("consultationId", consultationId);
+            formData.append("patientReason", patient.reason || "");
 
-            formData.append(
-                "patientId",
-                patient.id
-            );
-
-            formData.append(
-                "appointmentId",
-                String(appointmentId)
-            );
-
-            // Send the complete live transcript as a reference as well.
-            // This prevents the final AI pass from dropping or rewriting
-            // the last few spoken lines of the consultation.
-            formData.append(
-                "liveTranscript",
-                JSON.stringify(transcript)
-            );
-
-            console.log(
-                "[Consultation] Sending COMPLETE recording to Node/Gemini..."
-            );
+            console.log("[Consultation] Sending COMPLETE recording to Node/Gemini...");
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+            const timeoutId = setTimeout(() => controller.abort(), 5 * 1000); // 5-second timeout as requested
 
             let response;
+            let data;
             try {
-                response = await fetch(
-                    `${NODE_API_URL}/api/consultation/complete`,
-                    {
-                        method: "POST",
-                        body: formData,
-                        signal: controller.signal,
-                    }
-                );
+                response = await fetch(`${NODE_API_URL}/api/consultation/complete`, {
+                    method: "POST",
+                    body: formData,
+                    signal: controller.signal,
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || `Backend returned ${response.status}`);
+                }
+                data = await response.json();
             } catch (requestError) {
                 if (requestError?.name === "AbortError") {
-                    throw new Error(
-                        "AI consultation processing exceeded 5 minutes. Check the backend terminal for the Gemini error and try again."
-                    );
+                    console.log("[Consultation] AI processing exceeded 5 seconds. Proceeding to summary page with empty summary.");
+                    data = {
+                        success: true,
+                        consultation: {
+                            doctorId,
+                            patientId: patient.id,
+                            appointmentId: String(appointmentId),
+                            consultationId,
+                            transcript: latestTranscript,
+                            summary: {},
+                            detectedLanguage: "Auto-detected"
+                        }
+                    };
+                } else {
+                    throw requestError;
                 }
-                throw requestError;
             } finally {
                 clearTimeout(timeoutId);
             }
 
-            if (!response.ok) {
-                const errorText = await response.text();
-
-                throw new Error(
-                    errorText ||
-                    `Backend returned ${response.status}`
-                );
-            }
-
-            const data = await response.json();
-
-            console.log(
-                "[Consultation] Final consultation response:",
-                data
-            );
+            console.log("[Consultation] Final consultation response:", data);
 
             if (!data.success || !data.consultation) {
-                throw new Error(
-                    data.message ||
-                    "Consultation processing failed."
-                );
+                throw new Error(data.message || "Consultation processing failed.");
             }
 
             const consultation = data.consultation;
+            const finalTranscript = Array.isArray(consultation.transcript) ? consultation.transcript : [];
+            const liveTranscript = Array.isArray(transcriptRef.current)
+                ? transcriptRef.current
+                : (Array.isArray(transcript) ? transcript : []);
 
-            // --------------------------------------------------------
-            // PROTECT THE COMPLETE TRANSCRIPT
-            // --------------------------------------------------------
-            // The live WebSocket transcript is already captured locally.
-            // If the final AI transcript is noticeably shorter, use the
-            // live transcript for the report so the end of the consultation
-            // is not silently lost. The Gemini summary is still preserved.
-            const finalTranscript = Array.isArray(
-                consultation.transcript
-            )
-                ? consultation.transcript
-                : [];
-
-            const liveTranscript = Array.isArray(
-                transcript
-            )
-                ? transcript
-                : [];
-
-            const transcriptChars = (items) =>
-                items
-                    .map((item) =>
-                        String(
-                            item?.text ||
-                            item?.transcript ||
-                            ""
-                        )
-                    )
-                    .join(" ")
-                    .trim()
-                    .length;
-
-            const finalChars = transcriptChars(
-                finalTranscript
-            );
-
-            const liveChars = transcriptChars(
-                liveTranscript
-            );
-
+            const transcriptChars = (items) => items.map((item) => String(item?.text || item?.transcript || "")).join(" ").trim().length;
+            const finalChars = transcriptChars(finalTranscript);
+            const liveChars = transcriptChars(liveTranscript);
             const finalTranscriptHasContent = finalTranscript.length > 0;
+            const displayTranscript = finalTranscriptHasContent ? finalTranscript : liveTranscript;
 
-            const displayTranscript =
-                finalTranscriptHasContent
-                    ? finalTranscript
-                    : liveTranscript;
-
-            console.log(
-                "[Consultation] Transcript selection:",
-                {
-                    finalSegments: finalTranscript.length,
-                    liveSegments: liveTranscript.length,
-                    finalChars,
-                    liveChars,
-                    usingFinalTranscript: finalTranscriptHasContent,
-                }
-            );
-
-            // --------------------------------------------------------
-            // SAVE RESULT SO THE SUMMARY PAGE ALSO WORKS AFTER
-            // REFRESH / DIRECT NAVIGATION.
-            // --------------------------------------------------------
+            console.log("[Consultation] Transcript selection:", {
+                finalSegments: finalTranscript.length,
+                liveSegments: liveTranscript.length,
+                finalChars, liveChars, usingFinalTranscript: finalTranscriptHasContent,
+            });
 
             const summaryPayload = {
                 patient,
                 doctorId: consultation.doctorId,
                 patientId: consultation.patientId,
                 appointmentId: consultation.appointmentId,
-                detectedLanguage:
-                    consultation.detectedLanguage || "",
+                consultationId,
+                detectedLanguage: consultation.detectedLanguage || "",
                 transcript: displayTranscript,
                 finalGeminiTranscript: finalTranscript,
                 liveTranscript,
-                summary:
-                    consultation.summary || {},
+                summary: consultation.summary || {},
                 duration: formatDuration(recordingSeconds),
                 durationSeconds: recordingSeconds,
                 startedAt: startTimeRef.current || new Date().toISOString(),
                 endedAt: new Date().toISOString(),
-                generatedAt:
-                    new Date().toISOString(),
+                generatedAt: new Date().toISOString(),
             };
 
-            sessionStorage.setItem(
-                `consultation-result-${patient.id}`,
-                JSON.stringify(summaryPayload)
-            );
-
-            // --------------------------------------------------------
-            // OPEN FINAL SUMMARY
-            // --------------------------------------------------------
+            sessionStorage.setItem(`consultation-result-${patient.id}`, JSON.stringify(summaryPayload));
 
             setSummaryProgress(100);
             setSummaryStage(4);
@@ -1229,24 +1169,15 @@ const Consultation = () => {
                 summaryIntervalRef.current = null;
             }
 
-            navigate(
-                `/consultation/${patient.id}/summary`,
-                {
-                    state: summaryPayload,
-                    replace: false,
-                }
-            );
+            navigate(`/consultation/${patient.id}/summary`, {
+                state: summaryPayload,
+                replace: false,
+            });
 
         } catch (error) {
-            console.error(
-                "[Consultation] Final processing error:",
-                error
-            );
-
-            setError(
-                error?.message ||
-                "Unable to generate the final AI consultation report."
-            );
+            console.error("[Consultation] Final processing error:", error);
+            setError(error?.message || "Unable to generate the final AI consultation report.");
+            setIsReviewing(true);
         } finally {
             if (summaryIntervalRef.current) {
                 clearInterval(summaryIntervalRef.current);
@@ -1261,175 +1192,126 @@ const Consultation = () => {
     // ============================================================
 
     return (
-        <div className="portal-container">
+        <div style={{ background: "#F5FBFD", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-            <main
-                className="main-content"
-                style={{
-                    paddingTop: "1rem",
-                }}
-            >
-
-                {/* HEADER */}
-
-                <div className="header-top">
-
-                    <button
-                        onClick={() =>
-                            navigate("/dashboard")
-                        }
-                        className="btn btn-secondary"
-                    >
-                        <i className="fa-solid fa-arrow-left"></i>
-                        &nbsp;
-                        Back
-                    </button>
-
-                    {isRecording && (
-                        <div
-                            className="recording-indicator"
-                            style={{
-                                borderColor: isPaused ? "rgba(245, 158, 11, 0.5)" : undefined,
-                                color: isPaused ? "#fbbf24" : undefined,
-                                background: isPaused ? "rgba(245, 158, 11, 0.12)" : undefined
-                            }}
-                        >
-                            <i
-                                className={`fa-solid ${isPaused ? "fa-pause" : "fa-circle blink"}`}
-                                style={{ color: isPaused ? "#f59e0b" : "#ef4444" }}
-                            ></i>
-                            {isPaused ? "Consultation Paused" : "Live Consultation"}
-                        </div>
-                    )}
-
+            {/* ERROR */}
+            {error && (
+                <div style={{ margin: "15px", padding: "12px 16px", borderRadius: "10px", background: "rgba(255,51,102,0.12)", border: "1px solid rgba(255,51,102,0.3)", color: "#ff6b8a" }}>
+                    {error}
                 </div>
+            )}
 
-
-                {/* ERROR */}
-
-                {error && (
-                    <div
-                        style={{
-                            margin: "15px 0",
-                            padding:
-                                "12px 16px",
-                            borderRadius: "10px",
-                            background:
-                                "rgba(255,51,102,0.12)",
-                            border:
-                                "1px solid rgba(255,51,102,0.3)",
-                            color: "#ff6b8a",
-                        }}
-                    >
-                        {error}
-                    </div>
-                )}
-
-
-                <div className="consultation-layout">
+            {!isGeneratingSummary && (
+                <main className="consultation-layout" style={{ display: "flex", flex: 1, padding: "24px", gap: "24px", boxSizing: "border-box", minHeight: 0 }}>
+                    {/* ... sidebar ... */}
 
                     {/* ====================================================
-                        PATIENT SIDEBAR
-                    ==================================================== */}
+                    PATIENT SIDEBAR
+                ==================================================== */}
+                    <aside className="patient-sidebar" style={{
+                        width: "380px",
+                        background: "#ffffff",
+                        borderRadius: "20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        position: "relative",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                        boxShadow: "0 8px 30px rgba(11, 43, 111, 0.08)",
+                        border: "1px solid #DCECEF"
+                    }}>
+                        {/* TOP BLUE SECTION */}
+                        <div style={{
+                            background: "linear-gradient(180deg, #0B2B6F 0%, #08AFC0 100%)",
+                            padding: "24px",
+                            borderBottomLeftRadius: "24px",
+                            borderBottomRightRadius: "24px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "24px",
+                            position: "relative",
+                            overflow: "hidden",
+                            zIndex: 2
+                        }}>
+                            {/* Watermark inside top section */}
+                            <i className="fa-solid fa-shield-halved" style={{ position: "absolute", right: "-20px", top: "20px", fontSize: "160px", color: "#ffffff", opacity: 0.06, transform: "rotate(15deg)" }}></i>
 
-                    <aside className="patient-sidebar">
-
-                        <div
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "15px",
-                                marginBottom:
-                                    "25px",
-                            }}
-                        >
-
-                            <div
-                                style={{
-                                    width: "55px",
-                                    height: "55px",
-                                    borderRadius:
-                                        "50%",
-                                    background:
-                                        "linear-gradient(135deg, var(--primary), var(--secondary))",
-                                    display:
-                                        "flex",
-                                    alignItems:
-                                        "center",
-                                    justifyContent:
-                                        "center",
-                                    fontSize:
-                                        "22px",
-                                    fontWeight:
-                                        "bold",
-                                    color: "white",
-                                }}
+                            {/* Inner Back Button */}
+                            <button
+                                onClick={() => navigate("/dashboard")}
+                                style={{ background: "#ffffff", color: "#0B2B6F", border: "none", padding: "8px 20px", borderRadius: "12px", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "8px", alignSelf: "flex-start", zIndex: 1, boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}
                             >
-                                {patient.name
-                                    ? patient.name[0]
-                                    : "P"}
-                            </div>
+                                <i className="fa-solid fa-arrow-left"></i> Back
+                            </button>
 
-                            <div>
-                                <h3
-                                    style={{
-                                        margin: 0,
-                                    }}
-                                >
-                                    {
-                                        patient.name
-                                    }
-                                </h3>
-
-                                <span
-                                    style={{
-                                        color: "var(--text-muted)",
-                                        fontSize:
-                                            "0.85rem",
-                                    }}
-                                >
-                                    {
-                                        patient.age
-                                    }{" "}
-                                    years •{" "}
-                                    {
-                                        patient.gender
-                                    }
-                                </span>
-                            </div>
-
-                        </div>
-
-                        {/* Patient Quick Vitals / Info */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
-                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
-                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Blood Group</div>
-                                <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "2px", color: "var(--primary)" }}>{patient.bloodGroup || "O+"}</div>
-                            </div>
-                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
-                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Weight</div>
-                                <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "2px", color: "#ffffff" }}>{patient.weight || "65 kg"}</div>
-                            </div>
-                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
-                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Blood Pressure</div>
-                                <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "2px", color: "#ffffff" }}>{patient.bloodPressure || "120/80"}</div>
-                            </div>
-                            <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "10px 14px", borderRadius: "10px" }}>
-                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Allergies</div>
-                                <div style={{ fontSize: "0.9rem", fontWeight: 600, marginTop: "2px", color: "#f87171" }}>{patient.allergies || "None"}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "15px", zIndex: 1 }}>
+                                <div style={{ width: "65px", height: "65px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "28px", fontWeight: "bold", color: "white", background: "rgba(255,255,255,0.15)" }}>
+                                    {patient.name ? patient.name[0] : "P"}
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, color: "#ffffff", fontSize: "1.4rem", fontWeight: 650 }}>{patient.name}</h3>
+                                    <span style={{ color: "rgba(255,255,255,0.9)", fontSize: "0.9rem", display: "block", marginTop: "4px" }}>{patient.age} years • {patient.gender}</span>
+                                    <span style={{ color: "#ffffff", fontSize: "0.85rem", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", marginTop: "6px" }}>
+                                        <i className="fa-solid fa-circle-check" style={{ color: "#ffffff" }}></i> Verified Patient
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Known Medical History */}
-                        <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid var(--glass-border)", padding: "14px", borderRadius: "12px" }}>
-                            <div style={{ fontSize: "0.8rem", color: "var(--primary)", fontWeight: 700, marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
-                                <i className="fa-solid fa-notes-medical"></i> Medical Background
+                        {/* BOTTOM WHITE SECTION (Cards) */}
+                        <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px", flex: 1, position: "relative", zIndex: 1, background: "#ffffff" }}>
+                            {/* Patient Quick Vitals / Info */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", zIndex: 1 }}>
+                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <i className="fa-solid fa-droplet" style={{ color: "#08AFC0", fontSize: "1.2rem", marginBottom: "6px" }}></i>
+                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Blood Group</div>
+                                    <div style={{ fontSize: "1.1rem", fontWeight: 750, color: "#08AFC0" }}>{patient.bloodGroup === "Not Available" ? "-" : patient.bloodGroup}</div>
+                                </div>
+                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <i className="fa-solid fa-weight-scale" style={{ color: "#1557B8", fontSize: "1.2rem", marginBottom: "6px" }}></i>
+                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Weight</div>
+                                    <div style={{ fontSize: "1.1rem", fontWeight: 750, color: "#0B2B6F" }}>{patient.weight === "Not Available" ? "-" : patient.weight}</div>
+                                </div>
+                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <i className="fa-solid fa-heart-pulse" style={{ color: "#0B2B6F", fontSize: "1.2rem", marginBottom: "6px" }}></i>
+                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Blood Pressure</div>
+                                    <div style={{ fontSize: "1.1rem", fontWeight: 750, color: "#0B2B6F" }}>{patient.bloodPressure === "Not Available" ? "-" : patient.bloodPressure}</div>
+                                </div>
+                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <i className="fa-solid fa-staff-snake" style={{ color: "#1557B8", fontSize: "1.2rem", marginBottom: "6px" }}></i>
+                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Allergies</div>
+                                    <div style={{ fontSize: "1rem", fontWeight: 750, color: "#08AFC0", lineHeight: "1.3" }}>{patient.allergies === "None documented" ? "None documented" : patient.allergies}</div>
+                                </div>
                             </div>
-                            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: "1.5" }}>
-                                {patient.history || "No prior major chronic conditions on record."}
+
+                            {/* Known Medical History */}
+                            <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "20px", borderRadius: "18px", zIndex: 1 }}>
+                                <div style={{ fontSize: "0.95rem", color: "#08AFC0", fontWeight: 750, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <i className="fa-solid fa-notes-medical"></i> Medical Background
+                                </div>
+                                <div style={{ fontSize: "0.9rem", color: "#0B2B6F", lineHeight: "1.6", fontWeight: 500, whiteSpace: "pre-line" }}>
+                                    {patient.history || "No known medical history"}
+                                </div>
+                            </div>
+
+                            {/* Patient Symptoms */}
+                            <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "20px", borderRadius: "18px", zIndex: 1 }}>
+                                <div style={{ fontSize: "0.95rem", color: "#08AFC0", fontWeight: 750, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <i className="fa-solid fa-stethoscope"></i> Patient Symptoms
+                                </div>
+                                <div style={{ fontSize: "0.9rem", color: "#0B2B6F", lineHeight: "1.6", fontWeight: 500, whiteSpace: "pre-line" }}>
+                                    {patient.reason || "No symptoms documented"}
+                                </div>
+                            </div>
+
+                            {/* Bottom Wave Graphic */}
+                            <div style={{ position: "absolute", bottom: "-1px", left: 0, right: 0, zIndex: 0 }}>
+                                <svg viewBox="0 0 1440 320" style={{ width: "100%", height: "auto", display: "block" }}>
+                                    <path fill="#08AFC0" fillOpacity="1" d="M0,192L48,192C96,192,192,192,288,213.3C384,235,480,277,576,282.7C672,288,768,256,864,240C960,224,1056,224,1152,245.3C1248,267,1344,309,1392,330.7L1440,352L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+                                    <path fill="#0B2B6F" fillOpacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,250.7C672,267,768,277,864,261.3C960,245,1056,203,1152,186.7C1248,171,1344,181,1392,186.7L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+                                </svg>
                             </div>
                         </div>
-
                     </aside>
 
 
@@ -1437,694 +1319,478 @@ const Consultation = () => {
                         TRANSCRIPTION AREA
                     ==================================================== */}
 
-                    <div className="transcription-area">
+                    <div className="transcription-area" style={{ display: "flex", flexDirection: "column", gap: "24px", flex: 1, minWidth: 0, minHeight: 0, zIndex: 1 }}>
 
-                        <div className="panel">
-
-                            {/* PANEL HEADER */}
-
-                            <div
-                                style={{
-                                    display: "flex",
-                                    alignItems:
-                                        "center",
-                                    gap: "15px",
-                                    marginBottom:
-                                        "20px",
-                                    paddingBottom:
-                                        "15px",
-                                    borderBottom:
-                                        "1px solid var(--glass-border)",
-                                }}
-                            >
-
-                                <i
-                                    className="fa-solid fa-microphone"
-                                    style={{
-                                        fontSize:
-                                            "24px",
-                                        color:
-                                            isPaused
-                                                ? "#f59e0b"
-                                                : isListening
-                                                    ? "var(--primary)"
-                                                    : "#666",
-                                    }}
-                                ></i>
-
-
+                        {/* TOP HEADER */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                                <div style={{ width: "64px", height: "64px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <img src="/images/premium_mic.png" alt="Live Transcription Mic" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                                </div>
                                 <div>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                                        <h3
-                                            style={{
-                                                margin: 0,
-                                            }}
-                                        >
-                                            Live Transcription
-                                        </h3>
-
-                                        {isRecording && (
-                                            <span
-                                                style={{
-                                                    background: isPaused ? "rgba(245, 158, 11, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                                                    color: isPaused ? "#fbbf24" : "#f87171",
-                                                    border: isPaused ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(239, 68, 68, 0.35)",
-                                                    padding: "2px 10px",
-                                                    borderRadius: "12px",
-                                                    fontSize: "0.8rem",
-                                                    fontWeight: 700,
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    gap: "6px"
-                                                }}
-                                            >
-                                                <i className={`fa-solid ${isPaused ? "fa-pause" : "fa-circle blink"}`} style={{ fontSize: "8px", color: isPaused ? "#f59e0b" : "#ef4444" }}></i>
-                                                {isPaused ? `PAUSED (${formatDuration(recordingSeconds)})` : `REC ${formatDuration(recordingSeconds)}`}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <span
-                                        style={{
-                                            color:
-                                                isPaused
-                                                    ? "#fbbf24"
-                                                    : "var(--text-muted)",
-                                            fontSize:
-                                                "0.85rem",
-                                            display: "block",
-                                            marginTop: "4px"
-                                        }}
-                                    >
-                                        {isPaused
-                                            ? "Consultation paused. Click 'Resume Consultation' to continue recording."
-                                            : isListening
-                                                ? "Listening..."
-                                                : isGeneratingSummary
-                                                    ? "Synthesizing AI medical report in seconds..."
-                                                    : "Microphone inactive"}
+                                    <h2 style={{ margin: 0, fontSize: "2rem", fontWeight: 800, color: "#0B2B6F", display: "flex", alignItems: "center", gap: "12px" }}>
+                                        Live Transcription
+                                        <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                                            <span style={{ width: "3px", height: "12px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
+                                            <span style={{ width: "3px", height: "18px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
+                                            <span style={{ width: "3px", height: "14px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
+                                            <span style={{ width: "3px", height: "10px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
+                                        </div>
+                                    </h2>
+                                    <span style={{ fontSize: "1rem", color: isListening ? "#10B981" : "#64748B", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, marginTop: "4px" }}>
+                                        <i className={`fa-solid ${isListening ? "fa-circle blink" : "fa-circle"}`} style={{ fontSize: "10px" }}></i>
+                                        {isListening ? "Microphone active" : "Microphone inactive"}
                                     </span>
                                 </div>
-
-
-                                <div
-                                    style={{
-                                        marginLeft:
-                                            "auto",
-                                    }}
-                                >
-
-                                    <select
-                                        value={
-                                            language
-                                        }
-                                        onChange={(
-                                            e
-                                        ) =>
-                                            setLanguage(
-                                                e.target
-                                                    .value
-                                            )
-                                        }
-                                        disabled={
-                                            isGeneratingSummary
-                                        }
-                                        style={{
-                                            padding:
-                                                "8px 12px",
-                                            borderRadius:
-                                                "8px",
-                                            background:
-                                                "rgba(255,255,255,0.05)",
-                                            color:
-                                                "white",
-                                            border:
-                                                "1px solid var(--glass-border)",
-                                            cursor: isGeneratingSummary ? "not-allowed" : "pointer"
-                                        }}
-                                    >
-
-                                        <option
-                                            value="auto"
-                                            style={{
-                                                color: "black",
-                                            }}
-                                        >
-                                            Auto Detect (All Languages)
-                                        </option>
-
-                                        <option
-                                            value="en-IN"
-                                            style={{
-                                                color: "black",
-                                            }}
-                                        >
-                                            English
-                                        </option>
-
-                                        <option
-                                            value="te-IN"
-                                            style={{
-                                                color: "black",
-                                            }}
-                                        >
-                                            Telugu (తెలుగు)
-                                        </option>
-
-                                        <option
-                                            value="hi-IN"
-                                            style={{
-                                                color: "black",
-                                            }}
-                                        >
-                                            Hindi (हिन्दी)
-                                        </option>
-
-                                    </select>
-
-                                </div>
-
                             </div>
 
-
-                            {/* ====================================================
-                                LIVE TRANSCRIPT
-                            ==================================================== */}
-
-                            <div
-                                ref={transcriptContainerRef}
-                                style={{
-                                    minHeight:
-                                        "350px",
-                                    maxHeight:
-                                        "500px",
-                                    overflowY:
-                                        "auto",
-                                    scrollBehavior:
-                                        "smooth",
-                                }}
-                            >
-
-                                {transcript.length ===
-                                    0 &&
-                                    !liveInterimText &&
-                                    !isRecording && (
-                                        <div
-                                            style={{
-                                                textAlign:
-                                                    "center",
-                                                color:
-                                                    "#666",
-                                                paddingTop:
-                                                    "120px",
-                                            }}
-                                        >
-
-                                            <i
-                                                className="fa-solid fa-microphone"
-                                                style={{
-                                                    fontSize:
-                                                        "45px",
-                                                    marginBottom:
-                                                        "15px",
-                                                }}
-                                            ></i>
-
-                                            <p>
-                                                Start the consultation to begin live transcription.
-                                            </p>
-
-                                        </div>
-                                    )}
-
-                                {isRecording && transcript.length === 0 && !liveInterimText && (
-                                    <div
-                                        style={{
-                                            textAlign: "center",
-                                            padding: "80px 20px",
-                                            color: "var(--primary)",
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            alignItems: "center",
-                                            gap: "14px"
-                                        }}
-                                    >
-                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                            <span style={{ width: "4px", height: "18px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
-                                            <span style={{ width: "4px", height: "30px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
-                                            <span style={{ width: "4px", height: "24px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
-                                            <span style={{ width: "4px", height: "16px", background: "var(--primary)", borderRadius: "2px", display: "inline-block" }}></span>
-                                        </div>
-                                        <div style={{ fontSize: "1.1rem", fontWeight: 600, color: "#ffffff" }}>
-                                            Listening to Doctor & Patient Speech...
-                                        </div>
-                                        <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "420px", lineHeight: "1.5" }}>
-                                            Speak in Telugu, Hindi, or English. Spoken words will type out live here on your screen.
-                                        </p>
-                                    </div>
-                                )}
-
-
-                                {transcript.map(
-                                    (
-                                        line,
-                                        index
-                                    ) => (
-                                        <div
-                                            key={
-                                                index
-                                            }
-                                            style={{
-                                                marginBottom:
-                                                    "18px",
-                                                background: "rgba(255, 255, 255, 0.02)",
-                                                border: "1px solid rgba(255, 255, 255, 0.05)",
-                                                padding: "12px 16px",
-                                                borderRadius: "10px"
-                                            }}
-                                        >
-
-                                            <div
-                                                style={{
-                                                    fontSize:
-                                                        "0.75rem",
-                                                    color:
-                                                        line.speaker?.toLowerCase().includes("doctor")
-                                                            ? "var(--primary)"
-                                                            : "#10b981",
-                                                    fontWeight: 700,
-                                                    marginBottom:
-                                                        "6px",
-                                                    display: "flex",
-                                                    justifyContent: "space-between"
-                                                }}
-                                            >
-                                                <span>{line.speaker || "Conversation"}</span>
-                                                {line.timestamp && (
-                                                    <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                                                        {line.timestamp}
-                                                    </span>
-                                                )}
-                                            </div>
-
-
-                                            <div
-                                                style={{
-                                                    fontSize:
-                                                        "1.05rem",
-                                                    lineHeight:
-                                                        "1.6",
-                                                    color: "#ffffff"
-                                                }}
-                                            >
-                                                {
-                                                    line.text
-                                                }
-                                            </div>
-
-                                        </div>
-                                    )
-                                )}
-
-                                {liveInterimText && !isPaused && (
-                                    <div
-                                        style={{
-                                            marginTop: "12px",
-                                            marginBottom: "20px",
-                                            padding: "14px 18px",
-                                            borderLeft: "4px solid var(--primary)",
-                                            background: "rgba(0, 210, 255, 0.08)",
-                                            borderRadius: "10px",
-                                            border: "1px solid rgba(0, 210, 255, 0.25)",
-                                            boxShadow: "0 0 15px rgba(0, 210, 255, 0.1)"
-                                        }}
-                                    >
-                                        <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--primary)", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
-                                            <i className="fa-solid fa-microphone-lines fa-fade"></i>
-                                            Speaking now:
-                                        </div>
-                                        <div style={{ fontSize: "1.1rem", lineHeight: "1.6", color: "#ffffff", fontWeight: 500 }}>
-                                            {liveInterimText}
-                                            <span style={{ display: "inline-block", width: "2px", height: "1em", background: "var(--primary)", marginLeft: "4px", verticalAlign: "middle" }}></span>
-                                        </div>
-                                    </div>
-                                )}
-
+                            {/* Auto Detect Pill */}
+                            <div style={{ background: "#ffffff", border: "1px solid #DCECEF", borderRadius: "24px", padding: "10px 18px", display: "flex", alignItems: "center", gap: "10px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.03)" }}>
+                                <i className="fa-solid fa-globe" style={{ color: "#08AFC0" }}></i>
+                                <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={isGeneratingSummary} style={{ background: "transparent", border: "none", color: "#0B2B6F", fontWeight: 600, fontSize: "0.95rem", outline: "none", cursor: "pointer", appearance: "none", paddingRight: "10px" }}>
+                                    <option value="auto">Auto Detect (All Languages)</option>
+                                    <option value="en-IN">English</option>
+                                    <option value="te-IN">Telugu</option>
+                                    <option value="hi-IN">Hindi</option>
+                                </select>
+                                <i className="fa-solid fa-chevron-down" style={{ color: "#0B2B6F", fontSize: "12px", pointerEvents: "none" }}></i>
                             </div>
-
-
-                            {/* ====================================================
-                                CONTROLS
-                            ==================================================== */}
-
-                            <div
-                                style={{
-                                    marginTop:
-                                        "20px",
-                                    paddingTop:
-                                        "20px",
-                                    borderTop:
-                                        "1px solid var(--glass-border)",
-                                    display:
-                                        "flex",
-                                    justifyContent:
-                                        "center",
-                                }}
-                            >
-
-                                {!isRecording &&
-                                    !isGeneratingSummary && (
-
-                                        <button
-                                            className="btn btn-accept"
-                                            onClick={
-                                                startConsultation
-                                            }
-                                            style={{
-                                                padding:
-                                                    "12px 25px",
-                                            }}
-                                        >
-
-                                            <i className="fa-solid fa-play"></i>
-                                            &nbsp;
-
-                                            Start Consultation
-
-                                        </button>
-
-                                    )}
-
-
-                                {isRecording && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", justifyContent: "center" }}>
-                                        {/* Timer Badge */}
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: "8px",
-                                                background: isPaused ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.05)",
-                                                border: isPaused ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid var(--glass-border)",
-                                                padding: "10px 18px",
-                                                borderRadius: "10px",
-                                                color: isPaused ? "#fbbf24" : "#f87171",
-                                                fontWeight: 700,
-                                                fontSize: "1.05rem",
-                                                letterSpacing: "1px"
-                                            }}
-                                        >
-                                            <i className={isPaused ? "fa-solid fa-pause" : "fa-solid fa-stopwatch"} style={{ color: isPaused ? "#f59e0b" : "var(--primary)" }}></i>
-                                            <span>{formatDuration(recordingSeconds)}</span>
-                                            {isPaused && (
-                                                <span style={{ fontSize: "0.72rem", background: "#f59e0b", color: "#000", fontWeight: 800, padding: "1px 6px", borderRadius: "4px", marginLeft: "4px" }}>
-                                                    PAUSED
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* Pause / Resume Button */}
-                                        <button
-                                            className="btn"
-                                            onClick={isPaused ? resumeConsultation : pauseConsultation}
-                                            style={{
-                                                padding: "12px 24px",
-                                                background: isPaused
-                                                    ? "linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.4))"
-                                                    : "linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.4))",
-                                                borderColor: isPaused ? "#10b981" : "#f59e0b",
-                                                color: "#ffffff",
-                                                fontWeight: 600,
-                                                borderRadius: "10px",
-                                                display: "inline-flex",
-                                                alignItems: "center",
-                                                gap: "8px",
-                                                boxShadow: isPaused ? "0 0 15px rgba(16, 185, 129, 0.3)" : "0 0 15px rgba(245, 158, 11, 0.3)",
-                                                cursor: "pointer",
-                                                transition: "all 0.2s ease"
-                                            }}
-                                        >
-                                            <i className={`fa-solid ${isPaused ? "fa-play" : "fa-pause"}`}></i>
-                                            {isPaused ? "Resume Consultation" : "Pause Consultation"}
-                                        </button>
-
-                                        {/* End Consultation Button */}
-                                        <button
-                                            className="btn btn-secondary"
-                                            onClick={
-                                                endConsultation
-                                            }
-                                            style={{
-                                                padding:
-                                                    "12px 28px",
-                                                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.4))",
-                                                borderColor: "#ef4444",
-                                                color: "#ffffff",
-                                                fontWeight: 600,
-                                                borderRadius: "10px",
-                                                boxShadow: "0 0 15px rgba(239, 68, 68, 0.25)",
-                                                cursor: "pointer"
-                                            }}
-                                        >
-                                            <i className="fa-solid fa-stop"></i>
-                                            &nbsp;
-                                            End Consultation
-                                        </button>
-                                    </div>
-                                )}
-
-
-                                {isGeneratingSummary && (
-                                    <div
-                                        style={{
-                                            textAlign:
-                                                "center",
-                                            color:
-                                                "var(--primary)",
-                                            padding: "14px 24px",
-                                            background: "rgba(0, 210, 255, 0.08)",
-                                            borderRadius: "12px",
-                                            border: "1px solid rgba(0, 210, 255, 0.25)",
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            gap: "12px"
-                                        }}
-                                    >
-                                        <i className="fa-solid fa-circle-notch fa-spin" style={{ fontSize: "1.2rem" }}></i>
-
-                                        <span
-                                            style={{
-                                                fontWeight: 600,
-                                                fontSize: "0.95rem"
-                                            }}
-                                        >
-                                            Processing consultation and generating AI clinical report in seconds...
-                                        </span>
-                                    </div>
-                                )}
-
-                            </div>
-
                         </div>
 
-                    </div>
 
-                </div>
+                        {/* MAIN WHITE CONTAINER */}
+                        <div style={{ background: "#ffffff", borderRadius: "20px", border: "1px solid #DCECEF", display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", boxShadow: "0 8px 30px rgba(11, 43, 111, 0.06)" }}>
 
-                {/* ============================================================
-                    AI SUMMARY GENERATION PROGRESS MODAL OVERLAY
-                ============================================================ */}
-                {isGeneratingSummary && (
-                    <div
-                        style={{
-                            position: "fixed",
-                            inset: 0,
-                            zIndex: 99999,
-                            backgroundColor: "rgba(3, 7, 18, 0.88)",
-                            backdropFilter: "blur(16px)",
-                            WebkitBackdropFilter: "blur(16px)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            padding: "20px",
-                        }}
-                    >
-                        <div
-                            style={{
-                                width: "100%",
-                                maxWidth: "580px",
-                                background: "linear-gradient(145deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.98))",
-                                border: "1px solid rgba(0, 210, 255, 0.35)",
-                                borderRadius: "24px",
-                                padding: "34px 28px",
-                                boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 50px rgba(0, 210, 255, 0.18)",
-                                color: "#ffffff",
-                                textAlign: "center",
-                                position: "relative",
-                                overflow: "hidden"
-                            }}
-                        >
-                            {/* Ambient Glow */}
-                            <div
-                                style={{
-                                    position: "absolute",
-                                    top: "-80px",
-                                    left: "50%",
-                                    transform: "translateX(-50%)",
-                                    width: "280px",
-                                    height: "160px",
-                                    background: "radial-gradient(circle, rgba(0, 210, 255, 0.3) 0%, transparent 70%)",
-                                    pointerEvents: "none"
-                                }}
-                            />
-
-                            {/* Glowing Heart Pulse Icon */}
-                            <div style={{ position: "relative", display: "inline-block", marginBottom: "18px" }}>
-                                <div
-                                    style={{
-                                        width: "72px",
-                                        height: "72px",
-                                        borderRadius: "50%",
-                                        background: "linear-gradient(135deg, #00d2ff 0%, #3a7bd5 60%, #00f2fe 100%)",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        boxShadow: "0 0 35px rgba(0, 210, 255, 0.65)",
-                                    }}
-                                >
-                                    <i className="fa-solid fa-heart-pulse" style={{ fontSize: "32px", color: "#ffffff" }}></i>
-                                </div>
+                            {/* Container Header */}
+                            <div style={{ padding: "16px 24px", borderBottom: "1px solid #F0F4F8", display: "flex", alignItems: "center", gap: "12px", background: "#ffffff" }}>
+                                <span style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10B981", padding: "4px 10px", borderRadius: "12px", fontSize: "0.8rem", fontWeight: 650, display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <i className="fa-solid fa-circle" style={{ fontSize: "6px" }}></i> Live
+                                </span>
+                                <span style={{ color: "#1557B8", fontSize: "0.95rem", fontWeight: 500 }}>
+                                    {isPaused ? "Consultation paused." : isListening ? "Transcription in progress..." : "Ready to start."}
+                                </span>
                             </div>
 
-                            <h2 style={{ fontSize: "1.45rem", fontWeight: 700, margin: "0 0 6px 0", letterSpacing: "-0.3px", color: "#ffffff" }}>
-                                Generating AI Consultation Summary
-                            </h2>
-                            <p style={{ color: "#94a3b8", fontSize: "0.9rem", margin: "0 0 24px 0", lineHeight: "1.4" }}>
-                                Gemini 3.5 Flash is analyzing your consultation audio & extracting clinical insights
-                            </p>
+                            {/* SCROLLABLE TRANSCRIPT */}
+                            <div ref={transcriptContainerRef} style={{ padding: "32px 40px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "32px", minHeight: 0 }}>
 
-                            {/* Progress Bar Header */}
-                            <div style={{ marginBottom: "20px" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                                    <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#00d2ff", display: "flex", alignItems: "center", gap: "6px" }}>
-                                        <i className="fa-solid fa-circle-notch fa-spin"></i>
-                                        {PROCESSING_STEPS[summaryStage]?.title || "Processing..."}
-                                    </span>
-                                    <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "#ffffff", letterSpacing: "0.5px" }}>
-                                        {Math.round(summaryProgress)}%
-                                    </span>
-                                </div>
+                                {transcript.length === 0 && !liveInterimText && (
+                                    <div style={{ textAlign: "center", color: "#94A3B8", paddingTop: "80px" }}>
+                                        <i className="fa-solid fa-microphone-lines" style={{ fontSize: "50px", marginBottom: "20px", color: "#DCECEF" }}></i>
+                                        <h3 style={{ margin: 0, color: "#0B2B6F", fontSize: "1.4rem" }}>Ready to Start Live Consultation</h3>
+                                        <p style={{ marginTop: "8px", fontSize: "1rem" }}>Start the consultation to begin real-time transcription.</p>
+                                    </div>
+                                )}
 
-                                {/* Glowing Progress Bar */}
-                                <div
-                                    style={{
-                                        width: "100%",
-                                        height: "12px",
-                                        backgroundColor: "rgba(255, 255, 255, 0.08)",
-                                        borderRadius: "10px",
-                                        overflow: "hidden",
-                                        padding: "2px",
-                                        border: "1px solid rgba(255, 255, 255, 0.12)",
-                                        boxSizing: "border-box"
-                                    }}
-                                >
-                                    <div
-                                        style={{
-                                            height: "100%",
-                                            width: `${summaryProgress}%`,
-                                            background: "linear-gradient(90deg, #00d2ff 0%, #3a7bd5 50%, #00f2fe 100%)",
-                                            borderRadius: "8px",
-                                            transition: "width 0.3s ease-out",
-                                            boxShadow: "0 0 15px rgba(0, 210, 255, 0.85)"
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Step-by-Step Checklist */}
-                            <div
-                                style={{
-                                    background: "rgba(255, 255, 255, 0.03)",
-                                    border: "1px solid rgba(255, 255, 255, 0.07)",
-                                    borderRadius: "14px",
-                                    padding: "12px 18px",
-                                    textAlign: "left",
-                                    marginBottom: "20px"
-                                }}
-                            >
-                                {PROCESSING_STEPS.map((step, idx) => {
-                                    const isCompleted = summaryStage > idx || summaryProgress >= 100;
-                                    const isCurrent = summaryStage === idx && summaryProgress < 100;
-
+                                {transcript.map((line, index) => {
+                                    const isDoctor = line.speaker?.toLowerCase().includes("doctor");
                                     return (
-                                        <div
-                                            key={idx}
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: "12px",
-                                                padding: "6px 0",
-                                                opacity: isCompleted ? 0.75 : isCurrent ? 1 : 0.3,
-                                                transition: "all 0.3s ease"
-                                            }}
-                                        >
-                                            <div
-                                                style={{
-                                                    width: "22px",
-                                                    height: "22px",
-                                                    borderRadius: "50%",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    fontSize: "0.75rem",
-                                                    background: isCompleted
-                                                        ? "rgba(16, 185, 129, 0.25)"
-                                                        : isCurrent
-                                                            ? "rgba(0, 210, 255, 0.25)"
-                                                            : "rgba(255, 255, 255, 0.05)",
-                                                    color: isCompleted
-                                                        ? "#10b981"
-                                                        : isCurrent
-                                                            ? "#00d2ff"
-                                                            : "#64748b",
-                                                    flexShrink: 0
-                                                }}
-                                            >
-                                                {isCompleted ? (
-                                                    <i className="fa-solid fa-check"></i>
-                                                ) : isCurrent ? (
-                                                    <i className="fa-solid fa-spinner fa-spin"></i>
-                                                ) : (
-                                                    <i className={step.icon}></i>
-                                                )}
+                                        <div key={index} style={{ display: "flex", gap: "20px", position: "relative" }}>
+                                            {/* Icon */}
+                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: isDoctor ? "rgba(8, 174, 184, 0.1)" : "rgba(21, 87, 184, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                                <i className={`fa-solid ${isDoctor ? 'fa-user-doctor' : 'fa-user'}`} style={{ color: isDoctor ? "#08AFC0" : "#1557B8", fontSize: "18px" }}></i>
                                             </div>
 
+                                            {/* Content */}
                                             <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: "0.85rem", fontWeight: isCurrent ? 700 : 500, color: isCurrent ? "#ffffff" : isCompleted ? "#cbd5e1" : "#64748b" }}>
-                                                    {step.title}
+                                                <div style={{ display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "8px" }}>
+                                                    <span style={{ fontWeight: 700, color: isDoctor ? "#08AFC0" : "#1557B8", fontSize: "1.05rem" }}>{line.speaker || (isDoctor ? "Doctor" : "Patient")}</span>
+                                                    {line.timestamp && <span style={{ color: "#94A3B8", fontSize: "0.85rem" }}>{line.timestamp}</span>}
+                                                </div>
+                                                <div style={{ fontSize: "1.15rem", lineHeight: "1.6", color: "#0B2B6F", fontWeight: 450 }}>
+                                                    {line.text}
                                                 </div>
                                             </div>
                                         </div>
                                     );
                                 })}
-                            </div>
 
-                            {/* Footer Metrics */}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.78rem", color: "#94a3b8", flexWrap: "wrap", gap: "8px" }}>
-                                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <i className="fa-solid fa-clock" style={{ color: "#38bdf8" }}></i>
-                                    Elapsed: <strong style={{ color: "#ffffff" }}>{summaryElapsedSeconds}s</strong> &nbsp;(Expected ~5–10s)
-                                </span>
-                                <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "#10b981", fontWeight: 600 }}>
-                                    <i className="fa-solid fa-shield-halved"></i>
-                                    Auto-redirecting on finish
-                                </span>
+                                {liveInterimText && !isPaused && (
+                                    <div style={{ display: "flex", gap: "20px", position: "relative" }}>
+                                        <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(8, 174, 184, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                            <i className="fa-solid fa-microphone fa-fade" style={{ color: "#08AFC0", fontSize: "18px" }}></i>
+                                        </div>
+                                        <div style={{ flex: 1, paddingRight: "40px" }}>
+                                            <div style={{ fontWeight: 700, color: "#08AFC0", fontSize: "1.05rem", marginBottom: "8px" }}>Speaking...</div>
+                                            <div style={{ fontSize: "1.15rem", lineHeight: "1.6", color: "#0B2B6F", fontWeight: 450 }}>
+                                                {liveInterimText}
+                                            </div>
+                                        </div>
+                                        {/* Right vertical active line */}
+                                        <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "4px", background: "#08AFC0", borderRadius: "2px" }}></div>
+                                    </div>
+                                )}
+
                             </div>
                         </div>
-                    </div>
-                )}
 
-            </main>
+
+                        {/* ====================================================
+                                CONTROLS
+                            ==================================================== */}
+
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+
+                            {/* Left Block: Secure & Confidential */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#ffffff", border: "1px solid #DCECEF", padding: "12px 20px", borderRadius: "20px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.04)", width: "32%" }}>
+                                <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "rgba(8, 174, 184, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <i className="fa-solid fa-shield-halved" style={{ color: "#08AFC0", fontSize: "16px" }}></i>
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 700, color: "#0B2B6F", fontSize: "0.9rem" }}>Secure & Confidential</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: "2px", display: "flex", alignItems: "center", gap: "6px" }}>
+                                        Your consultation is end-to-end encrypted and private. <i className="fa-solid fa-lock" style={{ fontSize: "10px" }}></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Center Block: Action Buttons */}
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", width: "40%" }}>
+                                {!isRecording && !isGeneratingSummary && !isReviewing && (
+                                    <button
+                                        style={{
+                                            background: "linear-gradient(90deg, #0B2B6F 0%, #1557B8 100%)",
+                                            color: "white",
+                                            border: "none",
+                                            padding: "12px",
+                                            paddingRight: "32px",
+                                            borderRadius: "40px",
+                                            fontSize: "1.1rem",
+                                            fontWeight: 600,
+                                            cursor: "pointer",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "16px",
+                                            boxShadow: "0 8px 25px rgba(11, 43, 111, 0.2)",
+                                            transition: "all 0.3s ease"
+                                        }}
+                                        onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; }}
+                                        onMouseOut={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+                                        onClick={startConsultation}
+                                    >
+                                        <img src="/images/start_mic.png" alt="Start" className="premium-glow-pulse" style={{ width: "52px", height: "52px", objectFit: "contain", margin: "-6px 0", mixBlendMode: "screen" }} />
+                                        Start Consultation
+                                    </button>
+                                )}
+
+                                {isRecording && !isReviewing && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                        <button
+                                            onClick={isPaused ? resumeConsultation : pauseConsultation}
+                                            style={{
+                                                background: "linear-gradient(90deg, #4e6574ff 0%, #3aa0bcff 100%)",
+                                                color: "white",
+                                                border: "none",
+                                                padding: "12px",
+                                                paddingRight: "24px",
+                                                borderRadius: "40px",
+                                                fontSize: "1.05rem",
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "12px",
+                                                boxShadow: "0 8px 25px rgba(16, 185, 129, 0.3)",
+                                                transition: "all 0.3s ease"
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
+                                        >
+                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                                <i className={`fa-solid ${isPaused ? "fa-play" : "fa-pause"}`} style={{ color: "#ffffff" }}></i>
+                                            </div>
+                                            {isPaused ? "Resume" : "Pause"}
+                                        </button>
+                                        <button
+                                            onClick={discardRecording}
+                                            style={{
+                                                background: "linear-gradient(90deg, #058b97ff 0%, #28575dff 100%)",
+                                                color: "white",
+                                                border: "none",
+                                                padding: "12px",
+                                                paddingRight: "24px",
+                                                borderRadius: "40px",
+                                                fontSize: "1.05rem",
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "12px",
+                                                boxShadow: "0 8px 25px rgba(239, 68, 68, 0.3)",
+                                                transition: "all 0.3s ease"
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
+                                        >
+                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                                <i className="fa-solid fa-trash" style={{ color: "#ffffff" }}></i>
+                                            </div>
+                                            Delete
+                                        </button>
+                                        <button
+                                            onClick={stopRecording}
+                                            style={{
+                                                background: "linear-gradient(90deg, #0B2B6F 0%, #0dacc1ff 100%)",
+                                                color: "white",
+                                                border: "none",
+                                                padding: "12px",
+                                                paddingRight: "32px",
+                                                borderRadius: "40px",
+                                                fontSize: "1.1rem",
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "16px",
+                                                boxShadow: "0 8px 25px rgba(11, 43, 111, 0.2)",
+                                                transition: "all 0.3s ease"
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
+                                        >
+                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "#08AFC0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                                <div style={{ width: "14px", height: "14px", background: "#ffffff", borderRadius: "2px" }}></div>
+                                            </div>
+                                            Stop Consultation
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isReviewing && !isGeneratingSummary && (
+                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                        <button
+                                            onClick={discardRecording}
+                                            style={{
+                                                background: "#ffffff",
+                                                color: "#074452ff",
+                                                border: "1px solid #0b6e9fff",
+                                                padding: "12px 24px",
+                                                borderRadius: "40px",
+                                                fontSize: "1.05rem",
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "8px",
+                                                transition: "all 0.3s ease"
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.background = "#FEF2F2"}
+                                            onMouseOut={(e) => e.currentTarget.style.background = "#ffffff"}
+                                        >
+                                            <i className="fa-solid fa-trash"></i> Discard
+                                        </button>
+                                        <button
+                                            onClick={processRecording}
+                                            style={{
+                                                background: "linear-gradient(90deg, #0f4d6463 0%, #056a96ff 100%)",
+                                                color: "white",
+                                                border: "none",
+                                                padding: "12px",
+                                                paddingRight: "28px",
+                                                borderRadius: "40px",
+                                                fontSize: "1.1rem",
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "12px",
+                                                boxShadow: "0 8px 25px rgba(16, 185, 129, 0.3)",
+                                                transition: "all 0.3s ease"
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
+                                        >
+                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                                <i className="fa-solid fa-cloud-arrow-up" style={{ color: "#ffffff" }}></i>
+                                            </div>
+                                            Save & Process
+                                        </button>
+                                    </div>
+                                )}
+                                <div style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                                    {isReviewing ? "Audio saved locally. Ready to process." : "Consultation will be saved automatically"}
+                                </div>
+                            </div>
+
+                            {/* Right Block: Timer */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "16px", background: "#ffffff", border: "1px solid #DCECEF", padding: "12px 24px", borderRadius: "20px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.04)" }}>
+                                <i className="fa-solid fa-chart-simple" style={{ color: "#08AFC0", fontSize: "24px" }}></i>
+                                <div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748B", marginBottom: "2px" }}>Recording Duration</div>
+                                    <div style={{ color: "#0B2B6F", fontWeight: 700, fontSize: "1.2rem", fontVariantNumeric: "tabular-nums" }}>
+                                        {formatDuration(recordingSeconds)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {isGeneratingSummary && (
+                            <div style={{ background: "#ffffff", border: "1px solid #08AFC0", padding: "16px 32px", borderRadius: "40px", display: "flex", alignItems: "center", gap: "16px", boxShadow: "0 8px 25px rgba(8, 174, 184, 0.15)" }}>
+                                <i className="fa-solid fa-circle-notch fa-spin" style={{ color: "#08AFC0", fontSize: "1.4rem" }}></i>
+                                <span style={{ color: "#0B2B6F", fontWeight: 700, fontSize: "1.1rem" }}>Synthesizing AI Medical Report...</span>
+                            </div>
+                        )}
+                    </div>
+                </main>
+            )}
+
+            {/* ============================================================
+                    AI SUMMARY GENERATION PROGRESS MODAL OVERLAY
+                ============================================================ */}
+            {isGeneratingSummary && (
+                <div
+                    style={{
+                        flex: 1,
+                        backgroundColor: "#F5FBFD",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "20px",
+                    }}
+                >
+                    <div
+                        style={{
+                            width: "100%",
+                            maxWidth: "580px",
+                            background: "#ffffff",
+                            border: "1px solid #DCECEF",
+                            borderRadius: "24px",
+                            padding: "40px",
+                            boxShadow: "0 20px 60px rgba(11, 43, 111, 0.15)",
+                            color: "#0B2B6F",
+                            textAlign: "center",
+                            position: "relative",
+                            overflow: "hidden"
+                        }}
+                    >
+                        {/* Icon */}
+                        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(8, 174, 184, 0.1)", marginBottom: "24px" }}>
+                            <i className="fa-solid fa-heart-pulse fa-fade" style={{ fontSize: "36px", color: "#08AFC0" }}></i>
+                        </div>
+
+                        <h2 style={{ fontSize: "1.6rem", fontWeight: 750, margin: "0 0 8px 0", color: "#0B2B6F" }}>
+                            Generating AI Consultation Summary
+                        </h2>
+                        <p style={{ color: "#64748B", fontSize: "1rem", margin: "0 0 32px 0", lineHeight: "1.5" }}>
+                            Gemini 3.5 Flash is analyzing your consultation audio & extracting clinical insights.
+                        </p>
+
+                        {/* Progress Bar Header */}
+                        <div style={{ marginBottom: "24px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                                <span style={{ fontSize: "0.95rem", fontWeight: 650, color: "#1557B8", display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                    {PROCESSING_STEPS[summaryStage]?.title || "Processing..."}
+                                </span>
+                                <span style={{ fontSize: "1.2rem", fontWeight: 800, color: "#08AFC0" }}>
+                                    {Math.round(summaryProgress)}%
+                                </span>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div
+                                style={{
+                                    width: "100%",
+                                    height: "12px",
+                                    backgroundColor: "#F0F4F8",
+                                    borderRadius: "10px",
+                                    overflow: "hidden"
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        height: "100%",
+                                        width: `${summaryProgress}%`,
+                                        background: "linear-gradient(90deg, #1557B8 0%, #08AFC0 100%)",
+                                        borderRadius: "10px",
+                                        transition: "width 0.3s ease-out"
+                                    }}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Step-by-Step Checklist */}
+                        <div
+                            style={{
+                                background: "#F8FAFC",
+                                border: "1px solid #E2E8F0",
+                                borderRadius: "16px",
+                                padding: "16px 24px",
+                                textAlign: "left",
+                                marginBottom: "24px"
+                            }}
+                        >
+                            {PROCESSING_STEPS.map((step, idx) => {
+                                const isCompleted = summaryStage > idx || summaryProgress >= 100;
+                                const isCurrent = summaryStage === idx && summaryProgress < 100;
+
+                                return (
+                                    <div
+                                        key={idx}
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "14px",
+                                            padding: "8px 0",
+                                            opacity: isCompleted ? 0.8 : isCurrent ? 1 : 0.4,
+                                            transition: "all 0.3s ease"
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                width: "24px",
+                                                height: "24px",
+                                                borderRadius: "50%",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                fontSize: "0.8rem",
+                                                background: isCompleted
+                                                    ? "rgba(16, 185, 129, 0.15)"
+                                                    : isCurrent
+                                                        ? "rgba(8, 174, 184, 0.15)"
+                                                        : "#E2E8F0",
+                                                color: isCompleted
+                                                    ? "#10b981"
+                                                    : isCurrent
+                                                        ? "#08AFC0"
+                                                        : "#94A3B8",
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            {isCompleted ? (
+                                                <i className="fa-solid fa-check"></i>
+                                            ) : isCurrent ? (
+                                                <i className="fa-solid fa-spinner fa-spin"></i>
+                                            ) : (
+                                                <i className={step.icon}></i>
+                                            )}
+                                        </div>
+
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: "0.95rem", fontWeight: isCurrent ? 700 : 500, color: isCurrent ? "#0B2B6F" : isCompleted ? "#475569" : "#94A3B8" }}>
+                                                {step.title}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Footer Metrics */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.85rem", color: "#64748B", flexWrap: "wrap", gap: "8px" }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <i className="fa-solid fa-clock" style={{ color: "#08AFC0" }}></i>
+                                Elapsed: <strong style={{ color: "#0B2B6F" }}>{summaryElapsedSeconds}s</strong> &nbsp;(Expected ~5–10s)
+                            </span>
+                            <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "#10b981", fontWeight: 650 }}>
+                                <i className="fa-solid fa-shield-halved"></i>
+                                Auto-redirecting on finish
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );

@@ -62,8 +62,7 @@ const durationOptions = [
 ];
 
 const NODE_API_URL =
-    import.meta.env.VITE_NODE_API_URL ||
-    "http://localhost:5000";
+    import.meta.env.VITE_NODE_API_URL;
 
 const FALLBACK_TEXT =
     "Not documented in this consultation.";
@@ -302,16 +301,6 @@ const ConsultationSummary = () => {
         };
 
 
-    /*
-     * Make absolutely sure we have one patient ID.
-     *
-     * Priority:
-     * 1. patient.id
-     * 2. state.patientId
-     * 3. storedResult.patientId
-     * 4. URL
-     */
-
     const resolvedPatientId =
         patient?.id ||
         state?.patientId ||
@@ -324,11 +313,6 @@ const ConsultationSummary = () => {
        Summary
     ---------------------------------------------------------------------- */
 
-    /*
-     * The consultation response has appeared in a few shapes during the
-     * different consultation flows.  Always unwrap the actual
-     * consultation_summary object before rendering it.
-     */
     const rawSummarySource =
         state.summary ||
         state.consultation_summary ||
@@ -487,7 +471,6 @@ const ConsultationSummary = () => {
                 );
                 if (direct && direct.length > 0) return direct;
 
-                // Fallback: check if history_of_present_illness mentions prior recurrence or OTC medications
                 const hpi = firstAvailable(
                     rawSummary.history_of_present_illness,
                     rawSummary.historyOfPresentIllness,
@@ -698,10 +681,6 @@ const ConsultationSummary = () => {
     };
 
 
-    /* ----------------------------------------------------------------------
-       Array update
-    ---------------------------------------------------------------------- */
-
     const updateArrayField = (
         field,
         index,
@@ -771,10 +750,6 @@ const ConsultationSummary = () => {
     };
 
 
-    /* ----------------------------------------------------------------------
-       Vital signs
-    ---------------------------------------------------------------------- */
-
     const updateVital = (
         field,
         value
@@ -793,10 +768,6 @@ const ConsultationSummary = () => {
 
     };
 
-
-    /* ----------------------------------------------------------------------
-       Medicines
-    ---------------------------------------------------------------------- */
 
     const updateMedicine = (
         index,
@@ -855,10 +826,6 @@ const ConsultationSummary = () => {
     };
 
 
-    /* ----------------------------------------------------------------------
-       Transcript
-    ---------------------------------------------------------------------- */
-
     const updateTranscript = (
         index,
         field,
@@ -889,11 +856,12 @@ const ConsultationSummary = () => {
        SAVE CONSULTATION
     ====================================================================== */
 
-    const handleSave = async () => {
+    const handleSave = async (withTranscript = true) => {
         console.log("[ConsultationSummary] SAVE BUTTON CLICKED", {
             patientId: resolvedPatientId,
             doctorId,
             appointmentId,
+            withTranscript,
         });
 
         setError("");
@@ -911,25 +879,20 @@ const ConsultationSummary = () => {
                 (medicine) => medicine?.name?.trim()
             );
 
-            const transcriptForRecord = editableTranscript
-                .map((line) => ({
-                    speaker: line?.speaker || "Unknown",
-                    timestamp: line?.timestamp || "00:00",
-                    text: line?.text || "",
-                }))
-                .filter((line) => line.text.trim());
+            const transcriptForRecord = withTranscript
+                ? editableTranscript
+                      .map((line) => ({
+                          speaker: line?.speaker || "Unknown",
+                          timestamp: line?.timestamp || "00:00",
+                          text: line?.text || "",
+                      }))
+                      .filter((line) => line.text.trim())
+                : [];
 
             const diagnosisList = Array.isArray(report.diagnosis)
                 ? report.diagnosis.filter(Boolean)
                 : arrayValue(report.diagnosis);
 
-            /*
-             * IMPORTANT:
-             * The Node /api/v1/clinical/notes route expects the COMPLETE
-             * edited report under `summary`, not only flat notes/symptoms.
-             * The previous version sent only flat fields, so the server
-             * created a record with an almost-empty summary.
-             */
             const finalSummary = {
                 ...report,
                 symptoms: Array.isArray(report.symptoms)
@@ -939,7 +902,14 @@ const ConsultationSummary = () => {
                 medications_discussed: validMedicines,
                 transcript: transcriptForRecord,
                 detected_language: detectedLanguage,
+                with_transcript: withTranscript,
             };
+
+            const audioTranscriptString = withTranscript
+                ? transcriptForRecord
+                      .map((line) => `[${line.timestamp}] ${line.speaker}: ${line.text}`)
+                      .join("\n")
+                : "Full dialogue transcript omitted by doctor choice.";
 
             const consultationPayload = {
                 patientId: resolvedPatientId,
@@ -955,6 +925,7 @@ const ConsultationSummary = () => {
                 summary: finalSummary,
                 diagnosis: diagnosisList,
                 medications: validMedicines,
+                withTranscript,
                 prescription: {
                     medications: validMedicines,
                     medicines: validMedicines,
@@ -965,7 +936,6 @@ const ConsultationSummary = () => {
                     follow_up: report.follow_up || "",
                     pdf_url: null,
                 },
-                /* Kept for compatibility with older backend handlers. */
                 notes: [
                     report.consultation_overview,
                     report.chief_complaint,
@@ -980,9 +950,7 @@ const ConsultationSummary = () => {
                     ? report.symptoms.filter(Boolean).join(", ")
                     : String(report.symptoms || ""),
                 language: detectedLanguage || "Auto-detected",
-                audio_transcript: transcriptForRecord
-                    .map((line) => `[${line.timestamp}] ${line.speaker}: ${line.text}`)
-                    .join("\n"),
+                audio_transcript: audioTranscriptString,
             };
 
             console.log(
@@ -1020,8 +988,6 @@ const ConsultationSummary = () => {
                 );
             }
 
-            /* Keep a browser-side copy so Patient Records can immediately
-               display the newly approved consultation during development. */
             const consultationRecord = {
                 id:
                     result?.consultationId ||
@@ -1135,7 +1101,6 @@ const ConsultationSummary = () => {
         setError("");
 
         try {
-            // 1. Mark consultation record completed in backend
             const response = await fetch(
                 `${NODE_API_URL}/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(consId)}/complete`,
                 { method: "PATCH" }
@@ -1146,7 +1111,6 @@ const ConsultationSummary = () => {
                 throw new Error(result?.message || "Unable to mark consultation as completed.");
             }
 
-            // 2. Also ensure the appointment is marked completed
             if (appointmentId && String(appointmentId).startsWith("appointment-") === false) {
                 try {
                     await fetch(`${NODE_API_URL}/api/appointments/${encodeURIComponent(appointmentId)}/complete`, {
@@ -1177,10 +1141,6 @@ const ConsultationSummary = () => {
     };
 
 
-    /* ----------------------------------------------------------------------
-       Back
-    ---------------------------------------------------------------------- */
-
     const handleBack = () => {
 
         navigate(
@@ -1190,23 +1150,11 @@ const ConsultationSummary = () => {
     };
 
 
-    /* ----------------------------------------------------------------------
-       Print
-    ---------------------------------------------------------------------- */
-
     const handlePrint = () => {
 
         window.print();
 
     };
-
-
-    /* ======================================================================
-       UI
-    ====================================================================== */
-
-
-
 
 
     return (
@@ -1366,7 +1314,7 @@ const ConsultationSummary = () => {
             )}
 
 
-            {/* SUCCESS */}
+            {/* SUCCESS MODAL */}
 
             {showSaveModal && (
                 <div className="save-modal-backdrop" role="dialog" aria-modal="true">
@@ -1895,9 +1843,7 @@ const ConsultationSummary = () => {
                     />
 
 
-                    {/* ======================================================
-                        PRESCRIPTION
-                    ====================================================== */}
+                    {/* PRESCRIPTION */}
 
                     <section className="report-card prescription-card">
 
@@ -2187,76 +2133,6 @@ const ConsultationSummary = () => {
                 <aside className="side-column">
 
 
-                    {/* PATIENT SUMMARY */}
-
-                    <section className="side-card">
-
-                        <SectionHeading
-                            title="Patient Summary"
-                            icon="👤"
-                        />
-
-                        <div className="patient-name">
-                            {patient.name}
-                        </div>
-
-                        <div className="patient-meta">
-
-                            {patient.age
-                                ? `${patient.age} years`
-                                : ""}
-
-                            {patient.gender
-                                ? ` • ${patient.gender}`
-                                : ""}
-
-                        </div>
-
-
-                        <div className="patient-stat-grid">
-
-                            <Stat
-                                label="Patient ID"
-                                value={
-                                    resolvedPatientId
-                                }
-                            />
-
-                            <Stat
-                                label="Blood Group"
-                                value={
-                                    patient.bloodGroup ||
-                                    "—"
-                                }
-                            />
-
-                            <Stat
-                                label="Weight"
-                                value={
-                                    patient.weight ||
-                                    "—"
-                                }
-                            />
-
-                            <Stat
-                                label="BP"
-                                value={
-                                    patient.bloodPressure ||
-                                    "—"
-                                }
-                            />
-
-                            <Stat
-                                label="Allergies"
-                                value={
-                                    patient.allergies ||
-                                    "—"
-                                }
-                            />
-
-                        </div>
-
-                    </section>
 
 
                     {/* CONSULTATION DETAILS */}
@@ -2487,42 +2363,46 @@ const ConsultationSummary = () => {
 
                             <button
                                 type="button"
-                                onClick={
-                                    handleSave
-                                }
-                                disabled={
-                                    isSaving || saveSuccess
-                                }
+                                onClick={() => handleSave(true)}
+                                disabled={isSaving || saveSuccess}
                                 style={{
-                                    background:
-                                        isSaving
-                                            ? "#55777d"
-                                            : "#00a8b5",
-                                    color:
-                                        "#ffffff",
-                                    border:
-                                        "none",
-                                    borderRadius:
-                                        "10px",
-                                    padding:
-                                        "12px 24px",
-                                    cursor:
-                                        isSaving
-                                            ? "not-allowed"
-                                            : "pointer",
-                                    fontWeight:
-                                        800,
-                                    minWidth:
-                                        "190px",
+                                    background: isSaving ? "#55777d" : "#08AEB8",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "10px",
+                                    padding: "12px 18px",
+                                    cursor: isSaving ? "not-allowed" : "pointer",
+                                    fontWeight: 800,
+                                    fontSize: "13px",
                                 }}
                             >
-
                                 {isSaving
-                                    ? "Saving & Generating PDF..."
+                                    ? "Saving..."
                                     : saveSuccess
-                                        ? "✓ Consultation Saved"
-                                        : "✓ Save Consultation"}
+                                        ? "✓ Saved with Transcript"
+                                        : "✓ Save with Full Transcript"}
+                            </button>
 
+                            <button
+                                type="button"
+                                onClick={() => handleSave(false)}
+                                disabled={isSaving || saveSuccess}
+                                style={{
+                                    background: "#ffffff",
+                                    color: "#08265F",
+                                    border: "1px solid #08AEB8",
+                                    borderRadius: "10px",
+                                    padding: "12px 18px",
+                                    cursor: isSaving ? "not-allowed" : "pointer",
+                                    fontWeight: 800,
+                                    fontSize: "13px",
+                                }}
+                            >
+                                {isSaving
+                                    ? "Saving..."
+                                    : saveSuccess
+                                        ? "✓ Saved without Transcript"
+                                        : "📄 Save without Full Transcript"}
                             </button>
 
                         </div>
@@ -2620,18 +2500,34 @@ const ConsultationSummary = () => {
 
                 </aside>
 
-                "
-                <style>{`
+            </main>
+
+            <style>{`
+                html, body, #root {
+                    background-color: #F8FBFF !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 100% !important;
+                    min-height: 100vh !important;
+                    overflow-x: hidden !important;
+                }
+
                 .consultation-summary-page {
-                    min-height: 100vh;
-                    box-sizing: border-box;
-                    padding: 28px 26px 70px;
-                    color: #f8fafc;
-                    background:
-                        radial-gradient(circle at 10% 0%, rgba(0, 168, 181, 0.09), transparent 28%),
-                        radial-gradient(circle at 95% 35%, rgba(81, 67, 157, 0.07), transparent 25%),
-                        #050b14;
+                    height: 100vh !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    border-radius: 0 !important;
+                    box-shadow: none !important;
+                    box-sizing: border-box !important;
+                    color: #0F172A;
+                    display: flex;
+                    flex-direction: column;
+                    background-color: #F8FBFF !important;
                     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    overflow: hidden !important;
                 }
 
                 .consultation-summary-page *,
@@ -2641,17 +2537,19 @@ const ConsultationSummary = () => {
                 }
 
                 .summary-header {
-                    width: min(1580px, 100%);
-                    margin: 0 auto 24px;
-                    padding: 24px 30px 28px;
-                    min-height: 190px;
+                    width: 100%;
+                    margin: 0 0 10px;
+                    padding: 16px 16px 18px;
                     display: flex;
                     align-items: flex-start;
                     justify-content: space-between;
-                    gap: 28px;
-                    border: 1px solid rgba(0, 185, 215, 0.30);
-                    border-radius: 20px;
-                    background: linear-gradient(135deg, rgba(12, 23, 39, 0.96), rgba(7, 16, 29, 0.94));
+                    gap: 16px;
+                    border: 0;
+                    border-bottom: 1px solid #08265F;
+                    border-radius: 0;
+                    background: linear-gradient(135deg, #08265F, #0E357E);
+                    color: #ffffff;
+                    shrink: 0;
                 }
 
                 .back-button, .print-button, .small-outline-button, .add-button, .list-add, .list-remove, .delete-medicine {
@@ -2660,141 +2558,165 @@ const ConsultationSummary = () => {
                 }
 
                 .back-button {
-                    border: 1px solid rgba(148, 163, 184, 0.28);
-                    background: rgba(255,255,255,0.045);
-                    color: #f8fafc;
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    background: rgba(255,255,255,0.12);
+                    color: #ffffff;
                     border-radius: 10px;
-                    padding: 10px 16px;
+                    padding: 8px 14px;
                     font-weight: 700;
-                    margin-bottom: 22px;
+                    margin-bottom: 12px;
                 }
 
                 .title-row {
                     display: flex;
                     align-items: center;
                     flex-wrap: wrap;
-                    gap: 14px;
+                    gap: 12px;
                 }
 
                 .title-row h1 {
                     margin: 0;
-                    font-size: clamp(34px, 4vw, 50px);
+                    font-size: clamp(26px, 3vw, 38px);
                     line-height: 1.08;
-                    letter-spacing: -1.8px;
+                    letter-spacing: -1.2px;
                     font-weight: 850;
+                    color: #ffffff;
                 }
 
                 .title-row p {
-                    margin: 8px 0 0;
-                    color: #9fb0c7;
-                    font-size: 16px;
+                    margin: 4px 0 0;
+                    color: #93C5FD;
+                    font-size: 14px;
                 }
 
                 .ai-badge {
                     display: inline-flex;
                     align-items: center;
                     gap: 5px;
-                    border: 1px solid rgba(0, 211, 255, 0.58);
-                    background: rgba(0, 211, 255, 0.08);
-                    color: #00d2ff;
+                    border: 1px solid rgba(255, 255, 255, 0.4);
+                    background: rgba(255, 255, 255, 0.15);
+                    color: #38BDF8;
                     border-radius: 999px;
-                    padding: 7px 13px;
-                    font-size: 13px;
+                    padding: 5px 11px;
+                    font-size: 12px;
                     font-weight: 800;
                 }
 
                 .print-button {
-                    border: 1px solid rgba(148, 163, 184, 0.30);
-                    background: rgba(255,255,255,0.045);
-                    color: #f8fafc;
+                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    background: rgba(255, 255, 255, 0.12);
+                    color: #ffffff;
                     border-radius: 10px;
-                    padding: 11px 16px;
+                    padding: 9px 14px;
                     font-weight: 700;
                     white-space: nowrap;
                 }
 
                 .review-banner {
-                    width: min(1580px, 100%);
-                    margin: 0 auto 22px;
-                    padding: 20px 26px;
+                    width: 100%;
+                    margin: 0 0 10px;
+                    padding: 12px 16px;
                     display: flex;
                     align-items: center;
-                    gap: 18px;
-                    border: 1px solid rgba(0, 188, 218, 0.38);
-                    border-radius: 17px;
-                    background: linear-gradient(90deg, rgba(0, 173, 201, 0.11), rgba(9, 22, 37, 0.74));
+                    gap: 14px;
+                    border: 0;
+                    border-bottom: 1px solid #BDE8E8;
+                    border-radius: 0;
+                    background: #EAF8F8;
+                    shrink: 0;
                 }
 
                 .review-icon {
-                    width: 48px;
-                    height: 48px;
-                    flex: 0 0 48px;
+                    width: 36px;
+                    height: 36px;
+                    flex: 0 0 36px;
                     display: grid;
                     place-items: center;
                     border-radius: 50%;
-                    border: 1px solid rgba(0, 211, 255, 0.65);
-                    color: #00d2ff;
-                    font-size: 25px;
+                    border: 1px solid #08AEB8;
+                    background: #ffffff;
+                    color: #08AEB8;
+                    font-size: 18px;
+                    font-weight: 800;
                 }
 
-                .review-banner strong { font-size: 16px; }
-                .review-banner p { margin: 4px 0 0; color: #9fb0c7; font-size: 13px; }
+                .review-banner strong { font-size: 15px; color: #08265F; }
+                .review-banner p { margin: 2px 0 0; color: #334155; font-size: 12px; }
 
                 .meta-grid {
-                    width: min(1580px, 100%);
-                    margin: 0 auto 24px;
+                    width: 100%;
+                    margin: 0 0 10px;
+                    padding: 0 8px;
                     display: grid;
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 16px;
+                    grid-template-columns: repeat(6, minmax(0, 1fr));
+                    gap: 8px;
+                    shrink: 0;
                 }
 
                 .meta-card {
-                    min-height: 90px;
-                    padding: 19px 20px;
-                    border: 1px solid rgba(99, 120, 148, 0.27);
-                    border-radius: 14px;
-                    background: #0b1628;
+                    min-height: 64px;
+                    padding: 10px 12px;
+                    border: 1px solid #E2E8F0;
+                    border-radius: 10px;
+                    background: #ffffff;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
                 }
 
                 .meta-label {
-                    color: #77879f;
-                    font-size: 11px;
+                    color: #64748B;
+                    font-size: 10px;
                     font-weight: 700;
                     letter-spacing: .08em;
                     text-transform: uppercase;
-                    margin-bottom: 7px;
+                    margin-bottom: 3px;
                 }
 
                 .meta-value {
-                    color: #f5f7fb;
-                    font-size: 15px;
+                    color: #08265F;
+                    font-size: 13px;
                     font-weight: 800;
                     overflow-wrap: anywhere;
                 }
 
                 .summary-grid {
-                    width: min(1580px, 100%);
-                    margin: 0 auto;
+                    width: 100%;
+                    flex: 1;
+                    min-height: 0;
+                    padding: 0 8px 16px;
                     display: grid;
-                    grid-template-columns: minmax(0, 1fr) minmax(330px, 430px);
-                    gap: 24px;
-                    align-items: start;
+                    grid-template-columns: minmax(0, 1fr) 520px;
+                    gap: 12px;
+                    align-items: stretch;
+                    overflow: hidden;
                 }
 
-                .report-column, .side-column { min-width: 0; }
-                .side-column { position: sticky; top: 18px; }
+                .report-column {
+                    height: 100%;
+                    overflow-y: auto;
+                    padding-right: 6px;
+                    padding-bottom: 40px;
+                    min-width: 0;
+                }
+
+                .side-column {
+                    height: 100%;
+                    overflow-y: auto;
+                    padding-right: 4px;
+                    padding-bottom: 40px;
+                    min-width: 0;
+                }
 
                 .report-card, .side-card {
                     width: 100%;
                     margin: 0 0 16px;
                     padding: 22px 24px;
-                    border: 1px solid rgba(95, 117, 145, 0.25);
+                    border: 1px solid #E2E8F0;
                     border-radius: 16px;
-                    background: rgba(7, 14, 26, 0.94);
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+                    background: #ffffff;
+                    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
                 }
 
                 .section-heading-row {
@@ -2813,20 +2735,21 @@ const ConsultationSummary = () => {
 
                 .section-heading h2 {
                     margin: 0;
-                    color: #00d8ff;
+                    color: #08265F;
                     font-size: 18px;
                     line-height: 1.2;
                     font-weight: 850;
                 }
 
                 .section-icon { font-size: 17px; width: 20px; text-align: center; }
-                .section-description { color: #8291a8; font-size: 12px; line-height: 1.6; margin: -4px 0 14px; }
+                .section-description { color: #475569; font-size: 12px; line-height: 1.6; margin: -4px 0 14px; }
 
                 .report-card textarea, .report-card input, .report-card select, .transcript-edit {
                     width: 100%;
-                    border: 1px solid rgba(100, 122, 151, 0.31);
-                    background: #07101d;
-                    color: #e9eef7;
+                    border: 1px solid #CBD5E1;
+                    background: #F8FAFC;
+                    color: #0F172A;
+                    font-weight: 500;
                     border-radius: 10px;
                     padding: 12px 13px;
                     font: inherit;
@@ -2836,36 +2759,36 @@ const ConsultationSummary = () => {
 
                 .report-card textarea { min-height: 92px; resize: vertical; line-height: 1.55; }
                 .report-card textarea:focus, .report-card input:focus, .report-card select:focus, .transcript-edit:focus {
-                    border-color: rgba(0, 210, 255, 0.72);
-                    box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.08);
+                    border-color: #08AEB8;
+                    box-shadow: 0 0 0 3px rgba(8, 174, 184, 0.12);
                 }
 
                 .editable-list { display: grid; gap: 10px; }
                 .editable-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
                 .editable-list-row textarea { min-height: 68px; }
                 .list-remove, .delete-medicine {
-                    border: 1px solid rgba(236, 72, 153, .55);
-                    color: #ff4d8f;
-                    background: rgba(236,72,153,.06);
+                    border: 1px solid #F43F5E;
+                    color: #E11D48;
+                    background: #FFF1F2;
                     border-radius: 9px;
                     padding: 10px 13px;
                     font-weight: 800;
                 }
                 .list-add, .add-button {
                     width: max-content;
-                    border: 1px solid rgba(0, 210, 255, .45);
-                    color: #00d8ff;
-                    background: rgba(0,210,255,.06);
+                    border: 1px solid #08AEB8;
+                    color: #08AEB8;
+                    background: #EAF8F8;
                     border-radius: 9px;
                     padding: 9px 13px;
                     font-weight: 800;
                 }
 
                 .empty-medicine, .empty-transcript {
-                    border: 1px dashed rgba(105, 126, 153, .27);
+                    border: 1px dashed #CBD5E1;
                     border-radius: 11px;
                     padding: 16px;
-                    color: #728198;
+                    color: #64748B;
                     font-size: 13px;
                 }
 
@@ -2875,7 +2798,7 @@ const ConsultationSummary = () => {
                     gap: 13px;
                 }
                 .input-field { min-width: 0; }
-                .input-field label { display:block; color:#8090a8; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px; }
+                .input-field label { display:block; color:#08265F; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px; }
 
                 .medicine-list { display: grid; gap: 14px; }
                 .medicine-row {
@@ -2884,13 +2807,13 @@ const ConsultationSummary = () => {
                     gap: 15px;
                     align-items: flex-end;
                     padding: 15px;
-                    border: 1px solid rgba(100,122,151,.22);
+                    border: 1px solid #E2E8F0;
                     border-radius: 12px;
-                    background: rgba(255,255,255,.018);
+                    background: #F8FAFC;
                 }
                 .medicine-row .medicine-number {
                     flex: 0 0 20px;
-                    color:#00d8ff; font-weight:900; padding-bottom:12px;
+                    color:#08AEB8; font-weight:900; padding-bottom:12px;
                 }
                 .medicine-row .input-field {
                     flex: 1 1 120px;
@@ -2906,26 +2829,26 @@ const ConsultationSummary = () => {
                 }
                 .medicine-select { min-height: 44px; }
 
-                .patient-name { font-size: 20px; font-weight: 850; margin-bottom: 4px; }
-                .patient-meta { color:#8d9bb0; font-size:13px; margin-bottom:18px; }
+                .patient-name { font-size: 20px; font-weight: 850; color: #08265F; margin-bottom: 4px; }
+                .patient-meta { color:#475569; font-size:13px; margin-bottom:18px; }
                 .patient-stat-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-                .patient-stat { padding:12px; border:1px solid rgba(100,122,151,.20); border-radius:10px; background:rgba(255,255,255,.018); }
-                .patient-stat-label { color:#75859c; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
-                .patient-stat-value { color:#eef3fa; font-size:13px; font-weight:750; overflow-wrap:anywhere; }
-                .detail-row { display:flex; justify-content:space-between; gap:15px; padding:11px 0; border-bottom:1px solid rgba(100,122,151,.16); }
+                .patient-stat { padding:12px; border:1px solid #E2E8F0; border-radius:10px; background:#F8FAFC; }
+                .patient-stat-label { color:#64748B; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+                .patient-stat-value { color:#08265F; font-size:13px; font-weight:750; overflow-wrap:anywhere; }
+                .detail-row { display:flex; justify-content:space-between; gap:15px; padding:11px 0; border-bottom:1px solid #E2E8F0; }
                 .detail-row:last-child { border-bottom:0; }
-                .detail-label { color:#75859c; font-size:12px; }
-                .detail-value { color:#e9eef7; font-size:12px; font-weight:750; text-align:right; }
+                .detail-label { color:#64748B; font-size:12px; }
+                .detail-value { color:#08265F; font-size:12px; font-weight:750; text-align:right; }
 
                 .transcript-card { max-height: 660px; }
                 .transcript-container { max-height: 510px; overflow-y:auto; padding-right:4px; }
-                .transcript-line { padding:11px 0; border-bottom:1px solid rgba(100,122,151,.16); }
+                .transcript-line { padding:11px 0; border-bottom:1px solid #E2E8F0; }
                 .transcript-line:last-child { border-bottom:0; }
-                .transcript-meta { display:flex; justify-content:space-between; gap:10px; margin-bottom:6px; color:#7f90a8; font-size:11px; }
-                .transcript-meta strong { color:#00d8ff; font-size:12px; }
-                .transcript-text { color:#cbd5e3; font-size:13px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+                .transcript-meta { display:flex; justify-content:space-between; gap:10px; margin-bottom:6px; color:#64748B; font-size:11px; }
+                .transcript-meta strong { color:#08265F; font-size:12px; }
+                .transcript-text { color:#0F172A; font-size:13px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; font-weight:450; }
                 .transcript-edit { min-height:90px; resize:vertical; font-size:13px; }
-                .small-outline-button { border:1px solid rgba(0,210,255,.45); color:#00d8ff; background:rgba(0,210,255,.05); border-radius:8px; padding:7px 11px; font-size:11px; font-weight:800; }
+                .small-outline-button { border:1px solid #08AEB8; color:#08AEB8; background:#EAF8F8; border-radius:8px; padding:7px 11px; font-size:11px; font-weight:800; }
 
                 .error-banner { width:min(1580px,100%); margin:0 auto 18px; padding:13px 16px; display:flex; gap:10px; flex-wrap:wrap; color:#ffd0d8; background:rgba(220,38,38,.09); border:1px solid rgba(248,113,113,.35); border-radius:11px; }
                 .save-modal-backdrop { position:fixed; inset:0; z-index:9999; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.70); backdrop-filter:blur(8px); }
@@ -2959,7 +2882,6 @@ const ConsultationSummary = () => {
                     .report-card, .side-card, .meta-card, .summary-header, .review-banner { background:#fff !important; color:#111 !important; border-color:#ccc !important; box-shadow:none !important; }
                 }
             `}</style>
-            </main>
         </div>
     );
 };

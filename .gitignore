@@ -9,3 +9,13 @@ frontend/dist/
 dist/
 *.log
 __pycache__/
+# Generated / local project files
+backend/patient-records/
+backend/repomix-output.xml
+frontend/repomix-output.xml
+
+# Local development / test files
+scratch/
+frontend/temp.jsx
+backend/test_search.js
+backend/test_walkin.js

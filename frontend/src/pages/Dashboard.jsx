@@ -1,34 +1,92 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import DashboardLayout from "../components/DashboardLayout";
+import "../index.css";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = import.meta.env.VITE_NODE_API_URL;
 
 const Dashboard = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const { doctor, loading: authLoading } = useAuth();
 
-    // Default to 'confirmed' schedule tab or URL param
+    // Filters State
     const initialTab = searchParams.get("tab") || "confirmed";
-    const [activeTab, setActiveTab] = useState(initialTab);
+    const initialDateFilter = searchParams.get("dateFilter") || "all";
+    const initialCustomDate = searchParams.get("customDate") || "";
 
+    const [activeTab, setActiveTab] = useState(initialTab);
+    const [dateFilter, setDateFilter] = useState(initialDateFilter);
+    const [customDate, setCustomDate] = useState(initialCustomDate);
+
+    // Data State
     const [appointments, setAppointments] = useState([]);
     const [completedRecords, setCompletedRecords] = useState({});
+    const [metrics, setMetrics] = useState({ todayCount: 0, tomorrowCount: 0, pendingCount: 0, completedCount: 0, confirmedCount: 0 });
+    const [upcomingFollowUps, setUpcomingFollowUps] = useState([]);
     const [loading, setLoading] = useState(true);
     const [recordsLoading, setRecordsLoading] = useState(false);
     const [error, setError] = useState("");
+    
 
     const switchTab = (tabName) => {
         setActiveTab(tabName);
-        setSearchParams({ tab: tabName });
+        setSearchParams({ tab: tabName, dateFilter, customDate });
+    };
+
+    const handleDateFilterChange = (filter) => {
+        setDateFilter(filter);
+        if (filter !== "custom") {
+            setCustomDate("");
+            setSearchParams({ tab: activeTab, dateFilter: filter });
+        } else {
+            setSearchParams({ tab: activeTab, dateFilter: filter, customDate });
+        }
+    };
+
+    const handleCustomDateChange = (e) => {
+        const dateStr = e.target.value;
+        setCustomDate(dateStr);
+        setSearchParams({ tab: activeTab, dateFilter: "custom", customDate: dateStr });
+    };
+
+    const loadMetrics = async () => {
+        if (!doctor) return;
+        try {
+            const token = localStorage.getItem("doctors_vedika_token");
+            const response = await axios.get(`${API}/api/appointments/metrics`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (response.data?.metrics) {
+                setMetrics(response.data.metrics);
+            }
+            if (response.data?.upcomingFollowUps) {
+                setUpcomingFollowUps(response.data.upcomingFollowUps);
+            }
+        } catch (err) {
+            console.warn("Failed to fetch metrics", err);
+        }
     };
 
     const loadAppointments = async () => {
+        if (!doctor) return;
         setLoading(true);
         setError("");
         try {
-            const response = await axios.get(`${API}/api/appointments`);
-            setAppointments(Array.isArray(response.data) ? response.data : []);
+            const token = localStorage.getItem("doctors_vedika_token");
+            const response = await axios.get(`${API}/api/appointments`, {
+                params: {
+                    tab: activeTab,
+                    dateFilter: dateFilter,
+                    customDate: customDate
+                },
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            setAppointments(Array.isArray(response.data.appointments) ? response.data.appointments : []);
         } catch (err) {
             console.error("Failed to fetch appointments", err);
             setError("Unable to load appointments. Make sure the backend is running.");
@@ -39,11 +97,14 @@ const Dashboard = () => {
     };
 
     const loadCompletedRecords = async (items) => {
-        const completed = items.filter((item) => item.status === "Completed" && item.patientId);
+        if (activeTab !== "completed") return;
+        
+        const completed = items.filter((item) => item.patientId);
         if (!completed.length) {
             setCompletedRecords({});
             return;
         }
+        
         setRecordsLoading(true);
         const entries = await Promise.all(
             completed.map(async (appointment) => {
@@ -62,36 +123,27 @@ const Dashboard = () => {
     };
 
     useEffect(() => {
-        loadAppointments();
-    }, []);
+        if (!authLoading) {
+            if (!doctor) {
+                navigate("/login");
+            } else if (!doctor.onboardingCompleted) {
+                navigate("/onboarding");
+            }
+        }
+    }, [doctor, authLoading, navigate]);
 
     useEffect(() => {
-        if (!loading) loadCompletedRecords(appointments);
-    }, [loading, appointments.length, appointments.map((a) => `${a.id}-${a.status}`).join("|")]);
-
-    const pendingAppointments = useMemo(() => appointments.filter((a) => a.status === "Pending"), [appointments]);
-    const confirmedAppointments = useMemo(() => appointments.filter((a) => a.status === "Confirmed"), [appointments]);
-    const completedAppointments = useMemo(() => appointments.filter((a) => a.status === "Completed"), [appointments]);
-
-    const handleAccept = async (id) => {
-        try {
-            const response = await axios.patch(`${API}/api/appointments/${id}`, { status: "Confirmed" });
-            setAppointments((previous) => previous.map((a) => a.id === id ? response.data.appointment : a));
-        } catch (err) {
-            console.error("Failed to accept appointment", err);
-            setError("Unable to confirm this appointment.");
+        if (doctor) {
+            loadAppointments();
+            loadMetrics();
         }
-    };
+    }, [activeTab, dateFilter, customDate, doctor]);
 
-    const handleDecline = async (id) => {
-        try {
-            const response = await axios.patch(`${API}/api/appointments/${id}`, { status: "Cancelled" });
-            setAppointments((previous) => previous.map((a) => a.id === id ? response.data.appointment : a));
-        } catch (err) {
-            console.error("Failed to decline appointment", err);
-            setError("Unable to decline this appointment.");
+    useEffect(() => {
+        if (!loading && activeTab === "completed") {
+            loadCompletedRecords(appointments);
         }
-    };
+    }, [loading, appointments, activeTab]);
 
     const openConsultation = (appointment) => {
         if (!appointment.patientId) {
@@ -102,7 +154,7 @@ const Dashboard = () => {
             state: {
                 appointmentId: appointment.id,
                 patient: appointment,
-                doctorId: "default-doctor",
+                doctorId: doctor?.id || "default-doctor",
             },
         });
     };
@@ -110,271 +162,272 @@ const Dashboard = () => {
     const patientRecord = (appointment) => completedRecords[appointment.patientId];
 
     return (
-        <>
-            <div className="ambient-bg" />
-            <div className="ambient-bg-2" />
-
-            <div className="portal-container">
-                <aside className="sidebar">
-                    <div className="brand">
-                        <i className="fa-solid fa-notes-medical" /> Doctors Vedika
+        <DashboardLayout
+            activePage="dashboard"
+            dashboardTab={activeTab}
+            onDashboardTab={switchTab}
+        >
+            {/* SUMMARY STAT CARDS GRID */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+                        <div style={{ background: "#ffffff", borderRadius: "16px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
+                            <div style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 600 }}>Today's Consultations</div>
+                            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--navy-deep)", marginTop: "4px" }}>{metrics.todayCount || 0}</div>
+                        </div>
+                        <div style={{ background: "#ffffff", borderRadius: "16px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
+                            <div style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 600 }}>Tomorrow's Bookings</div>
+                            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#08AEB8", marginTop: "4px" }}>{metrics.tomorrowCount || 0}</div>
+                        </div>
+                        <div style={{ background: "#ffffff", borderRadius: "16px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
+                            <div style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 600 }}>Pending Consultations</div>
+                            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#f59e0b", marginTop: "4px" }}>{metrics.pendingCount || 0}</div>
+                        </div>
+                        <div style={{ background: "#ffffff", borderRadius: "16px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
+                            <div style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 600 }}>Completed Visits</div>
+                            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#10b981", marginTop: "4px" }}>{metrics.completedCount || 0}</div>
+                        </div>
+                        <div onClick={() => navigate("/availability")} style={{ background: "linear-gradient(135deg, #082B68 0%, #08AEB8 100%)", borderRadius: "16px", padding: "18px", color: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                            <div style={{ fontSize: "0.85rem", fontWeight: 600, opacity: 0.9 }}><i className="fa-solid fa-clock"></i> Quick Action</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 700, marginTop: "8px" }}>Manage Availability &rarr;</div>
+                        </div>
                     </div>
-                    <ul className="nav-links">
-                        <li>
-                            <button
-                                type="button"
-                                className={`sidebar-link ${activeTab === "confirmed" ? "active" : ""}`}
-                                onClick={() => switchTab("confirmed")}
-                                style={sidebarBtnStyle(activeTab === "confirmed")}
-                            >
-                                <i className="fa-solid fa-calendar-check" /> Confirmed Schedule
-                                {confirmedAppointments.length > 0 && <span className="nav-badge cyan">{confirmedAppointments.length}</span>}
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                type="button"
-                                className={`sidebar-link ${activeTab === "new" ? "active" : ""}`}
-                                onClick={() => switchTab("new")}
-                                style={sidebarBtnStyle(activeTab === "new")}
-                            >
-                                <i className="fa-solid fa-envelope-open-text" /> New Requests
-                                {pendingAppointments.length > 0 && <span className="nav-badge red">{pendingAppointments.length}</span>}
-                            </button>
-                        </li>
-                        <li>
-                            <button
-                                type="button"
-                                className={`sidebar-link ${activeTab === "completed" ? "active" : ""}`}
-                                onClick={() => switchTab("completed")}
-                                style={sidebarBtnStyle(activeTab === "completed")}
-                            >
-                                <i className="fa-solid fa-circle-check" /> Completed
-                                {completedAppointments.length > 0 && <span className="nav-badge green">{completedAppointments.length}</span>}
-                            </button>
-                        </li>
-                    </ul>
-                </aside>
-
-                <main className="main-content">
-                    <header className="header-top fade-in">
-                        <div>
-                            <h1>Welcome, Dr. Sharma</h1>
-                            <p style={{ color: "var(--text-muted)", marginTop: 5 }}>Manage appointments and clinical consultations</p>
-                        </div>
-                        <div className="doctor-profile">
-                            <span>Dr. Anil Sharma</span>
-                            <img src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=100&q=80" alt="Doctor Profile" />
-                        </div>
-                    </header>
 
                     {error && (
-                        <div style={{ margin: "12px 0", padding: "12px 16px", borderRadius: 10, background: "rgba(255,51,102,.1)", border: "1px solid rgba(255,51,102,.3)", color: "#ff7b99" }}>
-                            {error}
+                        <div style={{ margin: "12px 0", padding: "14px 20px", borderRadius: 12, background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#ef4444", fontWeight: 500 }}>
+                            <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "8px" }}></i> {error}
                         </div>
                     )}
 
-                    {/* TOP TAB SWITCHER */}
-                    <div className="tab-navigation-bar" style={{ display: "flex", gap: "12px", margin: "20px 0", flexWrap: "wrap" }}>
-                        <button
-                            type="button"
-                            onClick={() => switchTab("confirmed")}
-                            style={tabButtonStyle(activeTab === "confirmed", "cyan")}
-                        >
-                            <i className="fa-solid fa-calendar-check" /> Confirmed Schedule
-                            <span style={tabBadgeStyle(activeTab === "confirmed", "cyan")}>{confirmedAppointments.length}</span>
+                    {/* TOP TAB SWITCHER (For mobile / quick access) */}
+                    <div className="tab-navigation-bar" style={{ display: "flex", gap: "12px", margin: "0 0 24px 0", flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => switchTab("confirmed")} style={tabButtonStyle(activeTab === "confirmed", "cyan")}>
+                            <i className="fa-solid fa-calendar-check" /> Upcoming
                         </button>
-
-                        <button
-                            type="button"
-                            onClick={() => switchTab("new")}
-                            style={tabButtonStyle(activeTab === "new", "red")}
-                        >
-                            <i className="fa-solid fa-envelope-open-text" /> New Requests
-                            <span style={tabBadgeStyle(activeTab === "new", "red")}>{pendingAppointments.length}</span>
+                        <button type="button" onClick={() => switchTab("pending")} style={tabButtonStyle(activeTab === "pending", "orange")}>
+                            <i className="fa-solid fa-clock-rotate-left" /> Pending
                         </button>
-
-                        <button
-                            type="button"
-                            onClick={() => switchTab("completed")}
-                            style={tabButtonStyle(activeTab === "completed", "green")}
-                        >
-                            <i className="fa-solid fa-circle-check" /> Completed Consultations
-                            <span style={tabBadgeStyle(activeTab === "completed", "green")}>{completedAppointments.length}</span>
+                        <button type="button" onClick={() => switchTab("completed")} style={tabButtonStyle(activeTab === "completed", "green")}>
+                            <i className="fa-solid fa-circle-check" /> Completed
                         </button>
                     </div>
 
-                    {loading ? (
-                        <section className="glass-panel"><p style={{ color: "var(--text-muted)" }}>Loading appointments...</p></section>
-                    ) : (
-                        <>
-                            {/* TAB 1: NEW REQUESTS */}
-                            {activeTab === "new" && (
-                                <section className="glass-panel fade-in">
-                                    <div className="panel-header">
-                                        <div>
-                                            <h2 className="panel-title"><i className="fa-solid fa-envelope-open-text" style={{ color: "var(--danger)", marginRight: 8 }} /> New Appointment Requests</h2>
-                                            <p style={{ color: "var(--text-muted)", margin: "6px 0 0" }}>Review incoming appointment requests and accept or decline.</p>
-                                        </div>
-                                        <span style={{ background: "rgba(255,51,102,.2)", color: "var(--danger)", padding: "6px 14px", borderRadius: 20, fontSize: ".9rem", fontWeight: 700 }}>{pendingAppointments.length} Pending</span>
+                    <section className="glass-panel fade-in" style={{ background: "#ffffff", borderRadius: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.03)", padding: "24px", border: "1px solid rgba(8,174,184,0.1)" }}>
+                        {/* DATE FILTER HEADER */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f1f5f9", paddingBottom: "20px", marginBottom: "20px", flexWrap: "wrap", gap: "16px" }}>
+                            <div>
+                                <h2 style={{ color: "var(--navy-deep)", fontSize: "1.4rem", margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
+                                    {activeTab === "confirmed" && <><i className="fa-solid fa-calendar-check" style={{ color: "#08AEB8" }} /> Confirmed Appointments</>}
+                                    {activeTab === "pending" && <><i className="fa-solid fa-clock-rotate-left" style={{ color: "#f59e0b" }} /> Pending Consultations</>}
+                                    {activeTab === "completed" && <><i className="fa-solid fa-circle-check" style={{ color: "#10B981" }} /> Completed Consultations</>}
+                                </h2>
+                                <p style={{ color: "#64748b", margin: "6px 0 0", fontSize: "0.95rem" }}>
+                                    {activeTab === "confirmed" && "Manage your upcoming scheduled patients."}
+                                    {activeTab === "pending" && "Patients waiting for consultation completion."}
+                                    {activeTab === "completed" && "Review past consultations and reports."}
+                                </p>
+                            </div>
+
+                            {/* DATE FILTER UI (Dropdown Style) */}
+                            <div style={{ display: "flex", alignItems: "center", background: "#f8fafc", padding: "6px", borderRadius: "14px", border: "1px solid #e2e8f0", gap: "8px" }}>
+                                <select 
+                                    value={dateFilter}
+                                    onChange={(e) => handleDateFilterChange(e.target.value)}
+                                    style={{
+                                        padding: "8px 12px",
+                                        borderRadius: "10px",
+                                        border: "1px solid transparent",
+                                        background: "transparent",
+                                        color: "var(--navy-deep)",
+                                        fontWeight: 600,
+                                        cursor: "pointer",
+                                        outline: "none",
+                                        fontFamily: "inherit"
+                                    }}
+                                >
+                                    <option value="all">All Dates</option>
+                                    <option value="today">Today</option>
+                                    <option value="tomorrow">Tomorrow</option>
+                                    <option value="custom">Select Date...</option>
+                                </select>
+                                
+                                {dateFilter === "custom" && (
+                                    <div style={{ position: "relative" }}>
+                                        <input 
+                                            type="date" 
+                                            value={customDate}
+                                            onChange={handleCustomDateChange}
+                                            min={new Date().toISOString().split("T")[0]} // Disable past dates
+                                            style={{
+                                                padding: "8px 12px",
+                                                borderRadius: "10px",
+                                                border: "2px solid #08AEB8",
+                                                background: "#fff",
+                                                color: "var(--navy-deep)",
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                outline: "none",
+                                                fontFamily: "inherit"
+                                            }}
+                                        />
                                     </div>
-                                    <div className="request-list" style={{ marginTop: 16 }}>
-                                        {pendingAppointments.map((app) => (
-                                            <div className="request-card" key={app.id}>
-                                                <div className="patient-info">
-                                                    <img src="/images/human.png" alt="Patient" onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(app.patient || "Patient")}&background=random`; }} />
-                                                    <div className="patient-details">
-                                                        <h4>{app.patient}</h4>
-                                                        <p><i className="fa-regular fa-clock" /> Today, {app.time} • {app.type}</p>
-                                                        <small style={{ color: "var(--text-muted)" }}>Patient ID: {app.patientId || "Not assigned"}</small>
-                                                    </div>
-                                                </div>
-                                                <div className="request-actions">
-                                                    <button className="btn btn-secondary" onClick={() => handleDecline(app.id)}>Decline</button>
-                                                    <button className="btn btn-accept" onClick={() => handleAccept(app.id)}><i className="fa-solid fa-check" /> Accept</button>
+                                )}
+                            </div>
+                        </div>
+
+                        {loading ? (
+                            <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                                <i className="fa-solid fa-spinner fa-spin fa-2x" style={{ color: "#08AEB8", marginBottom: "16px" }}></i>
+                                <p>Loading appointments...</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: "grid", gap: "16px" }}>
+                                {appointments.map((app) => (
+                                    <div key={app.id} style={{ 
+                                        display: "flex", 
+                                        flexDirection: "column",
+                                        background: "#ffffff", 
+                                        border: "1px solid #e2e8f0", 
+                                        borderRadius: "16px", 
+                                        padding: "20px", 
+                                        boxShadow: "0 4px 6px rgba(0,0,0,0.02)",
+                                        transition: "transform 0.2s, box-shadow 0.2s"
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 15px rgba(8,174,184,0.08)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.02)"; }}
+                                    >
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
+                                            
+                                            {/* Patient Info Profile */}
+                                            <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                                                <img 
+                                                    src={app.patientPhoto || "/images/human.png"} 
+                                                    alt="Patient" 
+                                                    style={{ width: "64px", height: "64px", borderRadius: "50%", objectFit: "cover", border: "2px solid #e2e8f0" }}
+                                                    onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(app.patientName || "Patient")}&background=08AEB8&color=fff`; }} 
+                                                />
+                                                <div>
+                                                    <h3 style={{ margin: "0 0 4px 0", color: "var(--navy-deep)", fontSize: "1.2rem", fontWeight: 700 }}>{app.patientName}</h3>
+                                                    <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>
+                                                        {app.patientCode || app.patientId || "No ID"} • {app.age ? `${app.age} yrs` : "Age —"} • {app.gender || "—"} • {app.bloodGroup || "—"}
+                                                    </p>
+                                                    {app.reason && <p style={{ margin: "6px 0 0 0", color: "#475569", fontSize: "0.9rem", background: "#f1f5f9", padding: "4px 8px", borderRadius: "6px", display: "inline-block" }}>
+                                                        <i className="fa-solid fa-stethoscope" style={{ color: "#08AEB8", marginRight: "6px" }}></i> {app.reason}
+                                                    </p>}
                                                 </div>
                                             </div>
-                                        ))}
-                                        {!pendingAppointments.length && <p style={{ color: "var(--text-muted)", padding: 20, textAlign: "center" }}>No pending appointment requests.</p>}
-                                    </div>
-                                </section>
-                            )}
 
-                            {/* TAB 2: CONFIRMED SCHEDULE */}
-                            {activeTab === "confirmed" && (
-                                <section className="glass-panel fade-in">
-                                    <div className="panel-header">
-                                        <div>
-                                            <h2 className="panel-title"><i className="fa-solid fa-calendar-check" style={{ color: "var(--primary)", marginRight: 8 }} /> Today's Confirmed Schedule</h2>
-                                            <p style={{ color: "var(--text-muted)", margin: "6px 0 0" }}>Start live consultation and clinical documentation.</p>
-                                        </div>
-                                        <span style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(0,210,255,.1)", color: "var(--primary)", fontWeight: 700 }}>{confirmedAppointments.length} Confirmed</span>
-                                    </div>
-                                    <div className="request-list" style={{ marginTop: 16 }}>
-                                        {confirmedAppointments.map((app) => (
-                                            <div className="request-card" key={app.id}>
-                                                <div className="patient-info">
-                                                    <img src="/images/human.png" alt="Patient" onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(app.patient || "Patient")}&background=random`; }} />
-                                                    <div className="patient-details">
-                                                        <h4>{app.patient}</h4>
-                                                        <p><i className="fa-regular fa-clock" /> Today, {app.time} • {app.type}</p>
-                                                        <small style={{ color: "var(--text-muted)" }}>{app.age ? `${app.age} years` : "Age —"} • {app.gender || "Gender —"} • ID: {app.patientId || "—"}</small>
+                                            {/* Appointment Info & Action */}
+                                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "12px", minWidth: "220px" }}>
+                                                <div style={{ textAlign: "right" }}>
+                                                    <div style={{ color: "var(--navy-deep)", fontWeight: 700, fontSize: "1.1rem", marginBottom: "4px" }}>
+                                                        <i className="fa-regular fa-calendar" style={{ color: "#08AEB8", marginRight: "6px" }}></i> 
+                                                        {new Date(app.appointmentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} • {app.time}
+                                                    </div>
+                                                    <div style={{ color: "#64748b", fontSize: "0.9rem", display: "flex", gap: "10px", justifyContent: "flex-end", alignItems: "center" }}>
+                                                        <span><i className="fa-solid fa-tag"></i> ₹{app.consultationFee || doctor?.consultationFee}</span>
+                                                        <span style={{ 
+                                                            background: app.paymentStatus === 'paid' ? "#dcfce7" : "#fef3c7", 
+                                                            color: app.paymentStatus === 'paid' ? "#16a34a" : "#d97706",
+                                                            padding: "2px 8px", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600 
+                                                        }}>
+                                                            {app.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                                                        </span>
                                                     </div>
                                                 </div>
-                                                <div className="request-actions">
-                                                    <button className="btn btn-start" onClick={() => openConsultation(app)}>
+                                                
+                                                {/* Action Buttons */}
+                                                {activeTab !== "completed" ? (
+                                                    <button 
+                                                        onClick={() => openConsultation(app)}
+                                                        style={{
+                                                            background: "#08AEB8", color: "#fff", border: "none", padding: "10px 20px",
+                                                            borderRadius: "10px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "8px",
+                                                            transition: "background 0.2s", boxShadow: "0 4px 10px rgba(8,174,184,0.3)"
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = "#068f98"}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = "#08AEB8"}
+                                                    >
                                                         Start Consultation <i className="fa-solid fa-arrow-right" />
                                                     </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {!confirmedAppointments.length && <p style={{ color: "var(--text-muted)", padding: 20, textAlign: "center" }}>No confirmed appointments scheduled for today.</p>}
-                                    </div>
-                                </section>
-                            )}
-
-                            {/* TAB 3: COMPLETED CONSULTATIONS */}
-                            {activeTab === "completed" && (
-                                <section className="glass-panel fade-in">
-                                    <div className="panel-header">
-                                        <div>
-                                            <h2 className="panel-title"><i className="fa-solid fa-circle-check" style={{ color: "#22c55e", marginRight: 8 }} /> Completed Consultations</h2>
-                                            <p style={{ color: "var(--text-muted)", margin: "6px 0 0" }}>Saved consultation reports and generated medical PDFs.</p>
-                                        </div>
-                                        <span style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(34,197,94,.1)", color: "#4ade80", fontWeight: 700 }}>{completedAppointments.length} Completed</span>
-                                    </div>
-
-                                    <div className="completed-list" style={{ display: "grid", gap: 14, marginTop: 16 }}>
-                                        {completedAppointments.map((app) => {
-                                            const record = patientRecord(app);
-                                            const report = record?.summary || {};
-                                            const diagnosis = Array.isArray(record?.diagnosis) ? record.diagnosis.join(", ") : (report.diagnosis || "Not documented");
-                                            const meds = Array.isArray(record?.medications) ? record.medications.length : 0;
-                                            return (
-                                                <article key={app.id} style={{ padding: 18, borderRadius: 14, border: "1px solid rgba(34,197,94,.18)", background: "rgba(34,197,94,.025)" }}>
-                                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
-                                                        <div>
-                                                            <h3 style={{ margin: 0 }}>{app.patient}</h3>
-                                                            <p style={{ color: "var(--text-muted)", margin: "6px 0" }}>Patient ID: {app.patientId || "—"} • {app.type} • {app.time}</p>
-                                                            <p style={{ margin: "6px 0", color: "#cbd5e1" }}>Diagnosis: <strong>{diagnosis || "Not documented"}</strong></p>
-                                                            <p style={{ margin: "6px 0", color: "var(--text-muted)" }}>Prescription: {meds} medicine{meds === 1 ? "" : "s"} • Status: <strong style={{ color: "#4ade80" }}>Completed</strong></p>
-                                                        </div>
-                                                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                                            <button className="btn btn-secondary" onClick={() => navigate(`/patients/${encodeURIComponent(app.patientId)}`)}>View Patient Record</button>
-                                                            {record && (
-                                                                <button
-                                                                    className="btn btn-start"
-                                                                    onClick={() => {
-                                                                        const pdfTarget = record.pdfUrl
-                                                                            ? (record.pdfUrl.startsWith("http") ? record.pdfUrl : `${API}${record.pdfUrl}`)
-                                                                            : `${API}/api/v1/clinical/notes/${encodeURIComponent(app.patientId)}/${encodeURIComponent(record.consultationId)}/pdf`;
-                                                                        window.open(pdfTarget, "_blank", "noopener,noreferrer");
-                                                                    }}
-                                                                >
-                                                                    📄 View PDF
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                                ) : (
+                                                    <div style={{ display: "flex", gap: "8px" }}>
+                                                        <button 
+                                                            onClick={() => navigate(`/patients/${encodeURIComponent(app.patientId)}`)}
+                                                            style={{
+                                                                background: "#f1f5f9", color: "var(--navy-deep)", border: "1px solid #e2e8f0", padding: "8px 16px",
+                                                                borderRadius: "8px", fontWeight: 600, cursor: "pointer", transition: "background 0.2s"
+                                                            }}
+                                                            onMouseEnter={(e) => e.currentTarget.style.background = "#e2e8f0"}
+                                                            onMouseLeave={(e) => e.currentTarget.style.background = "#f1f5f9"}
+                                                        >
+                                                            Patient Record
+                                                        </button>
+                                                        {patientRecord(app) && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const record = patientRecord(app);
+                                                                    const pdfTarget = record.pdfUrl
+                                                                        ? (record.pdfUrl.startsWith("http") ? record.pdfUrl : `${API}${record.pdfUrl}`)
+                                                                        : `${API}/api/v1/clinical/notes/${encodeURIComponent(app.patientId)}/${encodeURIComponent(record.consultationId)}/pdf`;
+                                                                    window.open(pdfTarget, "_blank", "noopener,noreferrer");
+                                                                }}
+                                                                style={{
+                                                                    background: "#10B981", color: "#fff", border: "none", padding: "8px 16px",
+                                                                    borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px",
+                                                                    boxShadow: "0 4px 10px rgba(16,185,129,0.2)"
+                                                                }}
+                                                            >
+                                                                <i className="fa-solid fa-file-pdf"></i> View PDF
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                    {record && (
-                                                        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(148,163,184,.12)", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
-                                                            <Info label="Consultation Date" value={record.consultationDate} />
-                                                            <Info label="Consultation Time" value={record.consultationTime} />
-                                                            <Info label="Doctor" value={record.doctorId} />
-                                                            <Info label="Record ID" value={record.consultationId} />
-                                                        </div>
-                                                    )}
-                                                </article>
-                                            );
-                                        })}
-                                        {!completedAppointments.length && <p style={{ color: "var(--text-muted)", padding: 20, textAlign: "center" }}>No completed consultations yet.</p>}
-                                        {recordsLoading && <p style={{ color: "var(--text-muted)" }}>Loading completed patient details...</p>}
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                </section>
-                            )}
-                        </>
-                    )}
-                </main>
-            </div>
-        </>
+                                ))}
+
+                                {!appointments.length && (
+                                    <div style={{ textAlign: "center", padding: "60px 20px", background: "#f8fafc", borderRadius: "16px", border: "2px dashed #e2e8f0" }}>
+                                        <div style={{ width: "80px", height: "80px", background: "#e0f2fe", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px auto" }}>
+                                            <i className="fa-regular fa-calendar-xmark" style={{ fontSize: "2rem", color: "#38bdf8" }}></i>
+                                        </div>
+                                        <h3 style={{ margin: "0 0 8px 0", color: "var(--navy-deep)" }}>No Appointments Found</h3>
+                                        <p style={{ margin: 0, color: "#64748b" }}>
+                                            There are no {activeTab} appointments for the selected date.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </section>
+        </DashboardLayout>
     );
 };
 
-const Info = ({ label, value }) => (
-    <div>
-        <small style={{ color: "var(--text-muted)", display: "block" }}>{label}</small>
-        <span style={{ fontWeight: 600, color: "#cbd5e1" }}>{value || "—"}</span>
-    </div>
-);
-
-const sidebarBtnStyle = (active) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    background: active ? "rgba(0,210,255,0.12)" : "transparent",
+const dateBtnStyle = (active) => ({
+    background: active ? "#ffffff" : "transparent",
+    color: active ? "#08AEB8" : "#64748b",
     border: "none",
+    padding: "8px 16px",
     borderRadius: "10px",
-    padding: "12px 14px",
-    color: active ? "var(--primary)" : "var(--text-muted)",
-    cursor: "pointer",
     fontWeight: active ? 700 : 500,
-    fontSize: "0.95rem",
-    textAlign: "left",
-    transition: "all 0.2s ease",
+    cursor: "pointer",
+    boxShadow: active ? "0 2px 4px rgba(0,0,0,0.04)" : "none",
+    transition: "all 0.2s"
 });
 
-const tabButtonStyle = (active, theme) => {
-    const isCyan = theme === "cyan";
-    const isRed = theme === "red";
-    const activeBg = isCyan
-        ? "linear-gradient(135deg, rgba(0,210,255,0.2), rgba(0,168,181,0.25))"
-        : isRed
-            ? "linear-gradient(135deg, rgba(255,51,102,0.2), rgba(220,38,38,0.25))"
-            : "linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.25))";
+// sidebarBtnStyle and sidebarItemStyle moved to shared Sidebar component
 
-    const activeColor = isCyan ? "#00d2ff" : isRed ? "#ff4d6d" : "#4ade80";
-    const activeBorder = isCyan ? "rgba(0,210,255,0.4)" : isRed ? "rgba(255,51,102,0.4)" : "rgba(34,197,94,0.4)";
+const tabButtonStyle = (active, theme) => {
+    let activeColor = "#08AEB8";
+    let activeBg = "rgba(8,174,184,0.1)";
+    let activeBorder = "rgba(8,174,184,0.3)";
+    
+    if (theme === "orange") {
+        activeColor = "#f59e0b"; activeBg = "rgba(245,158,11,0.1)"; activeBorder = "rgba(245,158,11,0.3)";
+    } else if (theme === "green") {
+        activeColor = "#10B981"; activeBg = "rgba(16,185,129,0.1)"; activeBorder = "rgba(16,185,129,0.3)";
+    }
 
     return {
         display: "flex",
@@ -382,35 +435,14 @@ const tabButtonStyle = (active, theme) => {
         gap: "8px",
         padding: "10px 18px",
         borderRadius: "12px",
-        border: `1px solid ${active ? activeBorder : "rgba(100,122,151,0.2)"}`,
-        background: active ? activeBg : "rgba(11,22,40,0.6)",
-        color: active ? activeColor : "#8fa1b7",
+        border: `1px solid ${active ? activeBorder : "rgba(226, 232, 240, 1)"}`,
+        background: active ? activeBg : "#ffffff",
+        color: active ? activeColor : "#64748B",
         cursor: "pointer",
         fontWeight: 700,
         fontSize: "0.92rem",
         transition: "all 0.2s ease",
-    };
-};
-
-const tabBadgeStyle = (active, theme) => {
-    const isCyan = theme === "cyan";
-    const isRed = theme === "red";
-    const bg = isCyan
-        ? "rgba(0,210,255,0.2)"
-        : isRed
-            ? "rgba(255,51,102,0.25)"
-            : "rgba(34,197,94,0.2)";
-
-    const color = isCyan ? "#00d2ff" : isRed ? "#ff4d6d" : "#4ade80";
-
-    return {
-        background: bg,
-        color: color,
-        padding: "2px 8px",
-        borderRadius: "999px",
-        fontSize: "0.78rem",
-        fontWeight: 800,
-        marginLeft: "4px",
+        boxShadow: active ? "none" : "0 2px 4px rgba(0,0,0,0.02)"
     };
 };
 

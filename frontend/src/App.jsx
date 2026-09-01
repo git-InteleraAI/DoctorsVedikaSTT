@@ -5,12 +5,44 @@ import Dashboard from "./pages/Dashboard";
 import Consultation from "./pages/Consultation";
 import ConsultationSummary from "./pages/ConsultationSummary";
 import PatientRecord from "./pages/PatientRecord";
+import Patients from "./pages/Patients";
+import DoctorLogin from "./pages/DoctorLogin";
+import DoctorSignup from "./pages/DoctorSignup";
+import DoctorOnboarding from "./pages/DoctorOnboarding";
+import Availability from "./pages/Availability";
+import VideosAndShorts from "./pages/VideosAndShorts";
+import QnA from "./pages/QnA";
+import AuthCallback from "./pages/AuthCallback";
+import { AuthProvider } from "./context/AuthContext";
+
+import Profile from "./pages/Profile";
 
 function App() {
   return (
-    <Router>
+    <AuthProvider>
+      <Router>
 
       <Routes>
+
+        {/* Auth Callback Route */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+        {/* Doctor Authentication Routes */}
+        <Route
+          path="/login"
+          element={<DoctorLogin />}
+        />
+
+        <Route
+          path="/signup"
+          element={<DoctorSignup />}
+        />
+
+        <Route
+          path="/onboarding"
+          element={<DoctorOnboarding />}
+        />
+
 
         {/* DO NOT TOUCH */}
         <Route
@@ -24,6 +56,11 @@ function App() {
         />
 
         <Route
+          path="/availability"
+          element={<Availability />}
+        />
+
+        <Route
           path="/consultation/:patientId"
           element={<Consultation />}
         />
@@ -34,13 +71,34 @@ function App() {
         />
 
         <Route
+          path="/patients"
+          element={<Patients />}
+        />
+
+        <Route
           path="/patients/:patientId"
           element={<PatientRecord />}
         />
 
+        <Route
+          path="/videos"
+          element={<VideosAndShorts />}
+        />
+
+        <Route
+          path="/qna"
+          element={<QnA />}
+        />
+
+        <Route
+          path="/profile"
+          element={<Profile />}
+        />
+
       </Routes>
 
-    </Router>
+      </Router>
+    </AuthProvider>
   );
 }
 

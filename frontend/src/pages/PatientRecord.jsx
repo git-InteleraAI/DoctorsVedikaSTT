@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = import.meta.env.VITE_NODE_API_URL;
 
 const formatText = (val) => {
     if (val === null || val === undefined) return "";
@@ -76,29 +76,29 @@ const PatientRecord = () => {
     }, [records, patientId]);
 
     return (
-        <div style={{ minHeight: "100vh", background: "#050b14", color: "#f8fafc", padding: "28px 24px 60px", boxSizing: "border-box" }}>
+        <div style={{ minHeight: "100vh", background: "transparent", color: "var(--text-main)", padding: "28px 24px 60px", boxSizing: "border-box" }}>
             <div style={{ maxWidth: 1200, margin: "0 auto" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 15, marginBottom: 24, flexWrap: "wrap" }}>
                     <div>
-                        <Link to="/dashboard" style={{ color: "#00d8ff", textDecoration: "none", fontWeight: 700, fontSize: "0.95rem" }}>
+                        <Link to="/dashboard" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 700, fontSize: "0.95rem" }}>
                             ← Back to Dashboard
                         </Link>
                         <h1 style={{ margin: "12px 0 4px", fontSize: "1.75rem", fontWeight: 800 }}>Patient Medical Record</h1>
-                        <p style={{ margin: 0, color: "#8fa1b7", fontSize: "0.95rem" }}>
-                            {patientInfo.name} • Patient ID: <strong style={{ color: "#cbd5e1" }}>{patientInfo.id}</strong>
+                        <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "0.95rem" }}>
+                            {patientInfo.name} • Patient ID: <strong style={{ color: "var(--text-main)" }}>{patientInfo.id}</strong>
                         </p>
                     </div>
                 </div>
 
                 {loading && (
                     <div style={cardStyle}>
-                        <p style={{ margin: 0, color: "#00d8ff", fontWeight: 600 }}>Loading patient consultation records...</p>
+                        <p style={{ margin: 0, color: "var(--primary)", fontWeight: 600 }}>Loading patient consultation records...</p>
                     </div>
                 )}
 
                 {error && (
-                    <div style={{ ...cardStyle, border: "1px solid rgba(255,51,102,0.3)", background: "rgba(255,51,102,0.05)" }}>
-                        <span style={{ color: "#ff7b99", fontWeight: 600 }}>{error}</span>
+                    <div style={{ ...cardStyle, border: "1px solid rgba(239, 68, 68, 0.3)", background: "rgba(239, 68, 68, 0.1)" }}>
+                        <span style={{ color: "var(--danger)", fontWeight: 600 }}>{error}</span>
                     </div>
                 )}
 
@@ -132,16 +132,16 @@ const RecordCard = ({ record }) => {
     const fullPdfUrl = rawPdfUrl.startsWith("http") ? rawPdfUrl : `${API}${rawPdfUrl}`;
 
     return (
-        <article style={{ background: "#0b1628", border: "1px solid rgba(100,122,151,.25)", borderRadius: 18, overflow: "hidden" }}>
-            <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(100,122,151,.18)", display: "flex", justifyContent: "space-between", gap: 15, flexWrap: "wrap", alignItems: "center" }}>
+        <article style={{ background: "rgba(255, 255, 255, 0.75)", backdropFilter: "blur(20px)", border: "1px solid rgba(255, 255, 255, 0.9)", borderRadius: 18, overflow: "hidden", boxShadow: "0 10px 40px rgba(8, 43, 104, 0.05)" }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(8, 43, 104, 0.1)", display: "flex", justifyContent: "space-between", gap: 15, flexWrap: "wrap", alignItems: "center" }}>
                 <div>
-                    <div style={{ color: "#00d8ff", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                    <div style={{ color: "var(--primary)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>
                         Consultation Record
                     </div>
-                    <h2 style={{ margin: "6px 0", fontSize: "1.3rem" }}>
+                    <h2 style={{ margin: "6px 0", fontSize: "1.3rem", color: "var(--text-main)" }}>
                         {formatText(record.consultationDate) || "Today"} • {formatText(record.consultationTime)}
                     </h2>
-                    <p style={{ margin: 0, color: "#8fa1b7", fontSize: "0.85rem" }}>
+                    <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "0.85rem" }}>
                         Consultation ID: {formatText(record.consultationId)} • Appointment ID: {formatText(record.appointmentId) || "—"}
                     </p>
                 </div>
@@ -149,8 +149,8 @@ const RecordCard = ({ record }) => {
                     <span style={{
                         padding: "6px 14px",
                         borderRadius: 999,
-                        background: record.status === "Completed" ? "rgba(34,197,94,.15)" : "rgba(0,210,255,.12)",
-                        color: record.status === "Completed" ? "#4ade80" : "#00d8ff",
+                        background: record.status === "Completed" ? "rgba(16, 185, 129, 0.15)" : "rgba(8, 174, 184, 0.15)",
+                        color: record.status === "Completed" ? "var(--success)" : "var(--primary)",
                         fontWeight: 800,
                         fontSize: "0.85rem",
                     }}>
@@ -249,20 +249,20 @@ const RecordCard = ({ record }) => {
                 {/* COMPLETE TRANSCRIPT */}
                 <Section title="Consultation Transcript">
                     {!transcript.length ? (
-                        <p style={{ color: "#8fa1b7", margin: 0 }}>No transcript available.</p>
+                        <p style={{ color: "var(--text-muted)", margin: 0 }}>No transcript available.</p>
                     ) : (
                         <div style={{ display: "grid", gap: 8 }}>
                             {transcript.map((line, idx) => (
-                                <div key={idx} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(100,122,151,0.12)" }}>
+                                <div key={idx} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.8)", border: "1px solid rgba(8, 43, 104, 0.1)" }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                        <span style={{ color: String(line.speaker || "").toLowerCase().includes("doctor") ? "#00d8ff" : "#4ade80", fontWeight: 800, fontSize: "0.85rem" }}>
+                                        <span style={{ color: String(line.speaker || "").toLowerCase().includes("doctor") ? "var(--primary)" : "var(--success)", fontWeight: 800, fontSize: "0.85rem" }}>
                                             {formatText(line.speaker) || "Speaker"}
                                         </span>
-                                        <span style={{ color: "#75859c", fontSize: "0.8rem", fontWeight: 600 }}>
+                                        <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", fontWeight: 600 }}>
                                             [{formatText(line.timestamp) || "00:00"}]
                                         </span>
                                     </div>
-                                    <p style={{ margin: 0, color: "#d6deea", lineHeight: 1.6, fontSize: "0.9rem", whiteSpace: "pre-wrap" }}>
+                                    <p style={{ margin: 0, color: "var(--text-main)", lineHeight: 1.6, fontSize: "0.9rem", whiteSpace: "pre-wrap" }}>
                                         {formatText(line.text)}
                                     </p>
                                 </div>
@@ -276,8 +276,8 @@ const RecordCard = ({ record }) => {
 };
 
 const Section = ({ title, children }) => (
-    <section style={{ padding: 18, border: "1px solid rgba(100,122,151,.2)", borderRadius: 14, background: "rgba(255,255,255,.015)" }}>
-        <h3 style={{ margin: "0 0 14px", color: "#00d8ff", fontSize: "1.05rem", fontWeight: 700 }}>{title}</h3>
+    <section style={{ padding: 18, border: "1px solid rgba(8, 43, 104, 0.1)", borderRadius: 14, background: "rgba(255,255,255,0.6)" }}>
+        <h3 style={{ margin: "0 0 14px", color: "var(--primary)", fontSize: "1.05rem", fontWeight: 700 }}>{title}</h3>
         {children}
     </section>
 );
@@ -287,10 +287,10 @@ const Detail = ({ label, value }) => {
     if (!text) return null;
     return (
         <div style={{ marginBottom: 12 }}>
-            <div style={{ color: "#75859c", fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, fontWeight: 700 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, fontWeight: 700 }}>
                 {label}
             </div>
-            <div style={{ color: "#e9eef7", lineHeight: 1.6, whiteSpace: "pre-wrap", fontSize: "0.92rem" }}>
+            <div style={{ color: "var(--text-main)", lineHeight: 1.6, whiteSpace: "pre-wrap", fontSize: "0.92rem", fontWeight: 500 }}>
                 {text}
             </div>
         </div>
@@ -300,9 +300,9 @@ const Detail = ({ label, value }) => {
 const Grid = ({ items }) => (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 10 }}>
         {items.map(([label, value]) => (
-            <div key={label} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(100,122,151,0.12)" }}>
-                <div style={{ color: "#75859c", fontSize: 10, textTransform: "uppercase", fontWeight: 700 }}>{label}</div>
-                <div style={{ marginTop: 4, fontWeight: 700, color: "#cbd5e1", fontSize: "0.92rem" }}>{value || "—"}</div>
+            <div key={label} style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.8)", border: "1px solid rgba(8, 43, 104, 0.1)" }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase", fontWeight: 700 }}>{label}</div>
+                <div style={{ marginTop: 4, fontWeight: 700, color: "var(--text-main)", fontSize: "0.92rem" }}>{value || "—"}</div>
             </div>
         ))}
     </div>
@@ -311,37 +311,37 @@ const Grid = ({ items }) => (
 const cardStyle = {
     padding: 22,
     borderRadius: 14,
-    background: "#0b1628",
-    border: "1px solid rgba(100,122,151,.25)",
+    background: "rgba(255, 255, 255, 0.75)",
+    border: "1px solid rgba(255, 255, 255, 0.9)",
 };
 
 const pdfBtnStyle = {
     border: 0,
     borderRadius: 10,
     padding: "10px 18px",
-    background: "linear-gradient(135deg, #00d2ff, #0099cc)",
-    color: "#031019",
+    background: "linear-gradient(135deg, var(--primary), #0099cc)",
+    color: "#ffffff",
     fontWeight: 800,
     cursor: "pointer",
     fontSize: "0.88rem",
-    boxShadow: "0 4px 12px rgba(0,210,255,0.2)",
+    boxShadow: "0 4px 15px rgba(8, 174, 184, 0.3)",
 };
 
 const thStyle = {
     textAlign: "left",
     padding: "10px 12px",
-    background: "rgba(0,210,255,0.1)",
-    color: "#00d2ff",
+    background: "rgba(8, 174, 184, 0.1)",
+    color: "var(--primary)",
     fontSize: "0.85rem",
     fontWeight: 700,
-    borderBottom: "1px solid rgba(100,122,151,0.2)",
+    borderBottom: "1px solid rgba(8, 43, 104, 0.1)",
 };
 
 const tdStyle = {
     padding: "10px 12px",
-    color: "#d6deea",
+    color: "var(--text-main)",
     fontSize: "0.88rem",
-    borderBottom: "1px solid rgba(100,122,151,.12)",
+    borderBottom: "1px solid rgba(8, 43, 104, 0.05)",
     verticalAlign: "top",
 };
 

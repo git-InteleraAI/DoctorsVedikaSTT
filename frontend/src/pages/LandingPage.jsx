@@ -37,7 +37,10 @@ export default function LandingPage() {
                         <a href="/dashboard" className="nav-item">Live Transcribe</a>
                     </div>
 
-                    <div className="nav-right">
+                    <div className="nav-right" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                        <a href="/login" className="nav-item" style={{ fontWeight: 600, color: "#0093a8" }}>
+                            Doctor Portal
+                        </a>
                         <a href="#collaborate" className="btn-nav-action">
                             Partner With Us <i className="fa-solid fa-arrow-up-right"></i>
                         </a>

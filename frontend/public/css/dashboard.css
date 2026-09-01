@@ -1,24 +1,22 @@
 
 :root {
-    --bg-dark: #0a0a0f;
-    --card-bg: rgba(20, 20, 30, 0.6);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --primary: #00d2ff;
-    --primary-glow: rgba(0, 210, 255, 0.3);
-    --success: #00ff88;
-    --danger: #ff3366;
-    --text-main: #f0f0f5;
-    --text-muted: #8a8a9d;
-    --font-main: 'Outfit', sans-serif;
+    --bg-dark: #F3FAFE;
+    --card-bg: #FFFFFF;
+    --glass-border: #E2E8F0;
+    --primary: #08AEB8;
+    --primary-glow: rgba(8, 174, 184, 0.15);
+    --success: #10B981;
+    --danger: #EF4444;
+    --text-main: #082B68;
+    --text-muted: #64748B;
+    --sidebar-bg: #082B68;
+    --font-main: 'Inter', sans-serif;
 }
 
 body {
-    background-color: var(--bg-dark);
-    background-image: url('../images/hologram.jpg');
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-    background-blend-mode: overlay;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e0f2fe 50%, #f3e8ff 100%);
+    background-size: 400% 400%;
+    animation: gradientShift 20s ease infinite;
     color: var(--text-main);
     font-family: var(--font-main);
     margin: 0;
@@ -26,29 +24,47 @@ body {
     overflow-x: hidden;
 }
 
-/* Ambient Background */
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Ambient Background Animations */
 .ambient-bg {
     position: fixed;
-    top: -20%;
+    top: -10%;
     left: -10%;
-    width: 50vw;
-    height: 50vw;
-    background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
-    filter: blur(100px);
+    width: 60vw;
+    height: 60vw;
+    background: radial-gradient(circle, var(--primary-glow) 0%, transparent 60%);
+    filter: blur(90px);
     z-index: -1;
     border-radius: 50%;
+    animation: floatBg 15s ease-in-out infinite alternate;
 }
 
 .ambient-bg-2 {
     position: fixed;
-    bottom: -20%;
+    bottom: -10%;
     right: -10%;
-    width: 60vw;
-    height: 60vw;
-    background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
-    filter: blur(120px);
+    width: 70vw;
+    height: 70vw;
+    background: radial-gradient(circle, rgba(8, 43, 104, 0.1) 0%, transparent 60%);
+    filter: blur(110px);
     z-index: -1;
     border-radius: 50%;
+    animation: floatBg2 20s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes floatBg {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(50px, 50px) scale(1.1); }
+}
+
+@keyframes floatBg2 {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-50px, -50px) scale(1.1); }
 }
 
 /* Portal Layout */
@@ -60,9 +76,10 @@ body {
 /* Sidebar */
 .sidebar {
     width: 260px;
-    background: rgba(10, 10, 15, 0.8);
-    border-right: 1px solid var(--glass-border);
-    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.7);
+    border-right: 1px solid rgba(8, 174, 184, 0.2);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     padding: 2rem 1.5rem;
     display: flex;
     flex-direction: column;
@@ -105,13 +122,13 @@ body {
 
 .nav-links li a:hover,
 .nav-links li a.active {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.1);
     color: white;
 }
 
 .nav-links li a.active {
     border-left: 3px solid var(--primary);
-    background: linear-gradient(90deg, rgba(0, 210, 255, 0.1) 0%, transparent 100%);
+    background: linear-gradient(90deg, rgba(8, 174, 184, 0.2) 0%, transparent 100%);
 }
 
 /* Main Content Area */
@@ -141,6 +158,7 @@ body {
     padding: 8px 16px;
     border-radius: 30px;
     border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 15px rgba(8, 43, 104, 0.05);
 }
 
 .doctor-profile img {
@@ -149,14 +167,20 @@ body {
     border-radius: 50%;
 }
 
-/* Cards & Containers */
+/* Cards & Containers (Glassmorphism) */
 .glass-panel {
-    background: var(--card-bg);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 20px;
+    padding: 1.8rem;
     margin-bottom: 2rem;
+    box-shadow: 0 10px 40px rgba(8, 43, 104, 0.05);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.glass-panel:hover {
+    box-shadow: 0 15px 50px rgba(8, 43, 104, 0.08);
 }
 
 .panel-header {
@@ -215,20 +239,22 @@ body {
 }
 
 .request-card {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.03);
-    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 16px;
     padding: 1rem 1.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(8, 43, 104, 0.03);
 }
 
 .request-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 15px 30px rgba(8, 43, 104, 0.08);
+    border-color: rgba(8, 174, 184, 0.4);
+    background: #ffffff;
 }
 
 .patient-info {
@@ -298,13 +324,15 @@ body {
 }
 
 .patient-sidebar {
-    background: var(--card-bg);
-    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
     border-radius: 16px;
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
     align-items: center;
+    box-shadow: 0 10px 30px rgba(8, 43, 104, 0.05);
 }
 
 .patient-sidebar img {
@@ -323,10 +351,11 @@ body {
 }
 
 .vital-box {
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(8, 174, 184, 0.08);
     padding: 10px;
     border-radius: 8px;
     text-align: center;
+    border: 1px solid rgba(8, 174, 184, 0.15);
 }
 
 .vital-box span {
@@ -337,7 +366,8 @@ body {
 
 .vital-box strong {
     font-size: 1.1rem;
-    color: var(--primary);
+    color: var(--text-main);
+    font-weight: 700;
 }
 
 .workspace {
@@ -348,12 +378,14 @@ body {
 
 .transcription-box {
     flex: 1;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 16px;
     padding: 1.5rem;
     position: relative;
     overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(8, 43, 104, 0.03);
 }
 
 .recording-indicator {
@@ -384,11 +416,12 @@ body {
 }
 
 .ai-summary-box {
-    background: linear-gradient(145deg, rgba(20, 20, 30, 0.9), rgba(10, 10, 15, 0.9));
-    border: 1px solid var(--primary);
-    box-shadow: 0 0 20px rgba(0, 210, 255, 0.1);
-    border-radius: 12px;
-    padding: 1.5rem;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(245, 250, 255, 0.9));
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(8, 174, 184, 0.3);
+    box-shadow: 0 10px 40px rgba(8, 43, 104, 0.08);
+    border-radius: 16px;
+    padding: 1.8rem;
 }
 
 .ai-summary-box h3 {
@@ -410,17 +443,26 @@ body {
     margin-bottom: 5px;
     color: var(--text-muted);
     font-size: 0.9rem;
+    font-weight: 600;
 }
 
 .input-group textarea,
 .input-group input {
     width: 100%;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--glass-border);
-    border-radius: 8px;
-    color: white;
-    padding: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(226, 232, 240, 1);
+    border-radius: 10px;
+    color: var(--text-main);
+    padding: 12px;
     font-family: inherit;
+    transition: all 0.3s;
+}
+
+.input-group textarea:focus,
+.input-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 .action-bar {
@@ -432,12 +474,12 @@ body {
 
 .btn-secondary {
     background: transparent;
-    border: 1px solid var(--glass-border);
-    color: white;
+    border: 1px solid rgba(8, 43, 104, 0.2);
+    color: var(--text-main);
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(8, 43, 104, 0.05);
 }
 
 /* Animations */
@@ -464,30 +506,29 @@ body {
 .consultation-summary-page {
     position: relative;
     z-index: 1;
-    max-width: 1280px;
-    margin: 2rem auto;
-    padding: 2.5rem;
-    background: rgba(10, 14, 26, 0.94);
-    backdrop-filter: blur(25px);
-    -webkit-backdrop-filter: blur(25px);
-    border: 1px solid rgba(0, 210, 255, 0.25);
-    border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 210, 255, 0.15);
-    color: #f0f0f5;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    color: var(--text-main);
 }
 
 .summary-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(15, 23, 42, 0.85);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(0, 210, 255, 0.2);
+    border: 1px solid rgba(8, 174, 184, 0.2);
     border-radius: 16px;
     padding: 1.25rem 2rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px rgba(8, 43, 104, 0.05);
 }
 
 .title-row {
@@ -501,12 +542,12 @@ body {
     font-size: 1.6rem;
     font-weight: 700;
     margin: 0;
-    color: #ffffff;
+    color: var(--text-main);
 }
 
 .ai-badge {
-    background: linear-gradient(135deg, rgba(0, 210, 255, 0.2), rgba(0, 255, 136, 0.2));
-    border: 1px solid var(--primary);
+    background: linear-gradient(135deg, rgba(8, 174, 184, 0.15), rgba(16, 185, 129, 0.15));
+    border: 1px solid rgba(8, 174, 184, 0.4);
     color: var(--primary);
     padding: 4px 12px;
     border-radius: 50px;
@@ -516,9 +557,9 @@ body {
 
 .back-button,
 .print-button {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: #ffffff;
+    background: rgba(8, 43, 104, 0.05);
+    border: 1px solid rgba(8, 43, 104, 0.15);
+    color: var(--text-main);
     padding: 8px 16px;
     border-radius: 8px;
     cursor: pointer;
@@ -529,27 +570,28 @@ body {
 
 .back-button:hover,
 .print-button:hover {
-    background: rgba(0, 210, 255, 0.2);
+    background: rgba(8, 174, 184, 0.1);
     border-color: var(--primary);
+    color: var(--primary);
 }
 
 .review-banner {
     display: flex;
     align-items: center;
     gap: 15px;
-    background: rgba(0, 210, 255, 0.08);
-    border: 1px solid rgba(0, 210, 255, 0.3);
+    background: rgba(8, 174, 184, 0.08);
+    border: 1px solid rgba(8, 174, 184, 0.3);
     border-radius: 12px;
     padding: 1rem 1.5rem;
     margin-bottom: 1.5rem;
-    color: #f0f0f5;
+    color: var(--text-main);
 }
 
 .review-icon {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: rgba(0, 210, 255, 0.2);
+    background: rgba(8, 174, 184, 0.15);
     color: var(--primary);
     display: flex;
     align-items: center;
@@ -566,9 +608,9 @@ body {
 }
 
 .meta-card {
-    background: rgba(15, 23, 42, 0.85);
+    background: rgba(255, 255, 255, 0.7);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(8, 174, 184, 0.15);
     border-radius: 14px;
     padding: 1rem 1.2rem;
 }
@@ -583,7 +625,7 @@ body {
 .meta-value {
     font-size: 1.1rem;
     font-weight: 600;
-    color: #ffffff;
+    color: var(--text-main);
     margin-top: 4px;
 }
 
@@ -607,13 +649,13 @@ body {
 
 .editable-section,
 .card-box {
-    background: rgba(15, 23, 42, 0.85);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
     border-radius: 16px;
     padding: 1.5rem;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 40px rgba(8, 43, 104, 0.05);
 }
 
 .section-heading {
@@ -639,16 +681,16 @@ body {
 .input-group textarea,
 .input-group input {
     width: 100%;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(226, 232, 240, 1);
     border-radius: 10px;
-    color: #ffffff;
+    color: var(--text-main);
     padding: 12px 14px;
     font-size: 0.95rem;
     font-family: inherit;
     line-height: 1.5;
-    transition: border-color 0.2s ease;
-    box-sizing: border-border-box;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
 }
 
 .editable-section textarea:focus,
@@ -657,7 +699,7 @@ body {
 .input-group input:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
+    box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 .list-item-row {
@@ -709,9 +751,9 @@ body {
     gap: 15px;
     align-items: flex-end;
     padding: 15px;
-    border: 1px solid rgba(100,122,151,.22);
+    border: 1px solid rgba(226, 232, 240, 1);
     border-radius: 12px;
-    background: rgba(255,255,255,.018);
+    background: rgba(255, 255, 255, 0.5);
 }
 .medicine-row .medicine-number {
     flex: 0 0 20px;
@@ -732,11 +774,12 @@ body {
 .medicine-select { min-height: 44px; }
 
 .prescription-medicine-card {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.8);
     border-radius: 12px;
     padding: 1rem;
     margin-bottom: 1rem;
+    box-shadow: 0 4px 15px rgba(8, 43, 104, 0.03);
 }
 
 .prescription-grid {

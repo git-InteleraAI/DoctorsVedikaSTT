@@ -9,11 +9,14 @@ require("dotenv").config();
 
 const {
     completeConsultation,
+    prepareConsultationSummary,
 } = require("./consultation/consultationController");
 
 const {
     generateMedicalReportPdf,
 } = require("./pdf/generateMedicalReportPdf");
+
+const { supabase, isSupabaseConfigured } = require("./config/supabase");
 
 const app = express();
 
@@ -117,111 +120,41 @@ app.get("/ping", (req, res) => {
     res.status(200).send("pong");
 });
 
+// =====================================================
+// AUTHENTICATION & SUPABASE
+// =====================================================
+const authRoutes = require("./routes/authRoutes");
+app.use("/api/auth", authRoutes);
 
 // =====================================================
 // APPOINTMENTS
 // =====================================================
+const appointmentRoutes = require("./routes/appointmentRoutes");
+app.use("/api/appointments", appointmentRoutes);
 
-let appointments = [
-    {
-        id: 1,
-        patientId: "patient-001",
-        patientName: "Rahul Sharma",
-        patient: "Rahul Sharma",
-        age: 32,
-        gender: "Male",
-        bloodGroup: "B+",
-        time: "10:00 AM",
-        type: "Consultation",
-        status: "Confirmed",
-        doctorId: "default-doctor",
-    },
-    {
-        id: 2,
-        patientId: "patient-002",
-        patientName: "Priya Desai",
-        patient: "Priya Desai",
-        age: 28,
-        gender: "Female",
-        bloodGroup: "O+",
-        time: "11:00 AM",
-        type: "Follow-up",
-        status: "Confirmed",
-        doctorId: "default-doctor",
-    },
-];
+// =====================================================
+// AVAILABILITY & SLOTS
+// =====================================================
+const availabilityRoutes = require("./routes/availabilityRoutes");
+app.use("/api/availability", availabilityRoutes);
 
-app.get("/api/appointments", (req, res) => {
-    res.json(appointments);
-});
+// =====================================================
+// PATIENTS
+// =====================================================
+const patientRoutes = require("./routes/patientRoutes");
+app.use("/api/patients", patientRoutes);
 
-app.get("/api/appointments/:id", (req, res) => {
-    const appointment = appointments.find(
-        (item) => String(item.id) === String(req.params.id)
-    );
+// =====================================================
+// EDUCATIONAL VIDEOS & SHORTS
+// =====================================================
+const videoRoutes = require("./routes/videoRoutes");
+app.use("/api/educational-videos", videoRoutes);
 
-    if (!appointment) {
-        return res.status(404).json({
-            success: false,
-            message: "Appointment not found",
-        });
-    }
-
-    res.json({
-        success: true,
-        appointment,
-    });
-});
-
-app.patch("/api/appointments/:id", (req, res) => {
-    const appointment = appointments.find(
-        (item) => String(item.id) === String(req.params.id)
-    );
-
-    if (!appointment) {
-        return res.status(404).json({
-            success: false,
-            message: "Appointment not found",
-        });
-    }
-
-    if (!req.body?.status) {
-        return res.status(400).json({
-            success: false,
-            message: "status is required",
-        });
-    }
-
-    appointment.status = req.body.status;
-
-    res.json({
-        success: true,
-        appointment,
-    });
-});
-
-// Save and completion are deliberately separate actions.
-app.patch("/api/appointments/:id/complete", (req, res) => {
-    const appointment = appointments.find(
-        (item) => String(item.id) === String(req.params.id)
-    );
-
-    if (!appointment) {
-        return res.status(404).json({
-            success: false,
-            message: "Appointment not found",
-        });
-    }
-
-    appointment.status = "Completed";
-    appointment.completedAt = new Date().toISOString();
-
-    res.json({
-        success: true,
-        message: "Consultation marked as completed.",
-        appointment,
-    });
-});
+// =====================================================
+// Q&A QUESTIONS
+// =====================================================
+const questionRoutes = require("./routes/questionRoutes");
+app.use("/api/questions", questionRoutes);
 
 // =====================================================
 // GENERATE PRESCRIPTION PDF
@@ -463,6 +396,15 @@ app.post(
 );
 
 // =====================================================
+// PREPARE CONSULTATION (BACKGROUND AI)
+// =====================================================
+
+app.post(
+    "/api/consultation/prepare",
+    prepareConsultationSummary
+);
+
+// =====================================================
 // PATIENT CLINICAL RECORDS
 // =====================================================
 //
@@ -506,22 +448,18 @@ app.post(
                 });
             }
 
-            const appointment = appointments.find(
-                (item) => String(item.id) === String(appointmentId)
-            );
-
-            if (!appointment) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Appointment ${appointmentId} was not found.`,
-                });
-            }
-
-            if (String(appointment.patientId) !== String(patientId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Appointment and patient IDs do not match.",
-                });
+            let appointment = null;
+            if (appointmentId && isSupabaseConfigured && supabase) {
+                try {
+                    const { data: appData } = await supabase
+                        .from("appointments")
+                        .select("*")
+                        .eq("id", appointmentId)
+                        .maybeSingle();
+                    appointment = appData;
+                } catch (appQueryErr) {
+                    console.warn("[Clinical Save] Appointment lookup notice:", appQueryErr.message);
+                }
             }
 
             const now = new Date();
@@ -614,7 +552,83 @@ app.post(
 
             fs.writeFileSync(reportPath, text, "utf8");
 
-            // 4. Return explicit PDF information to the frontend.
+            // 4. Sync directly to public.consultation_notes and public.prescriptions Supabase tables if configured
+            if (isSupabaseConfigured && supabase) {
+                try {
+                    const formattedNotesText = [
+                        s.consultationOverview || s.consultation_overview || "",
+                        s.chiefComplaint || s.chief_complaint || "",
+                        s.historyOfPresentIllness || s.history_of_present_illness || "",
+                        s.assessment || "",
+                        s.treatmentPlan || s.treatment_plan || "",
+                        s.doctorNotes || s.doctor_notes || s.notes || "",
+                    ]
+                        .filter((val) => val && String(val).trim())
+                        .join("\n\n");
+
+                    const symptomsText = Array.isArray(s.symptoms)
+                        ? s.symptoms.filter(Boolean).join(", ")
+                        : String(s.symptoms || s.presentingSymptoms || s.presenting_symptoms || req.body.symptoms || "No symptoms recorded");
+
+                    const diagnosisText = Array.isArray(s.diagnosis)
+                        ? s.diagnosis.filter(Boolean).join(", ")
+                        : String(s.diagnosis || req.body.diagnosis || "");
+
+                    const rawAudioTranscript = req.body.audio_transcript || 
+                        (Array.isArray(transcript) && transcript.length > 0
+                            ? transcript.map((item) => `[${item?.timestamp || ""}] ${item?.speaker || "Conversation"}: ${item?.text || ""}`).join("\n")
+                            : null);
+
+                    const noteRecord = {
+                        appointment_id: appointmentId,
+                        doctor_id: doctorId || "default-doctor",
+                        patient_id: patientId,
+                        notes: formattedNotesText || "Consultation completed.",
+                        symptoms: symptomsText || "No symptoms recorded",
+                        diagnosis: diagnosisText || null,
+                        language: req.body.language || s.detected_language || "Auto",
+                        audio_transcript: rawAudioTranscript,
+                        updated_at: new Date().toISOString(),
+                    };
+
+                    const { error: notesErr } = await supabase
+                        .from("consultation_notes")
+                        .upsert(noteRecord, { onConflict: "appointment_id" });
+
+                    if (notesErr) {
+                        console.warn("[Clinical Save] Supabase consultation_notes sync notice:", notesErr.message);
+                    } else {
+                        console.log("[Clinical Save] Successfully synced to Supabase consultation_notes table.");
+                    }
+
+                    const prescriptionRecord = {
+                        appointment_id: appointmentId,
+                        doctor_id: doctorId || "default-doctor",
+                        patient_id: patientId,
+                        medicines: Array.isArray(medications) && medications.length > 0
+                            ? medications
+                            : (prescription?.medications || prescription?.medicines || []),
+                        advice: prescription?.advice || s.advice || null,
+                        follow_up_date: prescription?.follow_up_date || prescription?.follow_up || null,
+                        pdf_url: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
+                        updated_at: new Date().toISOString(),
+                    };
+
+                    const { error: rxErr } = await supabase
+                        .from("prescriptions")
+                        .upsert(prescriptionRecord, { onConflict: "appointment_id" });
+
+                    if (rxErr) {
+                        console.warn("[Clinical Save] Supabase prescriptions sync notice:", rxErr.message);
+                    } else {
+                        console.log("[Clinical Save] Successfully synced to Supabase prescriptions table.");
+                    }
+                } catch (dbErr) {
+                    console.warn("[Clinical Save] Supabase sync exception:", dbErr.message);
+                }
+            }
+
+            // 5. Return explicit PDF information to the frontend.
             return res.status(201).json({
                 success: true,
                 message: "Consultation saved and professional PDF generated successfully.",
@@ -753,17 +767,28 @@ app.patch(
 
             fs.writeFileSync(jsonPath, JSON.stringify(record, null, 2), "utf8");
 
-            // Update matching appointment in memory
-            const matchedAppointment = appointments.find(
-                (item) =>
-                    (record.appointmentId && String(item.id) === String(record.appointmentId)) ||
-                    String(item.patientId) === String(patientId)
-            );
-
-            if (matchedAppointment) {
-                matchedAppointment.status = "Completed";
-                matchedAppointment.completedAt = record.completedAt;
-                console.log(`[Appointment] Updated appointment ${matchedAppointment.id} to Completed.`);
+            // Update matching appointment status to completed in Supabase database
+            if (isSupabaseConfigured && supabase) {
+                try {
+                    const targetAppId = record.appointmentId;
+                    if (targetAppId) {
+                        await supabase
+                            .from("appointments")
+                            .update({ status: "completed", updated_at: new Date().toISOString() })
+                            .eq("id", targetAppId);
+                        console.log(`[Appointment] Updated appointment ${targetAppId} to completed in Supabase.`);
+                    }
+                    if (patientId) {
+                        await supabase
+                            .from("appointments")
+                            .update({ status: "completed", updated_at: new Date().toISOString() })
+                            .eq("patient_id", patientId)
+                            .neq("status", "completed");
+                        console.log(`[Appointment] Updated active appointments for patient ${patientId} to completed.`);
+                    }
+                } catch (dbErr) {
+                    console.warn("[Appointment] Error updating appointment status in Supabase:", dbErr.message);
+                }
             }
 
             console.log(`[Clinical Record] Marked consultation ${consultationId} as Completed.`);

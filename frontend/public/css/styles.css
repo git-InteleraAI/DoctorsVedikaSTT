@@ -100,8 +100,8 @@ body {
     position: relative;
     z-index: 10;
     display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
-    gap: 4rem;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
     max-width: 1250px;
     margin: 0 auto;
     align-items: center;
@@ -124,12 +124,12 @@ body {
 
 /* --- PURE CSS TYPEWRITER EFFECT INTEGRATION --- */
 .hero-title {
-    font-size: clamp(2.3rem, 3.8vw, 3.5rem);
+    font-size: clamp(2rem, 3vw, 3rem);
     font-weight: 800;
     line-height: 1.25;
     letter-spacing: -0.03em;
     color: var(--dark-slate);
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
 }
 
 .typewriter-line-1, .typewriter-line-2 {
@@ -156,7 +156,7 @@ body {
 }
 
 .text-gradient { background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.hero-subtitle { font-size: 1.15rem; line-height: 1.65; color: var(--text-muted); margin-bottom: 2.5rem; max-width: 580px; }
+.hero-subtitle { font-size: 1.05rem; line-height: 1.6; color: var(--text-muted); margin-bottom: 2.25rem; max-width: 540px; }
 .hero-actions { display: flex; align-items: center; gap: 1.5rem; }
 
 .btn-hero-primary {
