@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Sidebar from "./Sidebar";
@@ -42,7 +42,24 @@ export default function DashboardLayout({
     children,
 }) {
     const navigate = useNavigate();
-    const { doctor } = useAuth();
+    const { doctor, logout } = useAuth();
+    
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        const handleResize = () => {
+            const mobile = window.innerWidth < 1024;
+            setIsMobile(mobile);
+            if (!mobile) setIsSidebarOpen(true);
+            else setIsSidebarOpen(false);
+        };
+        window.addEventListener('resize', handleResize);
+        // Set initial state
+        handleResize();
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const doctorAvatar =
         doctor?.avatarUrl ||
@@ -89,6 +106,28 @@ export default function DashboardLayout({
                     isolation: "isolate",
                 }}
             >
+
+                {/* Mobile Hamburger Menu */}
+                {isMobile && (
+                    <button
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '1.25rem',
+                            color: '#0f172a',
+                            padding: '0.5rem',
+                            marginRight: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                    >
+                        <i className={`fa-solid ${isSidebarOpen ? 'fa-xmark' : 'fa-bars'}`}></i>
+                    </button>
+                )}
+                
                 {/* =====================================================
                     LOGO
                 ===================================================== */}
@@ -102,8 +141,8 @@ export default function DashboardLayout({
                         }
                     }}
                     style={{
-                        width: `${SIDEBAR_WIDTH - 8}px`,
-                        minWidth: `${SIDEBAR_WIDTH - 8}px`,
+                        width: isMobile ? "auto" : `${SIDEBAR_WIDTH - 8}px`,
+                        minWidth: isMobile ? "auto" : `${SIDEBAR_WIDTH - 8}px`,
 
                         height: "100%",
 
@@ -123,7 +162,7 @@ export default function DashboardLayout({
                             display: "block",
                             height: "44px",
                             width: "auto",
-                            maxWidth: "180px",
+                            maxWidth: isMobile ? "120px" : "180px",
                             objectFit: "contain",
                         }}
                         onError={(e) => {
@@ -203,15 +242,16 @@ export default function DashboardLayout({
                 {/* =====================================================
                     SEARCH
                 ===================================================== */}
-                <div
-                    style={{
-                        flex: "0 1 470px",
-                        minWidth: "220px",
-                        position: "relative",
-                    }}
-                >
-                    <i
-                        className="fa-solid fa-magnifying-glass"
+                {!isMobile && (
+                    <div
+                        style={{
+                            flex: "0 1 470px",
+                            minWidth: "220px",
+                            position: "relative",
+                        }}
+                    >
+                        <i
+                            className="fa-solid fa-magnifying-glass"
                         style={{
                             position: "absolute",
                             left: "15px",
@@ -271,6 +311,7 @@ export default function DashboardLayout({
                         }}
                     />
                 </div>
+                )}
 
                 {/* Flexible header spacing */}
                 <div
@@ -378,27 +419,27 @@ export default function DashboardLayout({
                     </button>
 
                     {/* Doctor profile */}
-                    <button
-                        type="button"
-                        onClick={() => navigate("/profile")}
-                        style={{
-                            display: "flex",
+                    <div style={{ position: "relative" }}>
+                        <button
+                            type="button"
+                            onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                            style={{
+                                display: "flex",
                             alignItems: "center",
                             gap: "10px",
 
-                            minWidth: "235px",
+                            minWidth: isMobile ? "auto" : "235px",
+                            maxWidth: isMobile ? "140px" : "none",
                             height: "46px",
 
-                            padding: "5px 13px 5px 6px",
+                            padding: "4px",
 
-                            borderRadius: "25px",
+                            borderRadius: "50%",
                             border: "1px solid #e1e8ee",
 
                             background: "#f8fafc",
 
                             cursor: "pointer",
-                            textAlign: "left",
-
                             boxSizing: "border-box",
                         }}
                     >
@@ -406,8 +447,8 @@ export default function DashboardLayout({
                             src={doctorAvatar}
                             alt="Doctor"
                             style={{
-                                width: "34px",
-                                height: "34px",
+                                width: "38px",
+                                height: "38px",
 
                                 borderRadius: "50%",
                                 objectFit: "cover",
@@ -415,65 +456,93 @@ export default function DashboardLayout({
                                 flexShrink: 0,
                             }}
                         />
-
-                        <div
-                            style={{
-                                flex: 1,
-                                minWidth: 0,
-                            }}
-                        >
-                            <div
-                                style={{
-                                    fontWeight: 700,
-                                    fontSize: "0.82rem",
-                                    color: "#0f172a",
-                                    lineHeight: 1.2,
-
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                }}
-                            >
-                                {doctor?.fullName || "Doctor"}
-                            </div>
-
-                            <div
-                                style={{
-                                    fontSize: "0.69rem",
-                                    color: "#64748b",
-                                    lineHeight: 1.2,
-
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                }}
-                            >
-                                {doctor?.specialization || "Cardiologist"}
-                            </div>
-                        </div>
-
-                        <i
-                            className="fa-solid fa-chevron-down"
-                            style={{
-                                fontSize: "0.62rem",
-                                color: "#94a3b8",
-                                flexShrink: 0,
-                            }}
-                        />
                     </button>
+
+                    {/* Dropdown Menu */}
+                    {profileMenuOpen && (
+                        <>
+                            <div 
+                                onClick={() => setProfileMenuOpen(false)}
+                                style={{ position: "fixed", inset: 0, zIndex: 2001 }}
+                            />
+                            <div
+                                style={{
+                                    position: "absolute",
+                                    top: "calc(100% + 10px)",
+                                    right: 0,
+                                    width: "240px",
+                                    background: "#fff",
+                                    borderRadius: "16px",
+                                    boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
+                                    border: "1px solid #e2e8f0",
+                                    zIndex: 2002,
+                                    overflow: "hidden",
+                                    animation: "slideUp 0.2s ease"
+                                }}
+                            >
+                                <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {doctor?.fullName || "Doctor"}
+                                    </div>
+                                    <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {doctor?.specialization || "Cardiologist"}
+                                    </div>
+                                </div>
+                                <div style={{ padding: "8px 0" }}>
+                                    <button 
+                                        onClick={() => { setProfileMenuOpen(false); navigate("/profile"); }}
+                                        style={{ width: "100%", textAlign: "left", padding: "12px 20px", background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", color: "#334155", display: "flex", alignItems: "center", gap: 12 }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#08AEB8"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#334155"; }}
+                                    >
+                                        <i className="fa-regular fa-user" style={{ width: 16 }} /> Profile
+                                    </button>
+                                    <button 
+                                        onClick={() => { setProfileMenuOpen(false); navigate("/settings"); }}
+                                        style={{ width: "100%", textAlign: "left", padding: "12px 20px", background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", color: "#334155", display: "flex", alignItems: "center", gap: 12 }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#08AEB8"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#334155"; }}
+                                    >
+                                        <i className="fa-solid fa-gear" style={{ width: 16 }} /> Settings
+                                    </button>
+                                    <div style={{ margin: "4px 0", height: 1, background: "#f1f5f9" }} />
+                                    <button 
+                                        onClick={() => { setProfileMenuOpen(false); logout && logout(); }}
+                                        style={{ width: "100%", textAlign: "left", padding: "12px 20px", background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", color: "#ef4444", display: "flex", alignItems: "center", gap: 12 }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.05)"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                                    >
+                                        <i className="fa-solid fa-arrow-right-from-bracket" style={{ width: 16 }} /> Logout
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                    </div>
                 </div>
             </header>
 
             {/* =========================================================
                 FIXED SIDEBAR AREA
             ========================================================= */}
+            {isMobile && isSidebarOpen && (
+                <div 
+                    onClick={() => setIsSidebarOpen(false)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        zIndex: 1400
+                    }}
+                />
+            )}
 
             <aside
                 style={{
                     position: "fixed",
 
                     top: `${HEADER_HEIGHT}px`,
-                    left: 0,
+                    left: isMobile ? (isSidebarOpen ? 0 : `-${SIDEBAR_WIDTH}px`) : 0,
                     bottom: 0,
 
                     width: `${SIDEBAR_WIDTH}px`,
@@ -491,6 +560,7 @@ export default function DashboardLayout({
                     flexDirection: "column",
 
                     isolation: "isolate",
+                    transition: 'left 0.3s ease'
                 }}
             >
                 <Sidebar
@@ -512,16 +582,16 @@ export default function DashboardLayout({
                     position: "fixed",
 
                     top: `${HEADER_HEIGHT}px`,
-                    left: `${SIDEBAR_WIDTH}px`,
+                    left: isMobile ? 0 : `${SIDEBAR_WIDTH}px`,
                     right: 0,
                     bottom: 0,
 
-                    width: `calc(100% - ${SIDEBAR_WIDTH}px)`,
-                    height: `calc(100vh - ${HEADER_HEIGHT}px)`,
+                    width: isMobile ? "100%" : `calc(100% - ${SIDEBAR_WIDTH}px)`,
+                    height: `calc(100dvh - ${HEADER_HEIGHT}px)`,
 
                     overflowX: "hidden",
                     overflowY:
-                        activePage === "profile" ? "hidden" : "auto",
+                        activePage === "profile" && !isMobile ? "hidden" : "auto",
 
                     background: "#f5f8fa",
 
@@ -529,8 +599,8 @@ export default function DashboardLayout({
 
                     padding:
                         activePage === "profile"
-                            ? "24px 28px"
-                            : "28px 32px",
+                            ? (isMobile ? "16px" : "24px 28px")
+                            : (isMobile ? "16px" : "28px 32px"),
 
                     WebkitOverflowScrolling: "touch",
 
@@ -542,10 +612,11 @@ export default function DashboardLayout({
                     style={{
                         width: "100%",
                         maxWidth: "100%",
-
                         minWidth: 0,
-
                         boxSizing: "border-box",
+                        minHeight: "100%",
+                        display: "flex",
+                        flexDirection: "column"
                     }}
                 >
                     {children}

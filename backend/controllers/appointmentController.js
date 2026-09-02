@@ -64,18 +64,20 @@ class AppointmentController {
             }
 
             // 3. Fetch related Patient details
-            const patientIds = [...new Set(appointmentsData.map((a) => a.patient_id))];
+            const patientIds = [...new Set(appointmentsData.map((a) => a.patient_id).filter(Boolean))];
             
-            const { data: patientsData, error: patientsError } = await supabase
-                .from("patients")
-                .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
-                .in("user_id", patientIds); // Note: patient_id in appointments maps to user_id in patients table based on user's sample data!
+            let patientsMap = {};
+            if (patientIds.length > 0) {
+                const { data: patientsData, error: patientsError } = await supabase
+                    .from("patients")
+                    .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
+                    .in("user_id", patientIds);
 
-            const patientsMap = {};
-            if (patientsData) {
-                patientsData.forEach(p => {
-                    patientsMap[p.user_id] = p;
-                });
+                if (patientsData) {
+                    patientsData.forEach(p => {
+                        patientsMap[p.user_id] = p;
+                    });
+                }
             }
 
             // 4. Merge and format the response
@@ -97,7 +99,7 @@ class AppointmentController {
                     patientCode: patient.patient_code || "",
                     patientName: patient.full_name || app.patient_name || "Unknown Patient",
                     patientPhoto: patient.profile_photo || null,
-                    age: age,
+                    age: age || app.age || null,
                     gender: patient.gender || app.gender || "Unknown",
                     bloodGroup: patient.blood_group || app.blood_group || "-",
                     appointmentDate: app.appointment_date,

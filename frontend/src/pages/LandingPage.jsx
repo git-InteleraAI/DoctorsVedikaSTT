@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import './LandingPage.css'; // Will create this for mobile menu specifics if needed, or put in styles.css
 
 export default function LandingPage() {
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     useEffect(() => {
         const observerOptions = { root: null, rootMargin: '0px', threshold: 0.15 };
         const observer = new IntersectionObserver((entries, observer) => {
@@ -38,12 +40,33 @@ export default function LandingPage() {
                     </div>
 
                     <div className="nav-right" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                        <a href="/login" className="nav-item" style={{ fontWeight: 600, color: "#0093a8" }}>
+                        <a href="/login" className="nav-item desktop-only" style={{ fontWeight: 600, color: "#0093a8" }}>
                             Doctor Portal
                         </a>
-                        <a href="#collaborate" className="btn-nav-action">
+                        <a href="#collaborate" className="btn-nav-action desktop-only">
                             Partner With Us <i className="fa-solid fa-arrow-up-right"></i>
                         </a>
+                        <button 
+                            className="mobile-menu-toggle"
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--dark-slate)', display: 'none' }}
+                        >
+                            <i className={`fa-solid ${isMobileMenuOpen ? 'fa-xmark' : 'fa-bars'}`}></i>
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Mobile Menu Overlay */}
+                <div className={`mobile-menu-overlay ${isMobileMenuOpen ? 'open' : ''}`}>
+                    <div className="mobile-nav-links">
+                        <a href="#home" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Home</a>
+                        <a href="#modules" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Modules</a>
+                        <a href="#automation" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Automation</a>
+                        <a href="#operations" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Operations</a>
+                        <a href="/dashboard" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Live Transcribe</a>
+                        <div className="mobile-nav-divider"></div>
+                        <a href="/login" className="mobile-nav-item" style={{ color: "#0093a8", fontWeight: 700 }} onClick={() => setIsMobileMenuOpen(false)}>Doctor Portal</a>
+                        <a href="#collaborate" className="btn-nav-action" style={{ textAlign: 'center', marginTop: '1rem' }} onClick={() => setIsMobileMenuOpen(false)}>Partner With Us</a>
                     </div>
                 </div>
             </nav>

@@ -172,8 +172,8 @@ const RecordCard = ({ record }) => {
                 <Section title="Patient & Consultation Details">
                     <Grid items={[
                         ["Patient Name", formatText(record.patientName)],
-                        ["Patient ID", formatText(record.patientId)],
-                        ["Doctor ID", formatText(record.doctorId)],
+                        ["Patient ID", formatText(record.patientCode || record.patientId)],
+                        ["Doctor", formatText(record.doctorName || record.doctorId)],
                         ["Language", formatText(summary.detected_language || record.detectedLanguage)],
                     ]} />
                 </Section>

@@ -322,15 +322,15 @@ const Availability = () => {
                     {loading ? (
                         <div style={{ textAlign: "center", padding: "60px" }}><i className="fa-solid fa-spinner fa-spin fa-2x" style={{ color: "#08AEB8" }}></i></div>
                     ) : (
-                        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
+                        <div className="availability-grid">
                             {/* LEFT COLUMN: WEEKLY WORKING HOURS */}
                             <div style={{ background: "#ffffff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "28px", boxShadow: "0 4px 12px rgba(0,0,0,0.02)" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid #f1f5f9" }}>
+                                <div className="responsive-flex-between" style={{ marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid #f1f5f9" }}>
                                     <div>
                                         <h2 style={{ margin: 0, color: "var(--navy-deep)", fontSize: "1.3rem", fontWeight: 700 }}>Weekly Schedule</h2>
                                         <span style={{ color: "#64748b", fontSize: "0.9rem" }}>Enable consulting days and choose 12-hour AM/PM shifts</span>
                                     </div>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                    <div className="responsive-flex-wrap" style={{ alignItems: "center" }}>
                                         <label style={{ fontSize: "0.9rem", fontWeight: 600, color: "#475569" }}>Slot Duration:</label>
                                         <select
                                             value={slotDuration}

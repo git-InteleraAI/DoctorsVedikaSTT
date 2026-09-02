@@ -819,7 +819,7 @@ app.patch(
 
 app.get(
     "/api/v1/clinical/notes/:patientId",
-    (req, res) => {
+    async (req, res) => {
         try {
             const {
                 patientId,
@@ -852,7 +852,7 @@ app.get(
                         )
                 );
 
-            const records =
+            let records =
                 jsonFiles.map(
                     (file) => {
                         try {
@@ -886,6 +886,31 @@ app.get(
                     const hasTranscript = Array.isArray(r.transcript) && r.transcript.length > 0;
                     return hasSummary || hasDiag || hasTranscript;
                 });
+
+            // Try to append patient code and doctor name
+            if (isSupabaseConfigured && supabase && records.length > 0) {
+                try {
+                    const { data: pData } = await supabase.from('patients').select('patient_code').eq('user_id', patientId).maybeSingle();
+                    const pCode = pData?.patient_code;
+                    
+                    const doctorIds = [...new Set(records.map(r => r.doctorId).filter(Boolean))];
+                    const { data: dData } = await supabase.from('doctors').select('id, first_name, last_name, full_name').in('id', doctorIds);
+                    const dMap = {};
+                    if (dData) {
+                        dData.forEach(d => {
+                            dMap[d.id] = d.full_name || `Dr. ${d.first_name || ""} ${d.last_name || ""}`.trim() || "Doctor";
+                        });
+                    }
+
+                    records = records.map(r => {
+                        if (pCode) r.patientCode = pCode;
+                        if (r.doctorId && dMap[r.doctorId]) r.doctorName = dMap[r.doctorId];
+                        return r;
+                    });
+                } catch (dbErr) {
+                    console.warn("[Clinical Notes] Name fetch error:", dbErr.message);
+                }
+            }
 
             // Latest consultation first
             records.sort(

@@ -169,10 +169,10 @@ export default function Profile() {
                 )}
 
                 {/* ── Main Layout Grid ── */}
-                <div style={{ display: "flex", gap: 20, flex: 1, minHeight: 0, overflow: "hidden" }}>
+                <div className="profile-layout-wrapper">
 
                     {/* ═══ LEFT: Fixed Non-Scrolling Inner Sidebar ═══ */}
-                    <div style={{ width: 265, flexShrink: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+                    <div className="profile-sidebar">
                         <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "12px 10px", boxShadow: "0 4px 16px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", height: "100%", boxSizing: "border-box" }}>
                             <div style={{ padding: "6px 10px 12px", color: "#0f172a", fontWeight: 800, fontSize: "0.92rem" }}>
                                 Profile
@@ -373,7 +373,7 @@ export default function Profile() {
                                 </div>
 
                                 {/* RIGHT: 2-Column Info Grid */}
-                                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 20px", paddingTop: 8 }}>
+                                <div className="responsive-grid-2" style={{ flex: 1, paddingTop: 8 }}>
                                     
                                     {/* Full Name */}
                                     <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>

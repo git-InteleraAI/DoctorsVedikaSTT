@@ -210,7 +210,16 @@ function ShortCard({ video, onClick }) {
     const [hovered, setHovered] = useState(false);
     return (
         <div
-            onClick={() => onClick(video)}
+            onClick={() => {
+                const videoId = video.external_id || (video.video_url && video.video_url.match(/embed\/([^?]+)/)?.[1]);
+                if (videoId) {
+                    window.open(`https://www.youtube.com/shorts/${videoId}`, '_blank');
+                } else if (video.video_url) {
+                    window.open(video.video_url, '_blank');
+                } else {
+                    onClick(video);
+                }
+            }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
@@ -447,11 +456,12 @@ export default function VideosAndShorts() {
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
                 * { box-sizing: border-box; }
                 body { font-family: 'Inter', sans-serif; margin: 0; }
-                .vns-tabs-bar { display: flex; gap: 4px; padding: 4px; background: #f1f5f9; border-radius: 14px; margin-bottom: 20px; }
-                .vns-tab { flex: 1; padding: 10px 14px; border: none; background: none; border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #64748b; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; white-space: nowrap; }
+                .vns-tabs-bar { display: flex; gap: 4px; padding: 4px; background: #f1f5f9; border-radius: 14px; margin-bottom: 20px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+                .vns-tabs-bar::-webkit-scrollbar { display: none; }
+                .vns-tab { padding: 10px 16px; border: none; background: none; border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #64748b; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; white-space: nowrap; flex-shrink: 0; }
                 .vns-tab.active { background: #fff; color: #0f172a; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
                 .vns-tab:hover:not(.active) { background: rgba(255,255,255,0.6); color: #0f172a; }
-                .cat-pill { padding: 7px 16px; border-radius: 24px; border: 1.5px solid #e2e8f0; background: #fff; color: #64748b; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+                .cat-pill { padding: 7px 16px; border-radius: 24px; border: 1.5px solid #e2e8f0; background: #fff; color: #64748b; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; flex-shrink: 0; }
                 .cat-pill.active { background: #082B68; color: #fff; border-color: #082B68; }
                 .cat-pill:hover:not(.active) { border-color: #08AEB8; color: #08AEB8; }
                 ::-webkit-scrollbar { width: 0; height: 0; }

@@ -168,7 +168,7 @@ const Dashboard = () => {
             onDashboardTab={switchTab}
         >
             {/* SUMMARY STAT CARDS GRID */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+            <div className="responsive-grid-auto" style={{ marginBottom: "24px" }}>
                         <div style={{ background: "#ffffff", borderRadius: "16px", padding: "18px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
                             <div style={{ color: "#64748b", fontSize: "0.85rem", fontWeight: 600 }}>Today's Consultations</div>
                             <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--navy-deep)", marginTop: "4px" }}>{metrics.todayCount || 0}</div>
@@ -198,7 +198,7 @@ const Dashboard = () => {
                     )}
 
                     {/* TOP TAB SWITCHER (For mobile / quick access) */}
-                    <div className="tab-navigation-bar" style={{ display: "flex", gap: "12px", margin: "0 0 24px 0", flexWrap: "wrap" }}>
+                    <div className="tab-navigation-bar responsive-flex-wrap" style={{ margin: "0 0 24px 0" }}>
                         <button type="button" onClick={() => switchTab("confirmed")} style={tabButtonStyle(activeTab === "confirmed", "cyan")}>
                             <i className="fa-solid fa-calendar-check" /> Upcoming
                         </button>
@@ -212,7 +212,7 @@ const Dashboard = () => {
 
                     <section className="glass-panel fade-in" style={{ background: "#ffffff", borderRadius: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.03)", padding: "24px", border: "1px solid rgba(8,174,184,0.1)" }}>
                         {/* DATE FILTER HEADER */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f1f5f9", paddingBottom: "20px", marginBottom: "20px", flexWrap: "wrap", gap: "16px" }}>
+                        <div className="responsive-flex-between" style={{ borderBottom: "1px solid #f1f5f9", paddingBottom: "20px", marginBottom: "20px" }}>
                             <div>
                                 <h2 style={{ color: "var(--navy-deep)", fontSize: "1.4rem", margin: 0, display: "flex", alignItems: "center", gap: "10px" }}>
                                     {activeTab === "confirmed" && <><i className="fa-solid fa-calendar-check" style={{ color: "#08AEB8" }} /> Confirmed Appointments</>}
@@ -294,7 +294,7 @@ const Dashboard = () => {
                                     onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 15px rgba(8,174,184,0.08)"; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 6px rgba(0,0,0,0.02)"; }}
                                     >
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
+                                        <div className="appointment-card-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
                                             
                                             {/* Patient Info Profile */}
                                             <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
@@ -316,7 +316,7 @@ const Dashboard = () => {
                                             </div>
 
                                             {/* Appointment Info & Action */}
-                                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "12px", minWidth: "220px" }}>
+                                            <div className="appointment-card-actions" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "12px", minWidth: "220px" }}>
                                                 <div style={{ textAlign: "right" }}>
                                                     <div style={{ color: "var(--navy-deep)", fontWeight: 700, fontSize: "1.1rem", marginBottom: "4px" }}>
                                                         <i className="fa-regular fa-calendar" style={{ color: "#08AEB8", marginRight: "6px" }}></i> 

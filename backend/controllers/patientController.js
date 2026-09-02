@@ -196,6 +196,7 @@ class PatientController {
                 .select("*")
                 .eq("patient_id", patientId)
                 .eq("doctor_id", doctorId)
+                .eq("status", "completed")
                 .order("appointment_date", { ascending: false })
                 .order("appointment_time", { ascending: false });
 
@@ -337,7 +338,7 @@ class PatientController {
 
             const { data: patient } = await supabase
                 .from("patients")
-                .select("full_name")
+                .select("*")
                 .eq("user_id", patientId)
                 .single();
 

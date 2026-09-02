@@ -431,28 +431,14 @@ export default function Sidebar({
             <aside
                 className="dv-sidebar"
                 style={{
-                    position: "fixed",
-
-                    top: HEADER_HEIGHT,
-                    left: 0,
-                    bottom: 0,
-
-                    width: SIDEBAR_WIDTH,
-
+                    position: "relative",
+                    width: "100%",
+                    height: "100%",
                     boxSizing: "border-box",
-
                     background: "#FFFFFF",
-
-                    borderRight:
-                        `1px solid ${COLORS.border}`,
-
                     display: "flex",
                     flexDirection: "column",
-
                     padding: "16px 14px 14px",
-
-                    zIndex: 900,
-
                     overflow: "hidden",
                 }}
             >

@@ -86,6 +86,7 @@ export default function QnA() {
 
     const [questions, setQuestions] = useState([]);
     const [selectedPatientId, setSelectedPatientId] = useState(null);
+    const [showMobileChat, setShowMobileChat] = useState(false);
     const [tab, setTab] = useState("all");
     const [searchQ, setSearchQ] = useState("");
     const [replyText, setReplyText] = useState("");
@@ -265,7 +266,7 @@ export default function QnA() {
     return (
         <DashboardLayout activePage="qna" searchPlaceholder="Search questions, patients...">
             {/* ── Page Header ── */}
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,#082B68,#08AEB8)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <i className="fa-solid fa-comments" style={{ color: "#fff", fontSize: "1.3rem" }} />
@@ -284,7 +285,7 @@ export default function QnA() {
 
             {/* ── API Error Banner ── */}
             {apiError && (
-                <div style={{ marginBottom: 16, padding: "12px 18px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, color: "#ef4444", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flexShrink: 0, marginBottom: 16, padding: "12px 18px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, color: "#ef4444", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: 10 }}>
                     <i className="fa-solid fa-triangle-exclamation" />
                     {apiError}
                     <button onClick={() => fetchQuestions()} style={{ marginLeft: "auto", background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontWeight: 700, fontSize: "0.82rem" }}>Retry</button>
@@ -292,10 +293,10 @@ export default function QnA() {
             )}
 
             {/* ── 3-Column Layout ── */}
-            <div style={{ display: "flex", height: "calc(100vh - 200px)", borderRadius: 16, overflow: "hidden", border: "1px solid #e2e8f0", background: "#fff", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
+            <div className="profile-layout-wrapper qna-wrapper" style={{ flex: 1, minHeight: 0, borderRadius: 16, border: "1px solid #e2e8f0", background: "#fff", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
 
                 {/* ═══ LEFT: Patient Thread List ═══ */}
-                <div style={{ width: 310, flexShrink: 0, borderRight: "1px solid #f1f5f9", display: "flex", flexDirection: "column", background: "#fff" }}>
+                <div className={`profile-sidebar ${showMobileChat ? 'mobile-hidden' : ''}`} style={{ borderRight: "1px solid #f1f5f9", background: "#fff", height: "100%" }}>
 
                     {/* Filter Tabs */}
                     <div style={{ display: "flex", borderBottom: "1px solid #f1f5f9", padding: "0 12px", overflowX: "auto" }}>
@@ -351,7 +352,7 @@ export default function QnA() {
                             return (
                                 <div
                                     key={t.patientId}
-                                    onClick={() => { setSelectedPatientId(t.patientId); setReplyText(""); }}
+                                    onClick={() => { setSelectedPatientId(t.patientId); setReplyText(""); setShowMobileChat(true); }}
                                     style={{
                                         padding: "13px 14px",
                                         cursor: "pointer",
@@ -394,7 +395,7 @@ export default function QnA() {
                 </div>
 
                 {/* ═══ CENTER: Chat View ═══ */}
-                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+                <div className={`${!showMobileChat ? 'mobile-hidden' : 'mobile-chat-view'}`} style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "#f8fafc" }}>
                     {loading ? (
                         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", flexDirection: "column", gap: 12 }}>
                             <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTopColor: "#08AEB8", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -412,6 +413,13 @@ export default function QnA() {
                             {/* Chat Header */}
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 20px", background: "#fff", borderBottom: "1px solid #f1f5f9", boxShadow: "0 1px 4px rgba(0,0,0,0.03)" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    <button
+                                        className="mobile-only-btn"
+                                        onClick={() => setShowMobileChat(false)}
+                                        style={{ background: "transparent", border: "none", fontSize: "1.2rem", color: "#64748b", cursor: "pointer", marginRight: "4px" }}
+                                    >
+                                        <i className="fa-solid fa-arrow-left" />
+                                    </button>
                                     <Avatar name={patientName} size={42} src={patient.profile_photo} />
                                     <div>
                                         <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a" }}>{patientName}</div>
@@ -429,7 +437,7 @@ export default function QnA() {
                             </div>
 
                             {/* Messages Stream */}
-                            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
+                            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
                                 {selectedThread.questions.map((q, idx) => {
                                     const prevQ = selectedThread.questions[idx - 1];
                                     const showDateHeader = !prevQ || chatDate(prevQ.created_at) !== chatDate(q.created_at);
@@ -542,7 +550,7 @@ export default function QnA() {
                 </div>
 
                 {/* ═══ RIGHT: Patient Details ═══ */}
-                <div style={{ width: 280, flexShrink: 0, borderLeft: "1px solid #f1f5f9", background: "#fff", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+                <div className="mobile-hidden" style={{ width: 280, flexShrink: 0, borderLeft: "1px solid #f1f5f9", background: "#fff", overflowY: "auto", display: "flex", flexDirection: "column" }}>
                     {selectedThread && !loading ? (
                         <div style={{ padding: "18px 16px", display: "flex", flexDirection: "column", gap: 18, flex: 1 }}>
                             {/* Patient Details */}

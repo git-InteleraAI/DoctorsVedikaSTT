@@ -1192,7 +1192,7 @@ const Consultation = () => {
     // ============================================================
 
     return (
-        <div style={{ background: "#F5FBFD", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="consultation-page-wrapper" style={{ background: "#F5FBFD", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
             {/* ERROR */}
             {error && (
@@ -1372,7 +1372,7 @@ const Consultation = () => {
                             </div>
 
                             {/* SCROLLABLE TRANSCRIPT */}
-                            <div ref={transcriptContainerRef} style={{ padding: "32px 40px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "32px", minHeight: 0 }}>
+                            <div className="transcript-scroll-box" ref={transcriptContainerRef} style={{ padding: "32px 40px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "32px", minHeight: 0 }}>
 
                                 {transcript.length === 0 && !liveInterimText && (
                                     <div style={{ textAlign: "center", color: "#94A3B8", paddingTop: "80px" }}>
@@ -1429,7 +1429,7 @@ const Consultation = () => {
                                 CONTROLS
                             ==================================================== */}
 
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+                        <div className="action-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
 
                             {/* Left Block: Secure & Confidential */}
                             <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#ffffff", border: "1px solid #DCECEF", padding: "12px 20px", borderRadius: "20px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.04)", width: "32%" }}>

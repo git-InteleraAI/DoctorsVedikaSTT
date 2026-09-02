@@ -253,7 +253,7 @@ const Patients = () => {
 
                     {view === "search" && (
                         <div className="fade-in">
-                            <form onSubmit={handleSearch} style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
+                            <form className="responsive-flex-wrap" onSubmit={handleSearch} style={{ marginBottom: "24px", alignItems: "stretch" }}>
                                 <div style={{ flex: 1, position: "relative" }}>
                                     <i className="fa-solid fa-search" style={{ position: "absolute", left: "16px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
                                     <input 
@@ -277,7 +277,7 @@ const Patients = () => {
                             ) : (
                                 <div style={{ display: "grid", gap: "16px" }}>
                                     {patients.map(p => (
-                                        <div key={p.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
+                                        <div key={p.id} className="responsive-flex-between" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "20px", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
                                             <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
                                                 <img src={p.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.fullName)}&background=08AEB8&color=fff`} style={{ width: "50px", height: "50px", borderRadius: "50%" }} alt="" />
                                                 <div>
@@ -287,7 +287,7 @@ const Patients = () => {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div style={{ display: "flex", gap: "24px", alignItems: "center" }}>
+                                            <div className="responsive-flex-wrap" style={{ alignItems: "center" }}>
                                                 <div style={{ textAlign: "right" }}>
                                                     <div style={{ color: "#64748b", fontSize: "0.85rem", marginBottom: "2px" }}>Total Visits: <strong style={{ color: "var(--navy-deep)" }}>{p.totalVisits}</strong></div>
                                                     <div style={{ color: "#64748b", fontSize: "0.85rem" }}>Last Visit: <strong style={{ color: "var(--navy-deep)" }}>{p.lastVisit ? new Date(p.lastVisit).toLocaleDateString() : "Never"}</strong></div>
@@ -315,7 +315,7 @@ const Patients = () => {
                                 <button onClick={() => setView("search")} style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontWeight: 600 }}><i className="fa-solid fa-times"></i> Cancel</button>
                             </div>
                             
-                            <form onSubmit={handleWalkinSubmit} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                            <form onSubmit={handleWalkinSubmit} className="responsive-grid-2">
                                 <div>
                                     <label style={{ display: "block", marginBottom: "8px", color: "#475569", fontWeight: 600 }}>Full Name *</label>
                                     <input type="text" value={walkinForm.fullName} onChange={e => setWalkinForm({...walkinForm, fullName: e.target.value})} required style={inputStyle} placeholder="John Doe" />
@@ -369,10 +369,15 @@ const Patients = () => {
                             </button>
                             
                             {/* TOP PROFILE CARD */}
-                            <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "24px", marginBottom: "24px", display: "flex", gap: "24px", alignItems: "flex-start", flexWrap: "wrap", boxShadow: "0 10px 30px rgba(0,0,0,0.02)" }}>
-                                <img src={selectedPatient.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPatient.fullName)}&background=082B68&color=fff`} style={{ width: "100px", height: "100px", borderRadius: "50%", border: "4px solid #f1f5f9" }} alt="" />
-                                <div style={{ flex: 1, minWidth: "300px" }}>
-                                    <h2 style={{ margin: "0 0 8px 0", color: "var(--navy-deep)", fontSize: "1.6rem" }}>{selectedPatient.fullName}</h2>
+                            <div className="responsive-flex-wrap" style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "24px", marginBottom: "24px", alignItems: "flex-start", boxShadow: "0 10px 30px rgba(0,0,0,0.02)" }}>
+                                <img src={selectedPatient.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPatient.fullName)}&background=082B68&color=fff`} style={{ width: "100px", height: "100px", borderRadius: "50%", border: "4px solid #f1f5f9", flexShrink: 0 }} alt="" />
+                                <div style={{ flex: 1, minWidth: "200px" }}>
+                                    <h2 style={{ margin: "0 0 8px 0", color: "var(--navy-deep)", fontSize: "1.6rem", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                                        {selectedPatient.fullName}
+                                        <span style={{ fontSize: "0.85rem", background: "#f8fafc", padding: "4px 10px", borderRadius: "10px", border: "1px solid #e2e8f0", color: "#64748b" }}>
+                                            Total Visits: <strong>{patientVisits.length}</strong>
+                                        </span>
+                                    </h2>
                                     <div style={{ display: "flex", gap: "24px", color: "#475569", flexWrap: "wrap", marginBottom: "16px" }}>
                                         <span style={{fontWeight: 600}}><i className="fa-solid fa-id-card" style={{color:"#08AEB8", marginRight: "6px"}}></i> {selectedPatient.patientCode}</span>
                                         <span><i className="fa-solid fa-phone" style={{color:"#08AEB8", marginRight: "6px"}}></i> {selectedPatient.mobile}</span>
@@ -385,19 +390,6 @@ const Patients = () => {
                                         {selectedPatient.address && <span style={tagStyle}><i className="fa-solid fa-location-dot"></i> {selectedPatient.address}</span>}
                                     </div>
                                 </div>
-                                <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "14px", border: "1px solid #e2e8f0", minWidth: "220px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                                    <div>
-                                        <span style={{color:"#64748b", fontSize: "0.85rem", display: "block"}}>Total Visits</span>
-                                        <strong style={{color:"var(--navy-deep)", fontSize: "1.3rem"}}>{patientVisits.length}</strong>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowFollowUpModal(true)}
-                                        style={{ background: "#08AEB8", color: "#fff", border: "none", padding: "10px 16px", borderRadius: "10px", fontWeight: 700, fontSize: "0.9rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", boxShadow: "0 4px 10px rgba(8,174,184,0.25)" }}
-                                    >
-                                        <i className="fa-solid fa-calendar-plus"></i> Book Follow-up
-                                    </button>
-                                </div>
                             </div>
 
                             {followUpSuccess && (
@@ -406,95 +398,15 @@ const Patients = () => {
                                 </div>
                             )}
 
-                            {/* FOLLOW-UP BOOKING MODAL */}
-                            {showFollowUpModal && (
-                                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15, 23, 42, 0.5)", backdropFilter: "blur(4px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-                                    <div style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "28px", maxWidth: "550px", width: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.15)", position: "relative" }}>
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                                            <h3 style={{ margin: 0, color: "var(--navy-deep)", fontSize: "1.3rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "10px" }}>
-                                                <i className="fa-solid fa-calendar-check" style={{ color: "#08AEB8" }}></i> Schedule Follow-up Visit
-                                            </h3>
-                                            <button onClick={() => setShowFollowUpModal(false)} style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontSize: "1.1rem" }}><i className="fa-solid fa-times"></i></button>
-                                        </div>
-
-                                        <form onSubmit={handleBookFollowUp}>
-                                            <div style={{ marginBottom: "16px" }}>
-                                                <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 600, color: "#475569", marginBottom: "6px" }}>Select Follow-up Date *</label>
-                                                <input
-                                                    type="date"
-                                                    value={followUpDate}
-                                                    onChange={e => handleDateSelectForFollowUp(e.target.value)}
-                                                    min={new Date().toISOString().split("T")[0]}
-                                                    required
-                                                    style={{ width: "100%", padding: "12px 16px", borderRadius: "10px", border: "1px solid #cbd5e1", fontSize: "1rem", color: "var(--navy-deep)", background: "#f8fafc" }}
-                                                />
-                                            </div>
-
-                                            {loadingSlots && (
-                                                <div style={{ textAlign: "center", padding: "20px", color: "#08AEB8" }}>
-                                                    <i className="fa-solid fa-spinner fa-spin fa-lg"></i> Checking available doctor slots...
-                                                </div>
-                                            )}
-
-                                            {slotReason && !loadingSlots && (
-                                                <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#fef2f2", color: "#ef4444", fontSize: "0.9rem", fontWeight: 500, marginBottom: "16px" }}>
-                                                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "6px" }}></i> {slotReason}
-                                                </div>
-                                            )}
-
-                                            {availableSlots.length > 0 && !loadingSlots && (
-                                                <div style={{ marginBottom: "20px" }}>
-                                                    <label style={{ display: "block", fontSize: "0.9rem", fontWeight: 600, color: "#475569", marginBottom: "8px" }}>Available Time Slots *</label>
-                                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", maxHeight: "200px", overflowY: "auto", padding: "4px" }}>
-                                                        {availableSlots.map(s => (
-                                                            <button
-                                                                type="button"
-                                                                key={s.time}
-                                                                disabled={!s.available}
-                                                                onClick={() => setSelectedSlot(s.time)}
-                                                                style={{
-                                                                    padding: "10px",
-                                                                    borderRadius: "10px",
-                                                                    border: selectedSlot === s.time ? "2px solid #08AEB8" : "1px solid #e2e8f0",
-                                                                    background: !s.available ? "#f1f5f9" : selectedSlot === s.time ? "rgba(8, 174, 184, 0.1)" : "#fff",
-                                                                    color: !s.available ? "#94a3b8" : selectedSlot === s.time ? "#08AEB8" : "var(--navy-deep)",
-                                                                    fontWeight: selectedSlot === s.time ? 700 : 500,
-                                                                    cursor: !s.available ? "not-allowed" : "pointer",
-                                                                    fontSize: "0.85rem",
-                                                                    textAlign: "center"
-                                                                }}
-                                                            >
-                                                                {s.time} {!s.available && `(${s.reason})`}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px" }}>
-                                                <button type="button" onClick={() => setShowFollowUpModal(false)} style={{ background: "#f1f5f9", color: "#475569", border: "none", padding: "12px 20px", borderRadius: "10px", fontWeight: 600, cursor: "pointer" }}>
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    type="submit"
-                                                    disabled={bookingFollowUp || !selectedSlot}
-                                                    style={{ background: "#08AEB8", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "10px", fontWeight: 700, cursor: bookingFollowUp || !selectedSlot ? "not-allowed" : "pointer", opacity: !selectedSlot ? 0.6 : 1 }}
-                                                >
-                                                    {bookingFollowUp ? <i className="fa-solid fa-spinner fa-spin" /> : "Confirm Appointment"}
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            )}
+                            {/* FOLLOW-UP BOOKING MODAL (REMOVED) */}
 
                             {/* VISIT HISTORY TIMELINE */}
                             <h3 style={{ color: "var(--navy-deep)", display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}><i className="fa-solid fa-clock-rotate-left" style={{color: "#08AEB8"}}></i> Visit History</h3>
                             
-                            <div style={{ display: "grid", gap: "16px" }}>
+                            <div style={{ display: "grid", gap: "16px", paddingBottom: "60px" }}>
                                 {patientVisits.map((visit, index) => (
                                     <div key={visit.appointmentId} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "24px", position: "relative", boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
+                                        <div className="appointment-card-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
                                             <div>
                                                 <div style={{ color: "#08AEB8", fontWeight: 700, fontSize: "1.1rem", marginBottom: "8px" }}>
                                                     {new Date(visit.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} • {visit.time}
@@ -513,7 +425,7 @@ const Patients = () => {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-end", minWidth: "200px" }}>
+                                            <div className="responsive-flex-wrap" style={{ flexDirection: "column", gap: "12px", alignItems: "flex-end", minWidth: "150px" }}>
                                                 <div style={{ textAlign: "right" }}>
                                                     <div style={{ color: "var(--navy-deep)", fontWeight: 700, fontSize: "1.1rem", marginBottom: "4px" }}>₹{visit.fee}</div>
                                                     <div style={{ color: visit.paymentStatus === 'paid' ? "#16a34a" : "#d97706", fontSize: "0.85rem", fontWeight: 600 }}>{visit.paymentStatus === 'paid' ? 'Paid' : 'Pending Payment'}</div>

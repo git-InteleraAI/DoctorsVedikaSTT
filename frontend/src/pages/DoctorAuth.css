@@ -601,3 +601,64 @@
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(0,0,0,0.05);
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS OVERRIDES
+   ========================================================================== */
+@media (max-width: 992px) {
+  .doctor-auth-wrapper {
+    height: auto;
+    min-height: 100vh;
+    padding: 80px 20px 40px 20px;
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+  }
+
+  .doctor-auth-container {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .auth-showcase-panel {
+    text-align: center;
+    padding-right: 0;
+  }
+
+  .auth-showcase-subtitle {
+    max-width: 100%;
+    margin: 0 auto 12px auto;
+  }
+
+  .auth-stage-area {
+    display: none; /* Hide 3D graphic on small screens to save space */
+  }
+
+  .auth-form-card {
+    justify-self: center;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .auth-global-footer-bar {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    width: 100%;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+    padding: 15px;
+  }
+  
+  .auth-footer-divider {
+    display: none;
+  }
+
+  .auth-footer-info-item {
+    justify-content: center !important;
+    text-align: center;
+    width: 100%;
+  }
+}

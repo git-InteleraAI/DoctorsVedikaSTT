@@ -1113,8 +1113,14 @@ const ConsultationSummary = () => {
 
             if (appointmentId && String(appointmentId).startsWith("appointment-") === false) {
                 try {
-                    await fetch(`${NODE_API_URL}/api/appointments/${encodeURIComponent(appointmentId)}/complete`, {
+                    const token = localStorage.getItem("doctors_vedika_token");
+                    await fetch(`${NODE_API_URL}/api/appointments/${encodeURIComponent(appointmentId)}`, {
                         method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ status: "completed" })
                     });
                 } catch (appErr) {
                     console.warn("[ConsultationSummary] Appointment complete notice:", appErr);
@@ -1355,7 +1361,7 @@ const ConsultationSummary = () => {
                                 <button
                                     type="button"
                                     className="modal-primary-button"
-                                    onClick={() => navigate("/dashboard")}
+                                    onClick={() => navigate("/dashboard?tab=completed")}
                                 >
                                     Go to Dashboard →
                                 </button>
@@ -2866,13 +2872,25 @@ const ConsultationSummary = () => {
                     .side-column { position: static; }
                 }
                 @media (max-width: 760px) {
-                    .consultation-summary-page { padding:16px 12px 50px; }
-                    .summary-header { padding:18px; min-height:0; flex-direction:column; }
-                    .meta-grid { grid-template-columns:1fr; }
+                    .consultation-summary-page {
+                        height: auto !important;
+                        overflow-y: auto !important;
+                        min-height: 100vh !important;
+                    }
+                    .summary-header { padding:18px; min-height:0; flex-direction:column; gap: 15px; }
+                    .title-row h1 { font-size: 24px; }
+                    .meta-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
                     .review-banner { align-items:flex-start; padding:17px; }
                     .vitals-edit-grid, .patient-stat-grid { grid-template-columns:1fr; }
                     .editable-list-row { grid-template-columns:1fr; }
+                    .medicine-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
+                    .medicine-row .input-field, .medicine-row > div { flex: none !important; width: 100%; }
+                    .medicine-row > div:nth-child(2) { grid-column: span 2; } 
+                    .medicine-row > div:nth-child(6) { grid-column: span 2; }
+                    .medicine-row .delete-medicine { grid-column: span 2; margin-top: 5px; }
                     .medicine-row .medicine-number { display:none; }
+                    .summary-grid { overflow: visible; height: auto; }
+                    .report-column, .side-column { overflow-y: visible; height: auto; }
                 }
                 @media print {
                     .consultation-summary-page { background:#fff !important; color:#111 !important; }

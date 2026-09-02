@@ -794,3 +794,219 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS OVERRIDES
+   ========================================================================== */
+@media (max-width: 1024px) {
+    .consultation-page-wrapper {
+        height: auto !important;
+        overflow-y: auto !important;
+        min-height: 100vh;
+    }
+
+    .transcript-scroll-box {
+        max-height: 350px !important;
+    }
+
+    .consultation-layout {
+        display: flex !important;
+        flex-direction: column !important;
+        height: auto !important;
+    }
+    
+    .patient-sidebar {
+        width: 100% !important;
+        flex-direction: column !important;
+        gap: 15px !important;
+        align-items: stretch !important;
+    }
+    
+    .patient-sidebar img {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 0;
+    }
+    
+    .vitals-grid {
+        margin-top: 0;
+        width: 100% !important;
+        flex: 1;
+        min-width: 200px;
+    }
+    
+    .main-content {
+        padding: 1.5rem !important;
+    }
+    
+    .header-top {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 1rem !important;
+    }
+    
+    .request-card {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 1rem !important;
+    }
+    
+    .request-actions {
+        width: 100% !important;
+        justify-content: flex-end !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .vitals-edit-grid {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .medicine-row {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    
+    .meta-grid {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .summary-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 1rem !important;
+        padding: 1rem !important;
+    }
+    
+    .action-bar {
+        flex-direction: column !important;
+        gap: 15px !important;
+    }
+    
+    .action-bar > div {
+        width: 100% !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+    
+    .action-bar button {
+        width: 100% !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+}
+
+/* ==========================================================================
+   GLOBAL RESPONSIVE UTILITIES (Used across Dashboard sub-pages)
+   ========================================================================== */
+.responsive-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.responsive-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.responsive-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.responsive-grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.availability-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+
+.profile-layout-wrapper { display: flex; gap: 20px; flex: 1; min-height: 0; overflow: hidden; }
+.profile-sidebar { width: 265px; flex-shrink: 0; height: 100%; display: flex; flex-direction: column; }
+
+.mobile-only-btn { display: none !important; }
+
+.responsive-flex-between { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.responsive-flex-wrap { display: flex; flex-wrap: wrap; gap: 16px; }
+
+.table-responsive-wrapper { overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 1024px) {
+    .responsive-grid-3 { grid-template-columns: 1fr 1fr; }
+    .responsive-grid-4 { grid-template-columns: 1fr 1fr; }
+    .availability-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+    .profile-layout-wrapper {
+        flex-direction: column !important;
+        overflow-y: visible !important;
+    }
+    .profile-sidebar {
+        width: 100% !important;
+        height: auto !important;
+    }
+    .mobile-hidden { display: none !important; }
+    .mobile-chat-view { display: flex !important; width: 100% !important; height: 100% !important; flex: 1 !important; }
+    .mobile-only-btn { display: inline-flex !important; }
+    .qna-wrapper {
+        overflow-y: hidden !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .responsive-grid-2, .responsive-grid-3, .responsive-grid-4 { 
+        grid-template-columns: 1fr; 
+    }
+    
+    /* Minimalistic Dashboard Cards */
+    .responsive-grid-auto {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .responsive-grid-auto > div {
+        padding: 12px !important;
+        border-radius: 12px !important;
+    }
+    .responsive-grid-auto > div > div:first-child {
+        font-size: 0.75rem !important;
+    }
+    .responsive-grid-auto > div > div:nth-child(2) {
+        font-size: 1.4rem !important;
+        margin-top: 2px !important;
+    }
+    
+    /* Make Tabs fit in one row */
+    .tab-navigation-bar.responsive-flex-wrap {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 8px !important;
+        padding-bottom: 4px; /* For scrollbar breathing room */
+        scrollbar-width: none; /* Hide scrollbar for cleaner look */
+    }
+    .tab-navigation-bar.responsive-flex-wrap::-webkit-scrollbar {
+        display: none;
+    }
+    .tab-navigation-bar.responsive-flex-wrap button {
+        padding: 8px 12px !important;
+        font-size: 0.82rem !important;
+        white-space: nowrap !important;
+        flex: 1; /* Stretch evenly if possible */
+        justify-content: center;
+    }
+
+    .mobile-stack { 
+        flex-direction: column !important; 
+        align-items: stretch !important; 
+    }
+    .responsive-flex-between {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+    }
+
+    .appointment-card-inner {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+    }
+    .appointment-card-actions {
+        width: 100% !important;
+        align-items: stretch !important;
+    }
+    .appointment-card-actions > div {
+        text-align: left !important;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        margin-bottom: 12px;
+    }
+    .appointment-card-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+}
