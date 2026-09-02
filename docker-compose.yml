@@ -1,0 +1,46 @@
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: doctors-vedika-backend
+    env_file:
+      - .env.production
+    expose:
+      - "5001"
+    restart: unless-stopped
+
+  speech:
+    build:
+      context: .
+      dockerfile: backend/python_services/Dockerfile
+    container_name: doctors-vedika-speech
+    env_file:
+      - .env.production
+    expose:
+      - "8005"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_NODE_API_URL: ""
+        VITE_PYTHON_WS_URL: wss://15-252-121-221.sslip.io/ws/live
+
+    container_name: doctors-vedika-frontend
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+    depends_on:
+      - backend
+      - speech
+
+    restart: unless-stopped
