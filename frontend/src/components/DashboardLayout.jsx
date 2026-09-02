@@ -425,38 +425,88 @@ export default function DashboardLayout({
                             onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                             style={{
                                 display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
+                                alignItems: "center",
+                                gap: "10px",
 
-                            minWidth: isMobile ? "auto" : "235px",
-                            maxWidth: isMobile ? "140px" : "none",
-                            height: "46px",
+                                minWidth: isMobile ? "auto" : "235px",
+                                maxWidth: isMobile ? "auto" : "none",
+                                height: "46px",
 
-                            padding: "4px",
+                                padding: "4px",
+                                paddingRight: isMobile ? "4px" : "12px",
 
-                            borderRadius: "50%",
-                            border: "1px solid #e1e8ee",
+                                borderRadius: isMobile ? "50%" : "30px",
+                                border: "1px solid #e1e8ee",
 
-                            background: "#f8fafc",
+                                background: "#f8fafc",
 
-                            cursor: "pointer",
-                            boxSizing: "border-box",
-                        }}
-                    >
-                        <img
-                            src={doctorAvatar}
-                            alt="Doctor"
-                            style={{
-                                width: "38px",
-                                height: "38px",
+                                cursor: "pointer",
+                                textAlign: "left",
 
-                                borderRadius: "50%",
-                                objectFit: "cover",
-
-                                flexShrink: 0,
+                                boxSizing: "border-box",
                             }}
-                        />
-                    </button>
+                        >
+                            <img
+                                src={doctorAvatar}
+                                alt="Doctor"
+                                style={{
+                                    width: "36px",
+                                    height: "36px",
+
+                                    borderRadius: "50%",
+                                    objectFit: "cover",
+
+                                    flexShrink: 0,
+                                }}
+                            />
+
+                            {!isMobile && (
+                                <>
+                                    <div
+                                        style={{
+                                            flex: 1,
+                                            minWidth: 0,
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                fontWeight: 700,
+                                                fontSize: "0.82rem",
+                                                color: "#0f172a",
+                                                lineHeight: 1.2,
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                            }}
+                                        >
+                                            {doctor?.fullName || "Doctor"}
+                                        </div>
+
+                                        <div
+                                            style={{
+                                                fontSize: "0.69rem",
+                                                color: "#64748b",
+                                                lineHeight: 1.2,
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                            }}
+                                        >
+                                            {doctor?.specialization || "Cardiologist"}
+                                        </div>
+                                    </div>
+
+                                    <i
+                                        className="fa-solid fa-chevron-down"
+                                        style={{
+                                            fontSize: "0.62rem",
+                                            color: "#94a3b8",
+                                            flexShrink: 0,
+                                        }}
+                                    />
+                                </>
+                            )}
+                        </button>
 
                     {/* Dropdown Menu */}
                     {profileMenuOpen && (
