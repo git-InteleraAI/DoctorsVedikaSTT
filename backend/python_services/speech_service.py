@@ -1,12 +1,23 @@
 import asyncio
 import json
 import os
+import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import time
+import wave
+from contextlib import asynccontextmanager
+import sys
 from pathlib import Path
 from typing import Optional
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
@@ -27,10 +38,12 @@ PORT = int(os.getenv("SPEECH_PORT", "8005"))
 # SARVAM CONFIGURATION
 # ============================================================
 
-SARVAM_API_KEY = os.getenv(
-    "SARVAM_API_KEY",
-    "",
-).strip()
+def get_sarvam_api_key():
+    try:
+        load_dotenv(Path(__file__).resolve().parent.parent / '.env', override=True)
+    except Exception:
+        pass
+    return os.getenv("SARVAM_API_KEY", "").strip()
 
 # Sarvam example currently being used in your integration:
 # saaras:v3 + mode=transcribe
@@ -155,24 +168,14 @@ sarvam_semaphore = asyncio.Semaphore(
 
 
 # ============================================================
-# FASTAPI
-# ============================================================
-
-app = FastAPI(
-    title="Doctors Vedika Speech Service",
-    version="3.0.0",
-)
-
-
-# ============================================================
-# SHARED HTTP CLIENT
+# SHARED HTTP CLIENT & LIFESPAN
 # ============================================================
 
 http_client: Optional[httpx.AsyncClient] = None
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global http_client
 
     timeout = httpx.Timeout(
@@ -200,7 +203,7 @@ async def startup_event():
     print(f"STT URL: {SARVAM_STT_URL}")
     print(
         f"API Key configured: "
-        f"{bool(SARVAM_API_KEY)}"
+        f"{bool(get_sarvam_api_key())}"
     )
     print(
         f"Max concurrent Sarvam requests: "
@@ -209,14 +212,22 @@ async def startup_event():
     print("==============================================")
     print("")
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    global http_client
+    yield
 
     if http_client is not None:
         await http_client.aclose()
         http_client = None
+
+
+# ============================================================
+# FASTAPI APP
+# ============================================================
+
+app = FastAPI(
+    title="Doctors Vedika Speech Service",
+    version="3.0.0",
+    lifespan=lifespan,
+)
 
 
 # ============================================================
@@ -263,10 +274,16 @@ def normalize_language(language):
         "telugu": "te-IN",
         "te": "te-IN",
         "te-in": "te-IN",
+        "telugu+english": "te-IN",
+        "telugu-english": "te-IN",
+        "telugu (english)": "te-IN",
 
         "hindi": "hi-IN",
         "hi": "hi-IN",
         "hi-in": "hi-IN",
+        "hindi+english": "hi-IN",
+        "hindi-english": "hi-IN",
+        "hindi (english)": "hi-IN",
 
         "english": "en-IN",
         "en": "en-IN",
@@ -283,24 +300,147 @@ def normalize_language(language):
 # TEXT HELPERS
 # ============================================================
 
+UNWANTED_SCRIPT_STATIC = re.compile(r'[\u0980-\u09FF\u0B00-\u0B7F\u0A80-\u0AFF\u0A00-\u0A7F\u0D80-\u0DFF]+')
+REPETITIVE_WORDS = re.compile(r'\b(\w+)(?:\s+\1){2,}\b', re.IGNORECASE)
+
 def clean_text(text):
     """
-    Normalize whitespace without changing the actual language.
-
-    Important:
-    We DO NOT translate Telugu/Hindi into English.
+    Normalize text, keeping English/Telugu/Hindi medical speech clean
+    while stripping Bengali/Oriya static artifacts and repetitive token loops.
     """
-
     if text is None:
         return ""
 
-    return " ".join(
-        str(text).strip().split()
-    )
+    s = str(text).strip()
+
+    # Strip unexpected static scripts (Bengali, Oriya, Gujarati, Punjabi)
+    s = UNWANTED_SCRIPT_STATIC.sub(' ', s)
+
+    # Remove single word loops repeated 3+ times (e.g. "Okay Okay Okay Okay")
+    s = REPETITIVE_WORDS.sub(r'\1', s)
+
+    # Strip known silence phrases
+    s = re.sub(r'\b(subtitles\s+by|thank\s+you\s+for\s+watching)\b', '', s, flags=re.IGNORECASE)
+
+    # Normalize remaining spaces
+    s = " ".join(s.split())
+    s = re.sub(r'^[,\.\s\-!?]+|[,\.\s\-!?]+$', '', s).strip()
+
+    return s
+
+
+def infer_speaker_label(text, prev_speaker="Doctor"):
+    if not text:
+        return prev_speaker
+
+    t = text.lower()
+    patient_cues = [
+        "doctor", "గత", "రోజులుగా", "ఉంది", "పడిపోయాను", "తగిలింది", 
+        "పెరుగుతుంది", "లేవు", "వస్తుంది", "తీసుకోవాలి", "అవసరమా", 
+        "పడిపోయా", "pain ఉంది", "చేయాలి", "తీసుకున్నా", "లేదు", "వస్తుంది", "ఉంది"
+    ]
+    doctor_cues = [
+        "good evening", "what problem", "when did that", "how long", "okay", 
+        "i'll check", "i'll prescribe", "take tablet", "take medicine", 
+        "any difficulty", "did you check", "welcome", "అలవాటు", "చెబుతాను", 
+        "జాగ్రత్త", "తీసుకోకండి", "చేద్దాం", "prescribe", "paracetamol", "aspirin",
+        "vitals", "breathing difficulty", "dizziness", "sweating", "emergency"
+    ]
+
+    patient_score = sum(1 for c in patient_cues if c in t)
+    doctor_score = sum(1 for c in doctor_cues if c in t)
+
+    if patient_score > doctor_score:
+        return "Patient"
+    elif doctor_score > patient_score:
+        return "Doctor"
+
+    return "Patient" if prev_speaker == "Doctor" else "Doctor"
 
 
 def normalize_for_comparison(text):
     return clean_text(text).lower()
+
+
+# Known STT silence hallucination regex patterns
+HALLUCINATION_PATTERNS = [
+    r'^(আচ্ছা\s*)+$',                   # Bengali "accha accha"
+    r'^(ஆ\s*சரி\s*)+$',                 # Tamil "aa sari"
+    r'^(હા\s*)+$',                      # Gujarati "haa"
+    r'^(ହଁ\s*)+$',                      # Oriya "han"
+    r'^(ସହି\s*ହੈ\s*)+$',                 # Punjabi "sahi hai"
+    r'^(okay\s*so\s*)+$',              # English "okay so"
+    r'^(subtitles\s*by\s*.*)+$',
+    r'^(thank\s*you\s*\.*\s*)+$',
+    r'^(amara\s*)+$',                  # Oriya "amara"
+    r'^[.\s,\-!?]+$',                   # Punctuation only
+]
+
+# Random unrequested scripts when silence is misdetected as rare regional languages
+RANDOM_SILENCE_SCRIPTS = re.compile(r'[\u0B00-\u0B7F\u0A80-\u0AFF\u0A00-\u0A7F\u0D80-\u0DFF]')
+
+
+def is_audio_silent(wav_path: Path, min_rms: float = 25.0) -> bool:
+    """
+    Returns True if the 16kHz WAV file contains only silence or background static.
+    This prevents sending silent/static audio to STT models which causes hallucinations.
+    """
+    try:
+        if not wav_path.exists() or wav_path.stat().st_size < 1000:
+            return True
+
+        with wave.open(str(wav_path), 'rb') as wf:
+            nframes = wf.getnframes()
+            if nframes == 0:
+                return True
+            frames = wf.readframes(nframes)
+            sample_count = len(frames) // 2
+            if sample_count == 0:
+                return True
+
+            fmt = f"<{sample_count}h"
+            samples = struct.unpack(fmt, frames)
+
+            sum_squares = sum(s * s for s in samples)
+            rms = (sum_squares / sample_count) ** 0.5
+
+            print(f"[Speech VAD] Audio window RMS energy: {rms:.1f} (Threshold: {min_rms})")
+            return rms < min_rms
+    except Exception as e:
+        print(f"[Speech VAD] Warning during RMS calculation: {e}")
+        return False
+
+
+def is_hallucinated_transcript(text: str) -> bool:
+    """
+    Check if a transcript string is a known STT hallucination or random noise decoding.
+    """
+    if not text:
+        return True
+
+    clean = text.strip()
+
+    if len(clean) <= 1:
+        return True
+
+    # Check for single word repeated 3+ times (e.g. "আচ্ছা আচ্ছা আচ্ছা")
+    words = clean.split()
+    if len(words) >= 3 and len(set(w.lower() for w in words)) == 1:
+        print(f"[Speech Filter] Filtered repeated word hallucination: '{clean}'")
+        return True
+
+    # Check regex patterns
+    for pattern in HALLUCINATION_PATTERNS:
+        if re.search(pattern, clean, re.IGNORECASE):
+            print(f"[Speech Filter] Filtered pattern hallucination: '{clean}'")
+            return True
+
+    # Check for unexpected rare script hallucinations during silent noise
+    if RANDOM_SILENCE_SCRIPTS.search(clean):
+        print(f"[Speech Filter] Filtered random script hallucination: '{clean}'")
+        return True
+
+    return False
 
 
 # ============================================================
@@ -414,27 +554,42 @@ def get_new_text(
 # AUDIO EXTRACTION
 # ============================================================
 
+def make_wav_header(pcm_len: int, sample_rate: int = 16000, num_channels: int = 1, bits_per_sample: int = 16) -> bytes:
+    byte_rate = sample_rate * num_channels * (bits_per_sample // 8)
+    block_align = num_channels * (bits_per_sample // 8)
+    total_data_len = pcm_len
+    total_file_len = total_data_len + 36
+
+    return struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        total_file_len,
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b'data',
+        total_data_len
+    )
+
+
 def extract_recent_audio(
     source_path: Path,
     output_path: Path,
-    window_seconds: int,
+    window_seconds: int = 6,
 ):
     """
-    Extract the latest portion of the growing WebM recording
-    and convert it into a standard 16 kHz mono WAV.
-
-    The browser continues sending WebM chunks.
-
-    Sarvam receives the normalized WAV.
+    Extract the latest portion of the growing WebM recording,
+    capping it strictly to window_seconds (max 6 seconds), and convert it into a standard 16 kHz mono WAV.
     """
-
     ffmpeg_cmd = shutil.which("ffmpeg") or r"C:\Users\harshini\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg.Essentials_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-essentials_build\bin\ffmpeg.exe"
 
-    # Step 1: Convert the entire growing WebM file into a full WAV file.
-    # We do this because ffmpeg's -sseof fails on live WebM streams that 
-    # lack a duration header, causing it to extract from the beginning instead.
-    temp_wav_path = output_path.with_suffix(".full.wav")
-    
+    temp_pcm_path = output_path.with_suffix(".temp.pcm")
     cmd_convert = [
         ffmpeg_cmd,
         "-y",
@@ -442,9 +597,8 @@ def extract_recent_audio(
         "-vn",
         "-ac", "1",
         "-ar", "16000",
-        "-c:a", "pcm_s16le",
-        "-f", "wav",
-        str(temp_wav_path),
+        "-f", "s16le",
+        str(temp_pcm_path),
     ]
 
     res_convert = subprocess.run(
@@ -454,41 +608,25 @@ def extract_recent_audio(
         text=True,
     )
 
-    if res_convert.returncode != 0:
-        raise RuntimeError(
-            "FFmpeg failed while converting WebM to WAV: "
-            + res_convert.stderr[-2000:]
-        )
+    if res_convert.returncode != 0 or not temp_pcm_path.exists():
+        raise RuntimeError("FFmpeg failed to convert WebM to PCM: " + (res_convert.stderr[-500:] if res_convert.stderr else "Unknown error"))
 
-    # Step 2: Now that we have a proper WAV file with duration, 
-    # we can safely use -sseof to extract the exact window from the end.
-    cmd_extract = [
-        ffmpeg_cmd,
-        "-y",
-        "-sseof", f"-{window_seconds}",
-        "-i", str(temp_wav_path),
-        "-c", "copy",
-        str(output_path),
-    ]
-
-    res_extract = subprocess.run(
-        cmd_extract,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-
-    # Clean up the intermediate full WAV file
     try:
-        temp_wav_path.unlink()
-    except Exception:
-        pass
+        pcm_bytes = temp_pcm_path.read_bytes()
+    finally:
+        try:
+            if temp_pcm_path.exists():
+                temp_pcm_path.unlink()
+        except Exception:
+            pass
 
-    if res_extract.returncode != 0:
-        raise RuntimeError(
-            "FFmpeg failed while extracting window from WAV: "
-            + res_extract.stderr[-2000:]
-        )
+    # 16000 samples/sec * 2 bytes/sample = 32000 bytes/sec
+    max_bytes = max(1, int(window_seconds)) * 32000
+    if len(pcm_bytes) > max_bytes:
+        pcm_bytes = pcm_bytes[-max_bytes:]
+
+    header = make_wav_header(len(pcm_bytes), sample_rate=16000, num_channels=1, bits_per_sample=16)
+    output_path.write_bytes(header + pcm_bytes)
 
 
 async def extract_recent_audio_async(
@@ -608,7 +746,8 @@ async def transcribe_with_sarvam(
     consultation summarization.
     """
 
-    if not SARVAM_API_KEY:
+    api_key = get_sarvam_api_key()
+    if not api_key:
         raise RuntimeError(
             "SARVAM_API_KEY is not configured."
         )
@@ -631,7 +770,7 @@ async def transcribe_with_sarvam(
         }
 
     headers = {
-        "api-subscription-key": SARVAM_API_KEY,
+        "api-subscription-key": api_key,
     }
 
     language = (
@@ -648,7 +787,7 @@ async def transcribe_with_sarvam(
         "model": SARVAM_STT_MODEL,
         "mode": SARVAM_STT_MODE,
         "language_code": language,
-        "prompt": "Medical consultation context. Doctor prescribing tablets, medicines, dosages, mg, ml, tests, and discussing patient health and symptoms.",
+        "prompt": "Medical consultation conversation between doctor and patient in Telugu, Hindi, and English (multilingual code-mixed speech). Transcribe exact spoken words in native scripts (Telugu script, Hindi script, English) including symptoms, chest pain, BP, bike accident, Aspirin, Paracetamol 500mg, dosages, and medical advice.",
     }
 
     started_at = time.perf_counter()
@@ -694,8 +833,14 @@ async def transcribe_with_sarvam(
     # --------------------------------------------------------
 
     if response.status_code >= 400:
-
         body = response.text[:3000]
+        if response.status_code == 402 or "insufficient_quota" in body.lower() or "no credits" in body.lower():
+            print("[Speech Notice] Sarvam AI API quota exceeded (HTTP 402: No credits available). Please update SARVAM_API_KEY in .env with active credits.")
+            return {
+                "transcript": "",
+                "language": "",
+                "quota_exceeded": True
+            }
 
         raise RuntimeError(
             "Sarvam STT request failed "
@@ -766,16 +911,24 @@ async def process_audio_window(
         if (
             not wav_path.exists()
             or wav_path.stat().st_size < 1000
+            or is_audio_silent(wav_path)
         ):
+            print("[Speech] Skipping Sarvam request for silent/static audio window.")
             return {
                 "transcript": "",
                 "language": "",
             }
 
-        return await transcribe_with_sarvam(
+        result = await transcribe_with_sarvam(
             wav_path,
             language_code,
         )
+
+        raw_transcript = result.get("transcript", "")
+        if is_hallucinated_transcript(raw_transcript):
+            result["transcript"] = ""
+
+        return result
 
     finally:
 
@@ -803,7 +956,7 @@ async def root():
         "mode": SARVAM_STT_MODE,
         "websocket": "/ws/live",
         "api_key_configured": bool(
-            SARVAM_API_KEY
+            get_sarvam_api_key()
         ),
         "max_concurrent_requests":
             MAX_CONCURRENT_SARVAM_REQUESTS,
@@ -819,7 +972,7 @@ async def health():
         "provider": "sarvam",
         "model": SARVAM_STT_MODEL,
         "api_key_configured": bool(
-            SARVAM_API_KEY
+            get_sarvam_api_key()
         ),
     }
 
@@ -907,6 +1060,7 @@ async def live_transcription(
     last_processed_chunk = 0
 
     previous_live_text = ""
+    current_speaker = "Doctor"
 
     latest_language = (
         ""
@@ -1345,7 +1499,7 @@ async def live_transcription(
                             )
                         )
 
-                        if not current_text:
+                        if not current_text or is_hallucinated_transcript(current_text):
                             return
 
                         detected_language = (
@@ -1366,21 +1520,21 @@ async def live_transcription(
                             previous_live_text,
                         )
 
-                        # Store the current rolling window.
-                        previous_live_text = (
-                            current_text
-                        )
-
                         if not new_text:
                             return
 
-                        # =========================================
-                        # STORE TRANSCRIPT
-                        # =========================================
+                        previous_live_text = current_text
+
+                        nonlocal current_speaker
+                        speaker_label = infer_speaker_label(new_text, current_speaker)
+                        current_speaker = speaker_label
 
                         transcript_item = {
                             "text":
                                 new_text,
+
+                            "speaker":
+                                speaker_label,
 
                             "language":
                                 latest_language,
@@ -1402,7 +1556,7 @@ async def live_transcription(
                         )
 
                         print(
-                            "[Speech] New transcript:",
+                            f"[Speech] New transcript ({speaker_label}):",
                             new_text,
                         )
 
@@ -1415,7 +1569,7 @@ async def live_transcription(
                                 "transcript",
 
                             "speaker":
-                                "Unknown",
+                                speaker_label,
 
                             "timestamp":
                                 time.time(),
@@ -1577,7 +1731,7 @@ if __name__ == "__main__":
     )
     print(
         f"API Key configured: "
-        f"{bool(SARVAM_API_KEY)}"
+        f"{bool(get_sarvam_api_key())}"
     )
     print("==============================================")
     print("")

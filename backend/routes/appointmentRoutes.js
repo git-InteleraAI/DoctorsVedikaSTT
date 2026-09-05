@@ -15,6 +15,9 @@ router.post("/book", (req, res) => appointmentController.bookAppointment(req, re
 // Get appointments with filters (tab, dateFilter)
 router.get("/", (req, res) => appointmentController.getAppointments(req, res));
 
+// Get appointment symptoms details from appointment_symptoms table
+router.get("/symptoms/details", (req, res) => appointmentController.getAppointmentSymptoms(req, res));
+
 // Get a single appointment by ID
 router.get("/:id", (req, res) => appointmentController.getAppointmentById(req, res));
 

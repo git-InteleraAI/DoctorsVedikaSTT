@@ -139,7 +139,7 @@ export default function Profile() {
         }
     };
 
-    const avatarImage = doctor?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.fullName)}&background=082B68&color=fff`;
+    const avatarImage = doctor?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.fullName)}&background=01b6af&color=fff`;
 
     return (
         <DashboardLayout activePage="profile" searchPlaceholder="Search patients, appointments, etc...">
@@ -262,197 +262,197 @@ export default function Profile() {
                     <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
 
                         {/* DYNAMIC CARD CONTENT BASED ON activeTab */}
-                        <div style={{ background: "#fff", borderRadius: 18, border: "1px solid #e2e8f0", padding: "22px 26px", boxShadow: "0 4px 20px rgba(0,0,0,0.03)", boxSizing: "border-box", height: "100%", overflowY: "auto" }}>
-                        
-                        {/* Section Header */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(8,174,184,0.1)", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem" }}>
-                                    <i className={navItems.find(n => n.id === activeTab)?.icon || "fa-solid fa-user"} />
+                        <div className="theme-section-dark" style={{ borderRadius: 18, padding: "22px 26px", boxSizing: "border-box", height: "100%", overflowY: "auto", border: "1px solid rgba(255,255,255,0.1)" }}>
+
+                            {/* Section Header */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(1, 182, 175, 0.15)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem" }}>
+                                        <i className={navItems.find(n => n.id === activeTab)?.icon || "fa-solid fa-user"} />
+                                    </div>
+                                    <div>
+                                        <h2 style={{ fontWeight: 800, fontSize: "1.15rem", color: "#ffffff", margin: 0 }}>
+                                            {navItems.find(n => n.id === activeTab)?.label || "Profile Information"}
+                                        </h2>
+                                        <p style={{ color: "#94a3b8", margin: 0, fontSize: "0.82rem" }}>
+                                            {activeTab === "info" && "Update your personal and professional details."}
+                                            {activeTab === "clinic" && "Manage your clinic details and location settings."}
+                                            {activeTab === "pro" && "Update specialization, registration and domain details."}
+                                            {activeTab === "edu" && "Add and manage medical degrees and certificates."}
+                                            {activeTab === "exp" && "Showcase clinical experience and hospital history."}
+                                            {activeTab === "lang" && "Manage languages spoken for consultations."}
+                                            {activeTab === "fees" && "Set consultation fees for physical and online visits."}
+                                            {activeTab === "about" && "Write your doctor bio and patient welcome message."}
+                                            {activeTab === "settings" && "Manage password, notifications and security."}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 style={{ fontWeight: 800, fontSize: "1.15rem", color: "#0f172a", margin: 0 }}>
-                                        {navItems.find(n => n.id === activeTab)?.label || "Profile Information"}
-                                    </h2>
-                                    <p style={{ color: "#64748b", margin: 0, fontSize: "0.82rem" }}>
-                                        {activeTab === "info" && "Update your personal and professional details."}
-                                        {activeTab === "clinic" && "Manage your clinic details and location settings."}
-                                        {activeTab === "pro" && "Update specialization, registration and domain details."}
-                                        {activeTab === "edu" && "Add and manage medical degrees and certificates."}
-                                        {activeTab === "exp" && "Showcase clinical experience and hospital history."}
-                                        {activeTab === "lang" && "Manage languages spoken for consultations."}
-                                        {activeTab === "fees" && "Set consultation fees for physical and online visits."}
-                                        {activeTab === "about" && "Write your doctor bio and patient welcome message."}
-                                        {activeTab === "settings" && "Manage password, notifications and security."}
-                                    </p>
-                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditing(true)}
+                                    style={{
+                                        display: "flex", alignItems: "center", gap: 8,
+                                        padding: "8px 18px", background: "#08AEB8", color: "#fff",
+                                        border: "none", borderRadius: 9, fontWeight: 700,
+                                        fontSize: "0.84rem", cursor: "pointer",
+                                        boxShadow: "0 4px 12px rgba(8,174,184,0.22)",
+                                        transition: "all 0.2s",
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = "#07969e"}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = "#08AEB8"}
+                                >
+                                    <i className="fa-solid fa-pencil" style={{ fontSize: "0.78rem" }} /> Edit
+                                </button>
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={() => setIsEditing(true)}
-                                style={{
-                                    display: "flex", alignItems: "center", gap: 8,
-                                    padding: "8px 18px", background: "#08AEB8", color: "#fff",
-                                    border: "none", borderRadius: 9, fontWeight: 700,
-                                    fontSize: "0.84rem", cursor: "pointer",
-                                    boxShadow: "0 4px 12px rgba(8,174,184,0.22)",
-                                    transition: "all 0.2s",
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = "#07969e"}
-                                onMouseLeave={(e) => e.currentTarget.style.background = "#08AEB8"}
-                            >
-                                <i className="fa-solid fa-pencil" style={{ fontSize: "0.78rem" }} /> Edit
-                            </button>
-                        </div>
+                            {/* ── TAB 1: PROFILE INFORMATION ── */}
+                            {activeTab === "info" && (
+                                <div className="dark-glass-card" style={{ display: "flex", gap: 26, padding: "20px", position: "relative", overflow: "hidden" }}>
 
-                        {/* ── TAB 1: PROFILE INFORMATION ── */}
-                        {activeTab === "info" && (
-                            <div style={{ display: "flex", gap: 26, borderRadius: 16, border: "1px solid #f1f5f9", background: "#ffffff", padding: "20px", position: "relative", overflow: "hidden" }}>
+                                    {/* LEFT: Banner + Avatar Card */}
+                                    <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", position: "relative" }}>
+                                        {/* Curved Cyan Top Accent */}
+                                        <div style={{
+                                            position: "absolute", top: -20, left: -20, right: -20, height: 86,
+                                            background: "linear-gradient(135deg, rgba(1, 182, 175, 0.25) 0%, rgba(15, 23, 42, 0.5) 100%)",
+                                            borderRadius: "16px 16px 50% 50%",
+                                            zIndex: 0,
+                                        }} />
 
-                                {/* LEFT: Banner + Avatar Card */}
-                                <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", position: "relative" }}>
-                                    {/* Curved Cyan Top Accent */}
-                                    <div style={{
-                                        position: "absolute", top: -20, left: -20, right: -20, height: 86,
-                                        background: "linear-gradient(135deg, rgba(8,174,184,0.18) 0%, rgba(8,43,104,0.08) 100%)",
-                                        borderRadius: "16px 16px 50% 50%",
-                                        zIndex: 0,
-                                    }} />
-
-                                    {/* Avatar Container */}
-                                    <div style={{ position: "relative", marginTop: 10, marginBottom: 12, zIndex: 1 }}>
-                                        <img
-                                            src={avatarImage}
-                                            alt={formData.fullName}
-                                            style={{
-                                                width: 104, height: 104, borderRadius: "50%",
-                                                objectFit: "cover", border: "4px solid #ffffff",
-                                                boxShadow: "0 6px 16px rgba(0,0,0,0.08)"
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            disabled={uploadingPhoto}
-                                            title="Upload Profile Photo"
-                                            style={{
-                                                position: "absolute", bottom: 2, right: 2,
-                                                width: 30, height: 30, borderRadius: "50%",
-                                                background: "#ffffff", border: "1.5px solid #e2e8f0",
-                                                color: "#08AEB8", cursor: "pointer",
-                                                display: "flex", alignItems: "center", justifyContent: "center",
-                                                boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-                                                fontSize: "0.82rem", transition: "transform 0.15s"
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.1)"}
-                                            onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
-                                        >
-                                            {uploadingPhoto
-                                                ? <i className="fa-solid fa-spinner fa-spin" />
-                                                : <i className="fa-solid fa-camera" />
-                                            }
-                                        </button>
-                                    </div>
-
-                                    {/* Doctor Name & Verification */}
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", marginBottom: 2 }}>
-                                        <h3 style={{ fontWeight: 800, fontSize: "1.05rem", color: "#082B68", margin: 0 }}>{formData.fullName}</h3>
-                                        <i className="fa-solid fa-circle-check" style={{ color: "#08AEB8", fontSize: "0.9rem" }} title="Verified Doctor" />
-                                    </div>
-
-                                    {/* Specialization */}
-                                    <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "#08AEB8", marginBottom: 6 }}>
-                                        {formData.specialization}
-                                    </div>
-
-                                    {/* Qualifications */}
-                                    <div style={{ fontSize: "0.76rem", color: "#64748b", lineHeight: 1.45, maxWidth: 200 }}>
-                                        {formData.qualification}
-                                    </div>
-                                </div>
-
-                                {/* RIGHT: 2-Column Info Grid */}
-                                <div className="responsive-grid-2" style={{ flex: 1, paddingTop: 8 }}>
-                                    
-                                    {/* Full Name */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-user" />
+                                        {/* Avatar Container */}
+                                        <div style={{ position: "relative", marginTop: 10, marginBottom: 12, zIndex: 1 }}>
+                                            <img
+                                                src={avatarImage}
+                                                alt={formData.fullName}
+                                                style={{
+                                                    width: 104, height: 104, borderRadius: "50%",
+                                                    objectFit: "cover", border: "4px solid #ffffff",
+                                                    boxShadow: "0 6px 16px rgba(0,0,0,0.08)"
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                disabled={uploadingPhoto}
+                                                title="Upload Profile Photo"
+                                                style={{
+                                                    position: "absolute", bottom: 2, right: 2,
+                                                    width: 30, height: 30, borderRadius: "50%",
+                                                    background: "#ffffff", border: "1.5px solid #e2e8f0",
+                                                    color: "#08AEB8", cursor: "pointer",
+                                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                                    boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                                                    fontSize: "0.82rem", transition: "transform 0.15s"
+                                                }}
+                                                onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.1)"}
+                                                onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+                                            >
+                                                {uploadingPhoto
+                                                    ? <i className="fa-solid fa-spinner fa-spin" />
+                                                    : <i className="fa-solid fa-camera" />
+                                                }
+                                            </button>
                                         </div>
-                                        <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Full Name</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.fullName}</div>
+
+                                        {/* Doctor Name & Verification */}
+                                        <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", marginBottom: 2 }}>
+                                            <h3 style={{ fontWeight: 800, fontSize: "1.05rem", color: "#ffffff", margin: 0 }}>{formData.fullName}</h3>
+                                            <i className="fa-solid fa-circle-check" style={{ color: "#01b6af", fontSize: "0.9rem" }} title="Verified Doctor" />
+                                        </div>
+
+                                        {/* Specialization */}
+                                        <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "#01b6af", marginBottom: 6 }}>
+                                            {formData.specialization}
+                                        </div>
+
+                                        {/* Qualifications */}
+                                        <div style={{ fontSize: "0.76rem", color: "#94a3b8", lineHeight: 1.45, maxWidth: 200 }}>
+                                            {formData.qualification}
                                         </div>
                                     </div>
 
-                                    {/* Nationality */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-globe" />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Nationality</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.nationality}</div>
-                                        </div>
-                                    </div>
+                                    {/* RIGHT: 2-Column Info Grid */}
+                                    <div className="responsive-grid-2" style={{ flex: 1, paddingTop: 8 }}>
 
-                                    {/* Date of Birth */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-calendar-days" />
+                                        {/* Full Name */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-user" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Full Name</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formData.fullName}</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Date of Birth</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formatDobDisplay(formData.dob)}</div>
-                                        </div>
-                                    </div>
 
-                                    {/* Joined On */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-calendar-check" />
+                                        {/* Nationality */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-globe" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Nationality</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formData.nationality}</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Joined on</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.joinedDate}</div>
-                                        </div>
-                                    </div>
 
-                                    {/* Gender */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-venus-mars" />
+                                        {/* Date of Birth */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-calendar-days" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Date of Birth</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formatDobDisplay(formData.dob)}</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Gender</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.gender}</div>
-                                        </div>
-                                    </div>
 
-                                    {/* User ID */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-id-card" />
+                                        {/* Joined On */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-calendar-check" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Joined on</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formData.joinedDate}</div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>User ID</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.userId}</div>
-                                        </div>
-                                    </div>
 
-                                    {/* Email Address */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-envelope" />
+                                        {/* Gender */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-venus-mars" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Gender</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formData.gender}</div>
+                                            </div>
                                         </div>
-                                        <div style={{ minWidth: 0 }}>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Email Address</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "#08AEB8", wordBreak: "break-all" }}>{formData.email}</div>
-                                        </div>
-                                    </div>
 
-                                    {/* Profile Status */}
+                                        {/* User ID
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
+                                                <i className="fa-solid fa-id-card" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>User ID</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.userId}</div>
+                                            </div>
+                                        </div> */}
+
+                                        {/* Email Address */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-envelope" />
+                                            </div>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Email Address</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "#01b6af", wordBreak: "break-all" }}>{formData.email}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Profile Status
                                     <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
                                         <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
                                             <i className="fa-solid fa-shield-halved" />
@@ -467,159 +467,160 @@ export default function Profile() {
                                                 {formData.status}
                                             </span>
                                         </div>
+                                    </div>  */}
+
+
+                                        {/* Phone Number */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-phone" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Phone Number</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formData.mobileNumber}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Preferred Language */}
+                                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                <i className="fa-solid fa-language" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Preferred Language (App)</div>
+                                                <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#ffffff" }}>{formData.preferredLanguage}</div>
+                                            </div>
+                                        </div>
+
                                     </div>
 
-                                    {/* Phone Number */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-phone" />
+                                </div>
+                            )}
+
+                            {/* ── TAB 2: CLINIC & LOCATION ── */}
+                            {activeTab === "clinic" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 16, padding: "20px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                        <i className="fa-solid fa-hospital" style={{ color: "#01b6af", fontSize: "1.4rem" }} />
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: "1rem", color: "#ffffff" }}>{formData.clinicName}</div>
+                                            <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>{formData.clinicAddress}</div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                                        <div>
+                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Consultation Hours</span>
+                                            <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#e2e8f0" }}>Mon - Sat (09:00 AM - 08:00 PM)</div>
                                         </div>
                                         <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Phone Number</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.mobileNumber}</div>
+                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Consultation Charge</span>
+                                            <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#01b6af" }}>₹{formData.consultationFee} per visit</div>
                                         </div>
                                     </div>
+                                </div>
+                            )}
 
-                                    {/* Preferred Language */}
-                                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f8fafc", color: "#08AEB8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", flexShrink: 0, border: "1px solid #f1f5f9" }}>
-                                            <i className="fa-solid fa-language" />
+                            {/* ── TAB 3: PROFESSIONAL DETAILS ── */}
+                            {activeTab === "pro" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 16, padding: "20px" }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                                        <div>
+                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Registration Number</span>
+                                            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#ffffff" }}>{formData.registrationNumber}</div>
                                         </div>
                                         <div>
-                                            <div style={{ fontSize: "0.74rem", color: "#94a3b8", fontWeight: 600, marginBottom: 1 }}>Preferred Language (App)</div>
-                                            <div style={{ fontWeight: 700, fontSize: "0.86rem", color: "#0f172a" }}>{formData.preferredLanguage}</div>
+                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Specialization</span>
+                                            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#01b6af" }}>{formData.specialization}</div>
+                                        </div>
+                                        <div>
+                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Medical Council</span>
+                                            <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#e2e8f0" }}>State Medical Council</div>
+                                        </div>
+                                        <div>
+                                            <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>License Verification</span>
+                                            <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#10B981" }}>Verified & Active</div>
                                         </div>
                                     </div>
-
                                 </div>
+                            )}
 
-                            </div>
-                        )}
-
-                        {/* ── TAB 2: CLINIC & LOCATION ── */}
-                        {activeTab === "clinic" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 16, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                    <i className="fa-solid fa-hospital" style={{ color: "#08AEB8", fontSize: "1.4rem" }} />
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: "1rem", color: "#0f172a" }}>{formData.clinicName}</div>
-                                        <div style={{ fontSize: "0.85rem", color: "#64748b" }}>{formData.clinicAddress}</div>
+                            {/* ── TAB 4: EDUCATION & CERTIFICATES ── */}
+                            {activeTab === "edu" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "20px" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#ffffff" }}>Qualifications & Degrees</div>
+                                    <div style={{ fontSize: "0.85rem", color: "#e2e8f0", background: "rgba(255,255,255,0.05)", padding: "12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                        {formData.qualification}
                                     </div>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, paddingTop: 10, borderTop: "1px solid #e2e8f0" }}>
-                                    <div>
-                                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Consultation Hours</span>
-                                        <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#334155" }}>Mon - Sat (09:00 AM - 08:00 PM)</div>
-                                    </div>
-                                    <div>
-                                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Consultation Charge</span>
-                                        <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#08AEB8" }}>₹{formData.consultationFee} per visit</div>
+                            )}
+
+                            {/* ── TAB 5: EXPERIENCE ── */}
+                            {activeTab === "exp" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "20px" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#ffffff" }}>Clinical Experience</div>
+                                    <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#01b6af" }}>{formData.experience} of medical clinical practice</div>
+                                    <div style={{ fontSize: "0.82rem", color: "#94a3b8" }}>Currently practicing at {formData.clinicName}</div>
+                                </div>
+                            )}
+
+                            {/* ── TAB 6: LANGUAGES ── */}
+                            {activeTab === "lang" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "20px" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#ffffff" }}>Languages Spoken for Consultation</div>
+                                    <div style={{ display: "flex", gap: 10 }}>
+                                        {formData.languages.split(",").map((l, i) => (
+                                            <span key={i} style={{ background: "rgba(1, 182, 175, 0.2)", color: "#01b6af", padding: "4px 14px", borderRadius: 20, fontSize: "0.82rem", fontWeight: 600 }}>
+                                                {l.trim()}
+                                            </span>
+                                        ))}
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* ── TAB 3: PROFESSIONAL DETAILS ── */}
-                        {activeTab === "pro" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 16, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                                    <div>
-                                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Registration Number</span>
-                                        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>{formData.registrationNumber}</div>
-                                    </div>
-                                    <div>
-                                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Specialization</span>
-                                        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#08AEB8" }}>{formData.specialization}</div>
-                                    </div>
-                                    <div>
-                                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Medical Council</span>
-                                        <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#334155" }}>State Medical Council</div>
-                                    </div>
-                                    <div>
-                                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>License Verification</span>
-                                        <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#10B981" }}>Verified & Active</div>
+                            {/* ── TAB 7: CONSULTATION FEES ── */}
+                            {activeTab === "fees" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "20px" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.05)", padding: "12px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#ffffff" }}>In-Clinic Consultation Fee</div>
+                                            <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Physical visit at clinic</div>
+                                        </div>
+                                        <div style={{ fontWeight: 800, fontSize: "1rem", color: "#01b6af" }}>₹{formData.consultationFee}</div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* ── TAB 4: EDUCATION & CERTIFICATES ── */}
-                        {activeTab === "edu" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>Qualifications & Degrees</div>
-                                <div style={{ fontSize: "0.85rem", color: "#334155", background: "#fff", padding: "12px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                                    {formData.qualification}
+                            {/* ── TAB 8: ABOUT ME ── */}
+                            {activeTab === "about" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "20px" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#ffffff" }}>Doctor Bio & Summary</div>
+                                    <p style={{ fontSize: "0.85rem", color: "#e2e8f0", margin: 0, lineHeight: 1.6, background: "rgba(255,255,255,0.05)", padding: "14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                        {formData.description}
+                                    </p>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* ── TAB 5: EXPERIENCE ── */}
-                        {activeTab === "exp" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>Clinical Experience</div>
-                                <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#08AEB8" }}>{formData.experience} of medical clinical practice</div>
-                                <div style={{ fontSize: "0.82rem", color: "#64748b" }}>Currently practicing at {formData.clinicName}</div>
-                            </div>
-                        )}
-
-                        {/* ── TAB 6: LANGUAGES ── */}
-                        {activeTab === "lang" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>Languages Spoken for Consultation</div>
-                                <div style={{ display: "flex", gap: 10 }}>
-                                    {formData.languages.split(",").map((l, i) => (
-                                        <span key={i} style={{ background: "#082B68", color: "#fff", padding: "4px 14px", borderRadius: 20, fontSize: "0.82rem", fontWeight: 600 }}>
-                                            {l.trim()}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ── TAB 7: CONSULTATION FEES ── */}
-                        {activeTab === "fees" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 14, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "12px 16px", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#0f172a" }}>In-Clinic Consultation Fee</div>
-                                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Physical visit at clinic</div>
+                            {/* ── TAB 9: ACCOUNT SETTINGS ── */}
+                            {activeTab === "settings" && (
+                                <div className="dark-glass-card" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "20px" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#ffffff" }}>Account Security & Preferences</div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.05)", padding: "12px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)" }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#ffffff" }}>Password</div>
+                                            <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Last updated 30 days ago</div>
+                                        </div>
+                                        <button onClick={() => setIsEditing(true)} style={{ padding: "6px 14px", background: "rgba(1, 182, 175, 0.2)", border: "1px solid rgba(1, 182, 175, 0.3)", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", color: "#01b6af" }}>Change Password</button>
                                     </div>
-                                    <div style={{ fontWeight: 800, fontSize: "1rem", color: "#08AEB8" }}>₹{formData.consultationFee}</div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* ── TAB 8: ABOUT ME ── */}
-                        {activeTab === "about" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>Doctor Bio & Summary</div>
-                                <p style={{ fontSize: "0.85rem", color: "#334155", margin: 0, lineHeight: 1.6, background: "#fff", padding: "14px", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                                    {formData.description}
-                                </p>
-                            </div>
-                        )}
-
-                        {/* ── TAB 9: ACCOUNT SETTINGS ── */}
-                        {activeTab === "settings" && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 14, background: "#f8fafc", padding: "20px", borderRadius: 14, border: "1px solid #f1f5f9" }}>
-                                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>Account Security & Preferences</div>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "12px 16px", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#0f172a" }}>Password</div>
-                                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Last updated 30 days ago</div>
-                                    </div>
-                                    <button onClick={() => setIsEditing(true)} style={{ padding: "6px 14px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", color: "#082B68" }}>Change Password</button>
-                                </div>
-                            </div>
-                        )}
+                        </div>
 
                     </div>
 
                 </div>
 
             </div>
-
-        </div>
 
             {/* ═════════════════════════════════════════════════════════
                EDIT PROFILE MODAL
@@ -648,9 +649,9 @@ export default function Profile() {
 
                         {/* Modal Body / Form */}
                         <form onSubmit={handleSaveProfile} style={{ padding: "20px 24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
-                            
+
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                                
+
                                 <div>
                                     <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: 5 }}>Full Name</label>
                                     <input

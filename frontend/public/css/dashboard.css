@@ -806,7 +806,8 @@ body {
     }
 
     .transcript-scroll-box {
-        max-height: 350px !important;
+        min-height: 350px !important;
+        flex: 1 !important;
     }
 
     .consultation-layout {

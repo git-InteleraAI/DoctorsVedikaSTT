@@ -188,6 +188,41 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         ? patientRecord.transcript.filter((t) => hasValue(t?.text))
         : [];
 
+    let rawAge = getFirst(
+        patientRecord.patientAge,
+        patientRecord.age,
+        patientRecord.patient?.age,
+        patientRecord.patient_age,
+        s.patient_age,
+        s.age,
+        s.patientAge
+    );
+
+    let rawGender = getFirst(
+        patientRecord.patientGender,
+        patientRecord.gender,
+        patientRecord.patient?.gender,
+        patientRecord.patient_gender,
+        s.patient_gender,
+        s.gender,
+        s.patientGender
+    );
+
+    const ageStr = hasValue(rawAge) ? (String(rawAge).toLowerCase().includes('y') ? String(rawAge) : `${rawAge} Y`) : '';
+    const genderStr = hasValue(rawGender) ? String(rawGender).trim() : '';
+    const ageGender = [ageStr, genderStr].filter(Boolean).join(' / ') || '-';
+
+    function sanitizePlaceholderText(txt) {
+        if (!hasValue(txt) || typeof txt !== 'string') return txt;
+        let str = txt;
+        if (str.includes('male/female')) {
+            const gRepl = genderStr ? genderStr.toLowerCase() : 'patient';
+            str = str.replace(/\ba\s+male\/female\b/gi, gRepl === 'patient' ? 'the patient' : `a ${gRepl}`)
+                     .replace(/\bmale\/female\b/gi, gRepl);
+        }
+        return str;
+    }
+
     // Helper functions for page management
     function startNewPage(isFirstPage = false) {
         doc.addPage({ size: 'A4', margin: 0 });
@@ -280,13 +315,15 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         const col2ValX = col2X + col2LabelW;
         const col2ValW = (cardW / 2) - col2LabelW - 12;
 
-        const patientName = cleanString(patientRecord.patientName, 'Patient');
-        const patientId = cleanString(patientRecord.patientId, '-');
-        const age = patientRecord.patient?.age ? `${patientRecord.patient.age} Y` : (patientRecord.age ? `${patientRecord.age} Y` : '');
-        const gender = patientRecord.patient?.gender || patientRecord.gender || '';
-        const ageGender = [age, gender].filter(Boolean).join(' / ') || '-';
+        const patientName = cleanString(patientRecord.patientName || patientRecord.patient?.name, 'Patient');
+        const patientId = cleanString(patientRecord.patientId || patientRecord.patient?.id, '-');
         const appointmentId = cleanString(patientRecord.appointmentId, '1');
 
+        let rawDocName = patientRecord.doctorName || patientRecord.doctor_name || patientRecord.doctor?.name || patientRecord.doctor?.full_name || patientRecord.doctor?.fullName;
+        if (rawDocName && !rawDocName.toLowerCase().startsWith('dr')) {
+            rawDocName = `Dr. ${rawDocName}`;
+        }
+        const doctorName = cleanString(rawDocName, 'Dr. Harshini Jakki');
         const doctorId = cleanString(patientRecord.doctorId, 'default-doctor');
         const dateStr = cleanString(patientRecord.consultationDate, new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
         const timeStr = cleanString(patientRecord.consultationTime, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
@@ -307,7 +344,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         printPair('Age / Gender', ageGender, col1X, col1ValX, col1ValW, rowY3);
         printPair('Appointment ID', appointmentId, col1X, col1ValX, col1ValW, rowY4);
 
-        printPair('Doctor ID', doctorId, col2X, col2ValX, col2ValW, rowY1);
+        printPair('Doctor Name', doctorName, col2X, col2ValX, col2ValW, rowY1);
         printPair('Date', dateStr, col2X, col2ValX, col2ValW, rowY2);
         printPair('Time', timeStr, col2X, col2ValX, col2ValW, rowY3);
         printPair('Consultation Type', consultType, col2X, col2ValX, col2ValW, rowY4);
@@ -380,13 +417,13 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     if (hasOverview) {
         drawSectionHeader('1. Consultation Overview', '1');
         if (hasValue(chiefComplaint)) {
-            drawFieldBlock('Chief Complaint', chiefComplaint);
+            drawFieldBlock('Chief Complaint', sanitizePlaceholderText(chiefComplaint));
         }
         if (hasValue(overview)) {
-            drawFieldBlock('Consultation Overview', overview);
+            drawFieldBlock('Consultation Overview', sanitizePlaceholderText(overview));
         }
         if (hasValue(historyOfIllness)) {
-            drawFieldBlock('History of Present Illness', historyOfIllness);
+            drawFieldBlock('History of Present Illness', sanitizePlaceholderText(historyOfIllness));
         }
         doc.y += 4;
     }

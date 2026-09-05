@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
+import Appointments from "./pages/Appointments";
 import Consultation from "./pages/Consultation";
 import ConsultationSummary from "./pages/ConsultationSummary";
 import PatientRecord from "./pages/PatientRecord";
@@ -53,6 +54,11 @@ function App() {
         <Route
           path="/dashboard"
           element={<Dashboard />}
+        />
+
+        <Route
+          path="/appointments"
+          element={<Appointments />}
         />
 
         <Route

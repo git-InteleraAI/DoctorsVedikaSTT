@@ -70,11 +70,10 @@ class PatientController {
 
             const docPatientIds = [...new Set((docApps || []).map(a => a.patient_id).filter(Boolean))];
 
-            if (docPatientIds.length === 0) {
-                 return res.json({ success: true, patients: [] });
+            let query = supabase.from("patients").select("*");
+            if (docPatientIds.length > 0) {
+                query = query.in("user_id", docPatientIds);
             }
-            
-            let query = supabase.from("patients").select("*").in("user_id", docPatientIds);
 
             if (q) {
                 const searchStr = `%${q}%`;

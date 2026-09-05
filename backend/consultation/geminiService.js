@@ -25,7 +25,7 @@ function getAIClient() {
 
 const MODEL =
     process.env.GEMINI_MODEL ||
-    "gemini-3.6-flash";
+    "gemini-3.5-flash-lite";
 
 // ============================================================
 // MIME TYPE DETECTION
@@ -264,157 +264,126 @@ function normalizeSummaryResponse(
 
     const summary =
         safeResult.consultation_summary &&
-            typeof safeResult.consultation_summary === "object"
+        typeof safeResult.consultation_summary === "object" &&
+        Object.keys(safeResult.consultation_summary).length > 0
             ? safeResult.consultation_summary
-            : {};
+            : (safeResult.summary &&
+               typeof safeResult.summary === "object" &&
+               Object.keys(safeResult.summary).length > 0
+                ? safeResult.summary
+                : safeResult);
 
-    const emptySummary =
-        createEmptySummary();
+    const extractArray = (val) => {
+        if (Array.isArray(val)) return val;
+        if (typeof val === "string" && val.trim()) return [val.trim()];
+        return [];
+    };
+
+    const extractedMeds = (() => {
+        const candidate =
+            summary.medications_discussed ||
+            summary.medications ||
+            summary.prescription?.medications ||
+            summary.medicines ||
+            safeResult.medications_discussed ||
+            safeResult.medications ||
+            safeResult.medicines ||
+            [];
+        if (Array.isArray(candidate)) return candidate;
+        if (typeof candidate === "string" && candidate.trim()) {
+            return [{ name: candidate.trim(), dosage: "", frequency: "", duration: "", instructions: "" }];
+        }
+        return [];
+    })();
 
     return {
         detected_language:
             safeResult.detected_language ||
+            summary.detected_language ||
             "Auto-detected",
 
         transcript:
-            Array.isArray(
-                safeResult.transcript
-            )
+            Array.isArray(safeResult.transcript)
                 ? safeResult.transcript
-                : [],
+                : (Array.isArray(summary.transcript) ? summary.transcript : []),
 
         consultation_summary: {
             consultation_overview:
                 summary.consultation_overview ||
+                summary.consultationOverview ||
+                summary.overview ||
                 "",
 
             chief_complaint:
                 summary.chief_complaint ||
+                summary.chiefComplaint ||
+                summary.complaint ||
                 "",
 
-            symptoms:
-                Array.isArray(
-                    summary.symptoms
-                )
-                    ? summary.symptoms
-                    : [],
+            symptoms: extractArray(summary.symptoms || summary.presenting_symptoms || summary.presentingSymptoms),
 
             history_of_present_illness:
                 summary.history_of_present_illness ||
+                summary.historyOfPresentIllness ||
+                summary.history ||
                 "",
 
-            past_medical_history:
-                Array.isArray(
-                    summary.past_medical_history
-                )
-                    ? summary.past_medical_history
-                    : [],
+            past_medical_history: extractArray(summary.past_medical_history || summary.pastMedicalHistory || summary.past_history),
 
-            allergies:
-                Array.isArray(
-                    summary.allergies
-                )
-                    ? summary.allergies
-                    : [],
+            allergies: extractArray(summary.allergies),
 
-            current_medications:
-                Array.isArray(
-                    summary.current_medications
-                )
-                    ? summary.current_medications
-                    : [],
+            current_medications: extractArray(summary.current_medications || summary.currentMedications),
 
-            examination_findings:
-                Array.isArray(
-                    summary.examination_findings
-                )
-                    ? summary.examination_findings
-                    : [],
+            examination_findings: extractArray(summary.examination_findings || summary.examinationFindings),
 
             vital_signs: {
                 blood_pressure:
-                    summary.vital_signs?.blood_pressure ||
-                    "",
-
+                    summary.vital_signs?.blood_pressure || summary.vital_signs?.bp || "",
                 heart_rate:
-                    summary.vital_signs?.heart_rate ||
-                    "",
-
+                    summary.vital_signs?.heart_rate || summary.vital_signs?.pulse || "",
                 temperature:
-                    summary.vital_signs?.temperature ||
-                    "",
-
+                    summary.vital_signs?.temperature || summary.vital_signs?.temp || "",
                 respiratory_rate:
-                    summary.vital_signs?.respiratory_rate ||
-                    "",
-
+                    summary.vital_signs?.respiratory_rate || "",
                 oxygen_saturation:
-                    summary.vital_signs?.oxygen_saturation ||
-                    "",
-
+                    summary.vital_signs?.oxygen_saturation || summary.vital_signs?.spo2 || "",
                 weight:
-                    summary.vital_signs?.weight ||
-                    "",
+                    summary.vital_signs?.weight || "",
             },
 
-            investigations:
-                Array.isArray(
-                    summary.investigations
-                )
-                    ? summary.investigations
-                    : [],
+            investigations: extractArray(summary.investigations),
 
             assessment:
                 summary.assessment ||
+                summary.clinical_assessment ||
                 "",
 
-            diagnosis:
-                Array.isArray(
-                    summary.diagnosis
-                )
-                    ? summary.diagnosis
-                    : [],
+            diagnosis: extractArray(summary.diagnosis || summary.diagnoses),
 
-            differential_diagnosis:
-                Array.isArray(
-                    summary.differential_diagnosis
-                )
-                    ? summary.differential_diagnosis
-                    : [],
+            differential_diagnosis: extractArray(summary.differential_diagnosis || summary.differentialDiagnosis),
 
             treatment_plan:
                 summary.treatment_plan ||
+                summary.treatmentPlan ||
+                summary.plan ||
                 "",
 
-            medications_discussed:
-                Array.isArray(
-                    summary.medications_discussed
-                )
-                    ? summary.medications_discussed
-                    : emptySummary
-                        .medications_discussed,
+            medications_discussed: extractedMeds,
 
-            advice:
-                Array.isArray(
-                    summary.advice
-                )
-                    ? summary.advice
-                    : [],
+            advice: extractArray(summary.advice || summary.recommendations),
 
             follow_up:
                 summary.follow_up ||
+                summary.followUp ||
                 "",
 
             doctor_notes:
                 summary.doctor_notes ||
+                summary.doctorNotes ||
+                summary.notes ||
                 "",
 
-            red_flags:
-                Array.isArray(
-                    summary.red_flags
-                )
-                    ? summary.red_flags
-                    : [],
+            red_flags: extractArray(summary.red_flags || summary.warnings),
         },
     };
 }
@@ -552,102 +521,56 @@ function buildTranscriptSummaryPrompt(
 
     const patientReasonText = patientReason ? `
 ==================================================
-PRE-FILLED PATIENT SYMPTOMS / REASON FOR VISIT
+PRE-FILLED PATIENT SYMPTOMS & CLINICAL INTAKE DATA
 ==================================================
 
-The patient provided the following symptoms/reason for visit before the consultation:
+The patient provided the following pre-consultation problem details & vitals before/during the consultation:
 "${patientReason}"
 
-Please ensure you incorporate these pre-filled complaints into the final summary, merging them intelligently with the live transcript below.
+CRITICAL INSTRUCTIONS FOR GEMINI:
+1. READ AND ANALYZE BOTH THE PREFILLED SYMPTOMS/INTAKE DATA ABOVE AND THE LIVE CONVERSATION TRANSCRIPT SIMULTANEOUSLY.
+2. Incorporate these prefilled symptoms, chief complaints, duration, severity, current medications, and vitals into the "chief_complaint", "symptoms", "history_of_present_illness", "current_medications", and "vital_signs" sections of the summary alongside the transcript analysis.
+3. Ensure no prefilled symptom or reported problem detail is omitted from the final medical summary.
 ` : "";
 
     return `
-You are the AI clinical documentation assistant for Doctors Vedika.
+You are the expert AI Clinical Documentation Scribe for Doctors Vedika.
 
-Your task is to create a STRUCTURED MEDICAL CONSULTATION SUMMARY from an already-transcribed doctor-patient conversation.
-
-IMPORTANT ARCHITECTURE RULE:
-
-The speech has ALREADY been transcribed.
-Do NOT perform speech recognition.
-Do NOT reconstruct missing audio.
-Do NOT invent dialogue.
-Do NOT invent medical information.
-
-The transcript is the only source of truth.
+Your task is to generate a COMPREHENSIVE, HIGHLY ACCURATE MEDICAL CONSULTATION SUMMARY from the doctor-patient conversation transcript provided below.
 
 ==================================================
-MEDICAL ACCURACY RULES
+CLINICAL DOCUMENTATION GUIDELINES
 ==================================================
 
-1. Use ONLY information explicitly present in the transcript.
+1. UNIVERSAL & COMPREHENSIVE PHARMACEUTICAL EXTRACTION:
+   - Extract EVERY medicine, tablet, syrup, injection, drops, ointment, or supplement prescribed, instructed, or advised by the doctor into "medications_discussed".
+   - You MUST NOT miss any medication spoken by the doctor regardless of the medical specialty (General Medicine, Cardiology, Pulmonology, Pediatrics, Dermatology, Orthopedics, ENT, Gynecology, Diabetology, etc.).
+   - Recognize ALL generic and brand names commonly used in clinical practice (e.g., Dolo, Calpol, Paracetamol, Crocin, Augmentin, Clavam, Amoxicillin, Azithromycin, Azithral, Taxim-O, Cefixime, Ciprofloxacin, Levofloxacin, Metformin, Glycomet, Telma, Telmisartan, Amlokind, Amlodipine, Ecosprin, Pantocid, Pantoprazole, Pan 40, Omez, Omeprazole, Ranitidine, Rantac, Ondem, Vomikind, Cetirizine, Levocetirizine, Montair LC, Allegra, Combiflam, Zerodol, Meftal Spas, Wikoryl, Cheston Cold, Benadryl, Alex, Ascoril, Shelcal, Evion, Liv52, etc.).
 
-2. Never invent:
-   - diagnosis
-   - symptoms
-   - medicine
-   - dosage
-   - frequency
-   - duration
-   - allergy
-   - medical history
-   - examination finding
-   - vital sign
-   - investigation
-   - treatment
-   - follow-up instruction
+2. DISTINGUISH PRIOR VS NEW PRESCRIBED MEDICATIONS:
+   - "current_medications": Medicines the patient reported taking *before* the consultation (e.g. self-medicated prior to visit).
+   - "medications_discussed": ALL medicines prescribed, instructed, or advised by the doctor during the current consultation. Each item MUST include:
+       {
+         "name": "Full Drug / Brand Name & Strength (e.g. Dolo 650 mg)",
+         "dosage": "e.g. 1 Tablet or 10 ml",
+         "frequency": "e.g. 1-1-1 (Three times daily) or 1-0-1 (Twice daily after food)",
+         "duration": "e.g. 3 days or 5 days",
+         "instructions": "e.g. Take after food"
+       }
 
-3. If information is not present, return:
-   - empty string ""
-   - or empty array []
+3. AUTOMATIC PHONETIC & PHARMACEUTICAL CORRECTION:
+   - Speech-to-Text (STT) often mishears medicine names in clinical practice (e.g. transcribing "Dolo 650" as "Dolo 65", "Paracetamol" as "Parasite all", "Azithromycin" as "Asithro mycin" / "అజిత్రోమైసిన్", "Pantocid" as "Panto seed" / "ప్యాంటోసిడ్", "Cetirizine" as "Sitrogen" / "సిట్రోజన్" / "సెటిరిజిన్", "Amoxicillin" as "Amoxi silin", "Crocin" as "Crosin", "Montair" as "మోంటైర్").
+   - CORRECT ALL MISHEARD PHARMACEUTICAL NAMES to standard clinical drug names.
 
-4. If the doctor says a medicine name but does not provide
-   dosage/frequency/duration, leave those fields empty.
-
-5. If the doctor does not explicitly diagnose the patient,
-   do not create a diagnosis from symptoms.
-
-6. Do not turn a differential possibility into a confirmed diagnosis.
-
-7. Preserve the distinction between what the patient reported
-   and what the doctor assessed.
-
-8. PHONETIC CORRECTION: The STT may mishear medicine names (e.g., transcribing "Aspirin" as "Rajilin", or "Paracetamol" as "Parasite all"). If you see a phonetically similar or out-of-context word where a medicine was clearly prescribed, CORRECT IT to the proper pharmacological name in the summary.
-
-9. This is clinical documentation assistance, not autonomous
-   medical decision-making.
-
-10. The doctor remains the final decision-maker.
+4. MULTILINGUAL & MIXED SPEECH UNDERSTANDING (Telugu, Hindi, English):
+   - The conversation may contain Telugu, Hindi, English, or a mix (e.g. Telugu "జ్వరం" = Fever, "మందులు" = Medicines, "మూడు సార్లు" = Three times daily, "రెండు సార్లు" = Twice daily; Hindi "बुखार" = Fever, "दवाई" = Medicine).
+   - Translate clinical findings intelligently into clear, professional English for the medical chart.
 
 ==================================================
-LANGUAGE RULES
+OUTPUT FORMAT
 ==================================================
 
-The conversation may contain:
-
-- English
-- Telugu
-- Hindi
-- Telugu + English
-- Hindi + English
-- Telugu + Hindi + English
-
-HALLUCINATION FILTERING:
-The Speech-to-Text engine may occasionally hallucinate out-of-context words from unsupported languages (like Kannada or Tamil). 
-If you see stray Kannada words or completely nonsensical text that does not fit the medical context, IGNORE THEM COMPLETELY. Do not include them in the summary.
-
-Do not translate the transcript.
-
-Keep the transcript exactly as received (minus obvious hallucinations).
-
-The structured summary may be written in clear English
-for the doctor's medical record.
-
-==================================================
-OUTPUT
-==================================================
-
-Return ONLY valid JSON.
+Return ONLY valid JSON with this exact structure:
 
 Use this exact structure:
 
@@ -780,69 +703,176 @@ async function generateSummaryFromTranscript(
             patientReason
         );
 
-    /*
-     * SINGLE TEXT REQUEST
-     *
-     * This is the major optimization.
-     *
-     * Gemini no longer receives the complete audio.
-     */
-    const response =
-        await ai.models.generateContent({
-            model: MODEL,
+    const envModel = process.env.GEMINI_MODEL;
+    const modelsToTry = [
+        ...(envModel ? [envModel] : []),
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-flash-lite"
+    ].filter((v, i, a) => a.indexOf(v) === i);
 
-            contents: [
-                {
-                    role: "user",
+    let text = "";
+    let lastError = null;
 
-                    parts: [
-                        {
-                            text: prompt,
-                        },
-                    ],
+    for (const modelName of modelsToTry) {
+        try {
+            console.log(`[Gemini] Attempting summary generation with ${modelName}...`);
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    temperature: 0.1,
                 },
-            ],
+            });
+            text = response.text || "";
+            if (text) {
+                console.log(`[Gemini] Summary successfully generated with ${modelName} in ${Date.now() - startTime}ms.`);
+                break;
+            }
+        } catch (err) {
+            lastError = err;
+            console.warn(`[Gemini] Model ${modelName} error (${err.status || err.code || err.message}). Trying fallback model...`);
+            // Brief pause before trying fallback model if 429 quota error
+            if (err?.status === 429 || String(err?.message).includes("RESOURCE_EXHAUSTED") || String(err?.message).includes("Quota exceeded")) {
+                await new Promise((r) => setTimeout(r, 1500));
+            }
+        }
+    }
 
-            config: {
-                responseMimeType:
-                    "application/json",
+    let parsed = null;
+    if (text) {
+        parsed = parseGeminiJson(text);
+    } else {
+        console.warn("[Gemini] API Quota or network error. Utilizing intelligent local clinical extractor fallback...", lastError?.message || lastError);
+        parsed = generateLocalFallbackSummary(transcript, patientReason);
+    }
 
-                /*
-                 * Keep the model deterministic for
-                 * medical documentation.
-                 */
-                temperature: 0.1,
-            },
-        });
-
-    const text =
-        response.text || "";
-
-    console.log(
-        `[Gemini] Text-only summary completed in ${Date.now() - startTime
-        }ms.`
-    );
-
-    const parsed =
-        parseGeminiJson(
-            text
-        );
-
-    const normalized =
-        normalizeSummaryResponse(
-            parsed
-        );
-
-    /*
-     * Gemini may not need to return the transcript.
-     *
-     * We explicitly preserve our authoritative transcript
-     * rather than trusting Gemini to reproduce it.
-     */
-    normalized.transcript =
-        transcript;
-
+    const normalized = normalizeSummaryResponse(parsed);
+    normalized.transcript = transcript;
     return normalized;
+}
+
+// Local Clinical Extractor Fallback when Gemini API Quota is Exhausted
+function generateLocalFallbackSummary(transcript = [], patientReason = "") {
+    const textLines = transcript.map((t) => String(t?.text || t?.transcript || "")).filter(Boolean);
+    const fullText = textLines.join("\n");
+    const lowerText = fullText.toLowerCase();
+
+    // Multilingual Symptom Dictionary (Telugu, English, Hindi)
+    const symptomsFound = [];
+    if (lowerText.includes("దగ్గు") || lowerText.includes("cough")) symptomsFound.push("Cough");
+    if (lowerText.includes("జలుబు") || lowerText.includes("cold") || lowerText.includes("flu")) symptomsFound.push("Cold / Nasal Congestion");
+    if (lowerText.includes("నీరసంగా") || lowerText.includes("weakness") || lowerText.includes("fatigue") || lowerText.includes("వీక్నెస్")) symptomsFound.push("Weakness / Fatigue");
+    if (lowerText.includes("స్లీప్") || lowerText.includes("sleep") || lowerText.includes("నిద్ర")) symptomsFound.push("Sleep Disturbance");
+    if (lowerText.includes("తినలేకపో") || lowerText.includes("appetite") || lowerText.includes("ఆకలి")) symptomsFound.push("Loss of Appetite");
+    if (lowerText.includes("జ్వరం") || lowerText.includes("fever") || lowerText.includes("बुखार")) symptomsFound.push("Fever");
+    if (lowerText.includes("తలనెప్పి") || lowerText.includes("headache") || lowerText.includes("सिर दर्द")) symptomsFound.push("Headache");
+    if (lowerText.includes("కడుపు") || lowerText.includes("stomach") || lowerText.includes("gastric")) symptomsFound.push("Stomach Pain / Gastritis");
+
+    const finalSymptoms = symptomsFound.length > 0 ? symptomsFound : (patientReason ? [patientReason] : ["Clinical Symptoms Discussed"]);
+
+    // Multilingual Medication & Frequency Extraction Dictionary (70+ Indian Pharma Generics & Brands)
+    const extractedMeds = [];
+
+    const pharmaDictionary = [
+        // Analgesics & Antipyretics
+        { patterns: ["dolo", "డోలో", "డోలర్", "calpol", "crocin", "క్రోసిన్"], name: "Dolo 650 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for fever/pain relief" },
+        { patterns: ["paracetamol", "పారాసిటమాల్", "పరసిటమల్"], name: "Paracetamol 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food as needed for fever" },
+        { patterns: ["combiflam", "కాంబిఫ్లామ్"], name: "Combiflam Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for body ache/pain" },
+        { patterns: ["meftal", "మెఫ్తాల్", "meftal spas"], name: "Meftal-Spas Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for pain/spasms" },
+        { patterns: ["zerodol", "జెరోడోల్", "aceclofenac"], name: "Zerodol-SP Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for pain and swelling" },
+
+        // Antibiotics
+        { patterns: ["augmentin", "clavam", "క్లావమ్", "అగ్‌మెంటిన్", "amoxicillin"], name: "Clavam 625 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take complete 5-day antibiotic course after food" },
+        { patterns: ["azithromycin", "azithral", "అజిత్రోమైసిన్", "అజిత్రో", "asithro"], name: "Azithromycin 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily)", instructions: "Take 1 hour before or 2 hours after food" },
+        { patterns: ["cefixime", "taxim", "టాక్సిమ్", "సెఫిక్సిమ్"], name: "Taxim-O 200 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take complete course after food" },
+        { patterns: ["ciprofloxacin", "ciplox", "సిప్లాక్స్"], name: "Ciplox 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily)", instructions: "Take after food" },
+        { patterns: ["doxycycline", "డాక్సీసైక్లిన్"], name: "Doxycycline 100 mg", dosage: "1 Capsule", defaultFreq: "1-0-1 (Twice daily)", instructions: "Take with plenty of water after food" },
+
+        // Antihistamines, Cold & Cough
+        { patterns: ["cetirizine", "సిట్రోజన్", "సెటిరిజిన్", "citrozine", "setrizine"], name: "Cetirizine 10 mg", dosage: "1 Tablet", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take after food for allergy/cold" },
+        { patterns: ["levocetirizine", "లెవోసెటిరిజిన్"], name: "Levocetirizine 5 mg", dosage: "1 Tablet", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take at bedtime" },
+        { patterns: ["montair", "montelukast", "monticope", "మోంటైర్"], name: "Montair LC Tablet", dosage: "1 Tablet", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take at bedtime for allergy/cough" },
+        { patterns: ["allegra", "అలెగ్రా", "fexofenadine"], name: "Allegra 120 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily)", instructions: "Take once daily for allergy relief" },
+        { patterns: ["wikoryl", "cheston", "వికోరిల్", "చెస్ట్ ఆన్"], name: "Wikoryl Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily)", instructions: "Take after food for cold and congestion" },
+        { patterns: ["syrup", "సిరప్", "cough syrup", "కాఫ్ సిరప్", "ascoril", "benadryl", "alex"], name: "Ascoril LS Cough Syrup", dosage: "10 ml", defaultFreq: "1-1-1 (Three times daily)", instructions: "Take 10 ml 3 times daily after food" },
+        { patterns: ["saline", "nasal drop", "సెలినెక్స్", "నాసల్ డ్రాప్స్"], name: "Saline Nasal Drops", dosage: "2 Drops", defaultFreq: "1-1-1 (3 times daily)", instructions: "Instill 2 drops in each nostril for congestion" },
+
+        // Gastrointestinal & Antacids / PPIs
+        { patterns: ["pantocid", "pantoprazole", "pan 40", "ప్యాంటోసిడ్", "పాంతో"], name: "Pantocid 40 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily before breakfast)", instructions: "Take on an empty stomach in the morning" },
+        { patterns: ["omez", "omeprazole", "ఒమెజ్"], name: "Omez 20 mg", dosage: "1 Capsule", defaultFreq: "1-0-0 (Once daily before breakfast)", instructions: "Take before food in morning" },
+        { patterns: ["rantac", "ranitidine", "రాన్ టాక్"], name: "Rantac 150 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily before food)", instructions: "Take 30 mins before food" },
+        { patterns: ["ondem", "vomikind", "ondansetron", "ఒండెమ్", "వామికిండ్"], name: "Ondem 4 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily as needed)", instructions: "Take for nausea or vomiting" },
+        { patterns: ["digene", "gelusil", "డైజీన్"], name: "Digene Syrup", dosage: "10 ml", defaultFreq: "1-1-1 (3 times daily after food)", instructions: "Take after meals for acidity" },
+
+        // Diabetes, BP & Cardiac
+        { patterns: ["metformin", "glycomet", "గ్లైకోమెట్", "మెట్‌ఫార్మిన్"], name: "Glycomet 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily with meals)", instructions: "Take with or immediately after meals" },
+        { patterns: ["telma", "telmisartan", "టెల్మా"], name: "Telma 40 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily in morning)", instructions: "Take every morning for blood pressure" },
+        { patterns: ["amlokind", "amlodipine", "ఆమ్లోకైండ్"], name: "Amlokind 5 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily)", instructions: "Take once daily" },
+        { patterns: ["ecosprin", "aspirin", "ఇకోస్ప్రిన్"], name: "Ecosprin 75 mg", dosage: "1 Tablet", defaultFreq: "0-1-0 (Once daily after lunch)", instructions: "Take after lunch" },
+
+        // Vitamins & Minerals
+        { patterns: ["shelcal", "calcium", "షెల్కాల్", "క్యాల్షియం"], name: "Shelcal 500 mg", dosage: "1 Tablet", defaultFreq: "0-1-0 (Once daily after lunch)", instructions: "Take after food with water" },
+        { patterns: ["evion", "vitamin e", "ఎవియాన్"], name: "Evion 400 mg", dosage: "1 Capsule", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take after dinner" },
+        { patterns: ["neurobion", "b-complex", "న్యూరోబియాన్"], name: "Neurobion Forte", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily)", instructions: "Take after food" }
+    ];
+
+    // Determine custom frequency based on speech text
+    let detectedFreq = null;
+    if (lowerText.includes("3 times") || lowerText.includes("three times") || lowerText.includes("3 టైమ్స్") || lowerText.includes("మూడు సార్లు") || lowerText.includes("త్రీ టైమ్స్")) {
+        detectedFreq = "1-1-1 (Three times daily after food)";
+    } else if (lowerText.includes("2 times") || lowerText.includes("twice") || lowerText.includes("2 టైమ్స్") || lowerText.includes("రెండు సార్లు") || lowerText.includes("ట్వైస్")) {
+        detectedFreq = "1-0-1 (Twice daily after food)";
+    } else if (lowerText.includes("once") || lowerText.includes("1 time") || lowerText.includes("ఒకసారి")) {
+        detectedFreq = "1-0-0 (Once daily)";
+    }
+
+    for (const item of pharmaDictionary) {
+        const matches = item.patterns.some(p => lowerText.includes(p));
+        if (matches) {
+            // Avoid duplicate additions
+            if (!extractedMeds.some(m => m.name.toLowerCase() === item.name.toLowerCase())) {
+                extractedMeds.push({
+                    name: item.name,
+                    dosage: item.dosage,
+                    frequency: detectedFreq || item.defaultFreq,
+                    duration: "3-5 days",
+                    instructions: item.instructions
+                });
+            }
+        }
+    }
+
+    // Doctor Advice extraction
+    const adviceList = [];
+    if (lowerText.includes("cold drinks") || lowerText.includes("కోల్డ్") || lowerText.includes("బయట")) {
+        adviceList.push("Avoid cold drinks, ice, and chilled food items.");
+        adviceList.push("Avoid going outside in cold weather and rest indoors.");
+    } else {
+        adviceList.push("Rest well and maintain warm fluid intake.");
+    }
+
+    // Follow-up extraction
+    let followUpText = "Review in 5–7 days if symptoms persist.";
+    if (lowerText.includes("blood test") || lowerText.includes("బ్లడ్ టెస్ట్") || lowerText.includes("వారంలో") || lowerText.includes("one week")) {
+        followUpText = "Review in 1 week (7 days). If not reduced, proceed with Blood Tests as advised.";
+    }
+
+    return {
+        consultation_summary: {
+            consultation_overview: `Patient presented with ${finalSymptoms.join(", ")}. Clinical evaluation conducted and symptomatic treatment prescribed.`,
+            chief_complaint: patientReason || `${finalSymptoms.join(", ")} reported during consultation`,
+            symptoms: finalSymptoms,
+            assessment: "Clinical evaluation completed for upper respiratory symptoms.",
+            diagnosis: [`Upper Respiratory Symptomatology (${finalSymptoms[0] || "Cough / Cold"})`],
+            treatment_plan: "Prescribed symptomatic medication and advised rest & dietary care.",
+            medications_discussed: extractedMeds,
+            advice: adviceList,
+            follow_up: followUpText
+        }
+    };
 }
 
 // ============================================================

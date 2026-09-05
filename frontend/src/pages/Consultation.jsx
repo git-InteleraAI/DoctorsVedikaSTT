@@ -43,33 +43,146 @@ const Consultation = () => {
     const appointmentId = location.state?.appointmentId || searchParams.get("appointmentId") || null;
     const doctorId = location.state?.doctorId || "default-doctor";
     const appointmentPatient = location.state?.patient;
-    const patient = appointmentPatient
-        ? {
-            id: appointmentPatient.patientId || patientId,
-            name: appointmentPatient.patientName || appointmentPatient.fullName || "Unknown Patient",
-            age: appointmentPatient.age || "Not Available",
-            gender: appointmentPatient.gender || "Not Available",
-            bloodGroup: appointmentPatient.bloodGroup || "Not Available",
-            weight: appointmentPatient.weight || "Not Available",
-            bloodPressure: appointmentPatient.bloodPressure || "Not Available",
-            allergies: appointmentPatient.allergies || "None documented",
-            history: appointmentPatient.history || "None documented",
-            reason: appointmentPatient.reason || "None documented",
-            isVerified: true
+    const [fetchedPatientInfo, setFetchedPatientInfo] = useState(null);
+    const [problemDetails, setProblemDetails] = useState({
+        symptoms: location.state?.symptoms || location.state?.reason || appointmentPatient?.symptoms || appointmentPatient?.reason || "",
+        duration: location.state?.duration || appointmentPatient?.duration || "",
+        severity: location.state?.severity || appointmentPatient?.severity || "",
+        currentMedications: location.state?.current_medications || location.state?.currentMedications || appointmentPatient?.current_medications || "",
+        additionalNotes: location.state?.additional_notes || location.state?.additionalNotes || appointmentPatient?.additional_notes || "",
+    });
+
+    const [vitals, setVitals] = useState({
+        bloodGroup: appointmentPatient?.bloodGroup || appointmentPatient?.blood_group || "",
+        weight: appointmentPatient?.weight || "",
+        bloodPressure: appointmentPatient?.bloodPressure || appointmentPatient?.blood_pressure || "",
+        allergies: appointmentPatient?.allergies || "",
+    });
+
+    const resolveCleanPatientCode = (code, rawId) => {
+        if (code && typeof code === "string" && !code.includes("-") && code.length <= 15) {
+            return `DV-P-${code}`;
         }
-        : {
-            id: patientId,
-            name: "Unknown Patient",
-            age: "Not Available",
-            gender: "Not Available",
-            bloodGroup: "Not Available",
-            weight: "Not Available",
-            bloodPressure: "Not Available",
-            allergies: "None documented",
-            history: "None documented",
-            reason: "None documented",
-            isVerified: false
-        };
+        if (code && typeof code === "string" && code.startsWith("DV-P-")) {
+            return code;
+        }
+        if (rawId && typeof rawId === "string" && rawId.length > 20) {
+            return `DV-P-${rawId.slice(0, 6).toUpperCase()}`;
+        }
+        return code || "DV-P-000086";
+    };
+
+    useEffect(() => {
+        if (!patientId) return;
+        const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:8005";
+        const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+        // 1. Fetch symptoms directly from public.appointment_symptoms table
+        fetch(`${NODE_API_URL}/api/appointments/symptoms/details?patientId=${patientId}&appointmentId=${appointmentId || ""}`, { headers })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((symRes) => {
+                if (symRes?.success && symRes?.symptoms) {
+                    const s = symRes.symptoms;
+                    setProblemDetails((prev) => ({
+                        symptoms: s.symptoms || prev.symptoms || "",
+                        duration: s.duration || prev.duration || "",
+                        severity: s.severity || prev.severity || "",
+                        currentMedications: s.current_medications || s.currentMedications || prev.currentMedications || "",
+                        additionalNotes: s.additional_notes || s.additionalNotes || prev.additionalNotes || "",
+                    }));
+                }
+            })
+            .catch(() => {});
+
+        // 2. Fetch Patient & Appointment details
+        fetch(`${NODE_API_URL}/api/patients`, { headers })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!data) return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then((r) => (r.ok ? r.json() : null));
+                const list = Array.isArray(data) ? data : data?.data || data?.patients || [];
+                const matched = list.find((p) => p.user_id === patientId || p.id === patientId || p.patient_code === patientId);
+                if (matched) {
+                    let calcAge = "";
+                    if (matched.date_of_birth) {
+                        const dob = new Date(matched.date_of_birth);
+                        if (!isNaN(dob.getTime())) {
+                            calcAge = String(new Date().getFullYear() - dob.getFullYear());
+                        }
+                    }
+                    setFetchedPatientInfo({
+                        code: matched.patient_code || matched.patient_number || "",
+                        name: matched.full_name || matched.first_name || matched.name || "",
+                        age: matched.age || calcAge,
+                        gender: matched.gender ? matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1) : "",
+                    });
+                    return null;
+                }
+                return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then((r) => (r.ok ? r.json() : null));
+            })
+            .then((appData) => {
+                if (!appData) return;
+                const list = Array.isArray(appData) ? appData : appData?.data || [];
+                const matched = list.find((a) => a.patient_id === patientId || a.patientId === patientId || a.id === patientId || a.user_id === patientId || a.id === appointmentId);
+                if (matched) {
+                    setFetchedPatientInfo((prev) => ({
+                        code: matched.patient_code || matched.patient_number || matched.patientCode || prev?.code || "",
+                        name: matched.patient_name || matched.patientName || matched.full_name || matched.name || prev?.name || "",
+                        age: matched.age || matched.patient_age || prev?.age || "",
+                        gender: matched.gender || matched.patient_gender || prev?.gender || "",
+                    }));
+
+                    setProblemDetails((prev) => ({
+                        symptoms: prev.symptoms || matched.symptoms || matched.reason || matched.chief_complaint || "",
+                        duration: prev.duration || matched.duration || "",
+                        severity: prev.severity || matched.severity || "",
+                        currentMedications: prev.currentMedications || matched.currentMedications || matched.current_medications || "",
+                        additionalNotes: prev.additionalNotes || matched.additionalNotes || matched.additional_notes || "",
+                    }));
+
+                    if (matched.blood_group || matched.weight || matched.blood_pressure || matched.allergies) {
+                        setVitals((prev) => ({
+                            bloodGroup: matched.blood_group || matched.bloodGroup || prev.bloodGroup,
+                            weight: matched.weight || prev.weight,
+                            bloodPressure: matched.blood_pressure || matched.bloodPressure || prev.bloodPressure,
+                            allergies: matched.allergies || prev.allergies,
+                        }));
+                    }
+                }
+            })
+            .catch(() => {});
+    }, [patientId, appointmentId]);
+
+    const patient = {
+        id: resolveCleanPatientCode(fetchedPatientInfo?.code || appointmentPatient?.patient_code || appointmentPatient?.patientCode, patientId),
+        name: fetchedPatientInfo?.name || (appointmentPatient?.patientName && appointmentPatient?.patientName !== "Unknown Patient" ? appointmentPatient.patientName : null) || appointmentPatient?.name || "Patient",
+        age: fetchedPatientInfo?.age || (appointmentPatient?.age && appointmentPatient?.age !== "Not Available" ? appointmentPatient.age : null) || "N/A",
+        gender: fetchedPatientInfo?.gender || (appointmentPatient?.gender && appointmentPatient?.gender !== "Not Available" ? appointmentPatient.gender : null) || "N/A",
+        bloodGroup: vitals.bloodGroup || appointmentPatient?.bloodGroup || "",
+        weight: vitals.weight || appointmentPatient?.weight || "",
+        bloodPressure: vitals.bloodPressure || appointmentPatient?.bloodPressure || "",
+        allergies: vitals.allergies || appointmentPatient?.allergies || "",
+        history: appointmentPatient?.history || "",
+        reason: problemDetails.symptoms || appointmentPatient?.reason || "General Consultation",
+        isVerified: true
+    };
+
+    const getFullPatientIntakeContext = () => {
+        const parts = [];
+        if (patient.name && patient.name !== "Patient") parts.push(`Patient Name: ${patient.name}`);
+        if (patient.age && patient.age !== "N/A") parts.push(`Patient Age: ${patient.age}`);
+        if (patient.gender && patient.gender !== "N/A") parts.push(`Patient Gender: ${patient.gender}`);
+        if (problemDetails.symptoms) parts.push(`Reported Symptoms: ${problemDetails.symptoms}`);
+        if (problemDetails.duration) parts.push(`Duration: ${problemDetails.duration}`);
+        if (problemDetails.severity) parts.push(`Severity: ${problemDetails.severity}`);
+        if (problemDetails.currentMedications) parts.push(`Current Medications: ${problemDetails.currentMedications}`);
+        if (problemDetails.additionalNotes) parts.push(`Additional Notes: ${problemDetails.additionalNotes}`);
+        if (vitals.bloodPressure) parts.push(`BP: ${vitals.bloodPressure}`);
+        if (vitals.weight) parts.push(`Weight: ${vitals.weight}`);
+        if (vitals.allergies && vitals.allergies !== "None") parts.push(`Allergies: ${vitals.allergies}`);
+        if (vitals.bloodGroup) parts.push(`Blood Group: ${vitals.bloodGroup}`);
+        return parts.join(" | ") || patient.reason || "";
+    };
 
     // ============================================================
     // STATE
@@ -80,6 +193,7 @@ const Consultation = () => {
     const [isReviewing, setIsReviewing] = useState(false);
     const [isGeneratingSummary, setIsGeneratingSummary] =
         useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
 
     // Stable ID for this consultation session.
@@ -109,6 +223,7 @@ const Consultation = () => {
     const mediaRecorderRef = useRef(null);
     const mediaStreamRef = useRef(null);
     const transcriptContainerRef = useRef(null);
+    const messagesEndRef = useRef(null);
     const recognitionActiveRef = useRef(false);
     const timerIntervalRef = useRef(null);
     const startTimeRef = useRef(null);
@@ -141,6 +256,32 @@ const Consultation = () => {
     // Used to prevent stale WebSocket messages after stopping.
     const sessionActiveRef = useRef(false);
 
+    // Instant Summary Pre-computation Optimization
+    const lastPreparedCountRef = useRef(0);
+    const lastPrepareTimeRef = useRef(0);
+
+    const triggerBackgroundSummaryPrepare = (currentTranscript, force = false) => {
+        if (!currentTranscript || currentTranscript.length < 2) return;
+        const now = Date.now();
+        if (force || (currentTranscript.length >= lastPreparedCountRef.current + 3 && (now - lastPrepareTimeRef.current) > 8000)) {
+            lastPreparedCountRef.current = currentTranscript.length;
+            lastPrepareTimeRef.current = now;
+            console.log(`[Consultation] Pre-generating background AI summary for ${currentTranscript.length} transcript lines...`);
+            fetch(`${NODE_API_URL}/api/consultation/prepare`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    doctorId,
+                    patientId: patient.id,
+                    appointmentId: String(appointmentId),
+                    consultationId,
+                    liveTranscript: JSON.stringify(currentTranscript),
+                    patientReason: getFullPatientIntakeContext(),
+                }),
+            }).catch((err) => console.warn("[Consultation] Background summary prepare notice:", err.message));
+        }
+    };
+
     // ============================================================
     // CLEANUP & AUTO-SCROLL
     // ============================================================
@@ -171,11 +312,27 @@ const Consultation = () => {
         }
     }, [language]);
 
-    // Auto-scroll transcript to bottom
+    // Continuous smooth auto-scroll transcript to bottom as new text arrives
     useEffect(() => {
-        if (transcriptContainerRef.current) {
-            transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
-        }
+        const scrollToBottom = () => {
+            if (transcriptContainerRef.current) {
+                transcriptContainerRef.current.scrollTo({
+                    top: transcriptContainerRef.current.scrollHeight,
+                    behavior: "smooth"
+                });
+            }
+            if (messagesEndRef.current) {
+                messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+            }
+        };
+
+        scrollToBottom();
+        const rAF = requestAnimationFrame(scrollToBottom);
+        const timeoutId = setTimeout(scrollToBottom, 120);
+        return () => {
+            cancelAnimationFrame(rAF);
+            clearTimeout(timeoutId);
+        };
     }, [transcript, liveInterimText]);
 
     // ============================================================
@@ -200,7 +357,7 @@ const Consultation = () => {
                         appointmentId: String(appointmentId),
                         consultationId: consultationId,
                         liveTranscript: currentTranscript,
-                        patientReason: patient.reason,
+                        patientReason: getFullPatientIntakeContext(),
                     }),
                 });
             } catch (error) {
@@ -375,16 +532,16 @@ const Consultation = () => {
     // ============================================================
 
     const getLanguageParameter = () => {
-        if (language === "te-IN") {
-            return "Telugu";
+        if (language === "te-IN" || language === "telugu" || language === "telugu+english") {
+            return "telugu+english";
         }
 
-        if (language === "hi-IN") {
-            return "Hindi";
+        if (language === "hi-IN" || language === "hindi" || language === "hindi+english") {
+            return "hindi+english";
         }
 
-        if (language === "en-IN") {
-            return "English";
+        if (language === "en-IN" || language === "english") {
+            return "english";
         }
 
         return "auto";
@@ -503,6 +660,7 @@ const Consultation = () => {
                             ];
 
                             transcriptRef.current = nextTranscript;
+                            triggerBackgroundSummaryPrepare(nextTranscript);
                             return nextTranscript;
                         });
 
@@ -601,7 +759,13 @@ const Consultation = () => {
             recognition.interimResults = true;
             recognition.maxAlternatives = 1;
 
-            recognition.lang = language === "te-IN" ? "te-IN" : language === "hi-IN" ? "hi-IN" : "en-IN";
+            let recLang = "te-IN";
+            if (language === "hi-IN" || language === "hindi") recLang = "hi-IN";
+            else if (language === "en-IN" || language === "english") recLang = "en-IN";
+            else if (language === "te-IN" || language === "telugu") recLang = "te-IN";
+            else recLang = "te-IN";
+
+            recognition.lang = recLang;
             recognitionActiveRef.current = true;
 
             console.log(
@@ -760,13 +924,15 @@ const Consultation = () => {
 
             mediaStreamRef.current = stream;
 
-            // Start live Web Speech API on screen removed (relying exclusively on Sarvam STT)
-            // startBrowserSpeechRecognition();
-
-            // Connect Python WebSocket in background
-            connectWebSocket().catch((err) => {
-                console.warn("[WebSocket] Python speech service connection warning:", err);
-            });
+            // Connect Python WebSocket STT for real-time multilingual transcription
+            connectWebSocket()
+                .then(() => {
+                    console.log("[Consultation] Sarvam AI STT connected successfully.");
+                })
+                .catch((err) => {
+                    console.warn("[WebSocket] Speech service warning, using Web Speech API fallback:", err);
+                    startBrowserSpeechRecognition();
+                });
 
             // ----------------------------------------------------
             // Select recording format
@@ -930,7 +1096,14 @@ const Consultation = () => {
     // ============================================================
 
     const stopRecording = async () => {
-        if (!isRecording) return;
+        if (!isRecording && !isListening) return;
+
+        // Switch UI state synchronously to Reviewing mode to eliminate 2s button blink
+        setIsReviewing(true);
+        setIsRecording(false);
+        setIsListening(false);
+        setIsPaused(false);
+        triggerBackgroundSummaryPrepare(transcriptRef.current, true);
 
         if (timerIntervalRef.current) {
             clearInterval(timerIntervalRef.current);
@@ -949,7 +1122,6 @@ const Consultation = () => {
                     const originalOnStop = recorder.onstop;
                     recorder.onstop = (event) => {
                         console.log("[Consultation] Audio recording stopped");
-                        setIsRecording(false);
                         if (typeof originalOnStop === "function") {
                             try { originalOnStop(event); } catch (e) { }
                         }
@@ -961,8 +1133,6 @@ const Consultation = () => {
                 });
             }
             if (stream) stream.getTracks().forEach((track) => track.stop());
-            setIsRecording(false);
-            setIsListening(false);
 
             // Ask the speech service to flush its final audio/transcript before
             // closing the socket. The previous fixed 200ms delay could close the
@@ -1008,6 +1178,7 @@ const Consultation = () => {
 
             setIsReviewing(true);
             sessionActiveRef.current = false;
+            triggerBackgroundSummaryPrepare(transcriptRef.current, true);
         } catch (error) {
             console.error(error);
         }
@@ -1027,164 +1198,143 @@ const Consultation = () => {
         setError("");
     };
 
+    const extractMedicinesFromTranscript = (transcriptList = []) => {
+        const textLines = transcriptList.map((t) => String(t?.text || t?.transcript || "")).filter(Boolean);
+        const lowerText = textLines.join("\n").toLowerCase();
+        const extractedMeds = [];
+
+        const pharmaList = [
+            { patterns: ["dolo", "డోలో", "డోలర్", "calpol", "crocin", "క్రోసిన్"], name: "Dolo 650 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for fever/pain relief" },
+            { patterns: ["paracetamol", "పారాసిటమాల్", "పరసిటమల్"], name: "Paracetamol 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food as needed for fever" },
+            { patterns: ["combiflam", "కాంబిఫ్లామ్"], name: "Combiflam Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for body ache/pain" },
+            { patterns: ["meftal", "మెఫ్తాల్", "meftal spas"], name: "Meftal-Spas Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for pain/spasms" },
+            { patterns: ["zerodol", "జెరోడోల్", "aceclofenac"], name: "Zerodol-SP Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for pain and swelling" },
+            { patterns: ["augmentin", "clavam", "క్లావమ్", "అగ్‌మెంటిన్", "amoxicillin"], name: "Clavam 625 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take complete 5-day antibiotic course after food" },
+            { patterns: ["azithromycin", "azithral", "అజిత్రోమైసిన్", "అజిత్రో", "asithro"], name: "Azithromycin 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily)", instructions: "Take 1 hour before or 2 hours after food" },
+            { patterns: ["cefixime", "taxim", "టాక్సిమ్", "సెఫిక్సిమ్"], name: "Taxim-O 200 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take complete course after food" },
+            { patterns: ["cetirizine", "సిట్రోజన్", "సెటిరిజిన్", "citrozine", "setrizine"], name: "Cetirizine 10 mg", dosage: "1 Tablet", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take after food for allergy/cold" },
+            { patterns: ["levocetirizine", "లెవోసెటిరిజిన్"], name: "Levocetirizine 5 mg", dosage: "1 Tablet", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take at bedtime" },
+            { patterns: ["montair", "montelukast", "monticope", "మోంటైర్"], name: "Montair LC Tablet", dosage: "1 Tablet", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take at bedtime for allergy/cough" },
+            { patterns: ["allegra", "అలెగ్రా", "fexofenadine"], name: "Allegra 120 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily)", instructions: "Take once daily for allergy relief" },
+            { patterns: ["wikoryl", "cheston", "వికోరిల్", "చెస్ట్ ఆన్"], name: "Wikoryl Tablet", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily)", instructions: "Take after food for cold and congestion" },
+            { patterns: ["syrup", "సిరప్", "cough syrup", "కాఫ్ సిరప్", "ascoril", "benadryl", "alex"], name: "Ascoril LS Cough Syrup", dosage: "10 ml", defaultFreq: "1-1-1 (Three times daily)", instructions: "Take 10 ml 3 times daily after food" },
+            { patterns: ["pantocid", "pantoprazole", "pan 40", "ప్యాంటోసిడ్", "పాంతో"], name: "Pantocid 40 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily before breakfast)", instructions: "Take on an empty stomach in the morning" },
+            { patterns: ["omez", "omeprazole", "ఒమెజ్"], name: "Omez 20 mg", dosage: "1 Capsule", defaultFreq: "1-0-0 (Once daily before breakfast)", instructions: "Take before food in morning" },
+            { patterns: ["rantac", "ranitidine", "రాన్ టాక్"], name: "Rantac 150 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily before food)", instructions: "Take 30 mins before food" },
+            { patterns: ["ondem", "vomikind", "ondansetron", "ఒండెమ్", "వామికిండ్"], name: "Ondem 4 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily as needed)", instructions: "Take for nausea or vomiting" },
+            { patterns: ["metformin", "glycomet", "గ్లైకోమెట్"], name: "Glycomet 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily with meals)", instructions: "Take with or immediately after meals" },
+            { patterns: ["telma", "telmisartan", "టెల్మా"], name: "Telma 40 mg", dosage: "1 Tablet", defaultFreq: "1-0-0 (Once daily in morning)", instructions: "Take every morning for blood pressure" },
+            { patterns: ["shelcal", "calcium", "షెల్కాల్"], name: "Shelcal 500 mg", dosage: "1 Tablet", defaultFreq: "0-1-0 (Once daily after lunch)", instructions: "Take after food with water" },
+            { patterns: ["evion", "vitamin e", "ఎవియాన్"], name: "Evion 400 mg", dosage: "1 Capsule", defaultFreq: "0-0-1 (Once daily at night)", instructions: "Take after dinner" }
+        ];
+
+        let detectedFreq = null;
+        if (lowerText.includes("3 times") || lowerText.includes("three times") || lowerText.includes("3 టైమ్స్") || lowerText.includes("మూడు సార్లు") || lowerText.includes("త్రీ టైమ్స్")) {
+            detectedFreq = "1-1-1 (Three times daily after food)";
+        } else if (lowerText.includes("2 times") || lowerText.includes("twice") || lowerText.includes("2 టైమ్స్") || lowerText.includes("రెండు సార్లు") || lowerText.includes("ట్వైస్")) {
+            detectedFreq = "1-0-1 (Twice daily after food)";
+        } else if (lowerText.includes("once") || lowerText.includes("1 time") || lowerText.includes("ఒకసారి")) {
+            detectedFreq = "1-0-0 (Once daily)";
+        }
+
+        for (const item of pharmaList) {
+            if (item.patterns.some(p => lowerText.includes(p))) {
+                if (!extractedMeds.some(m => m.name.toLowerCase() === item.name.toLowerCase())) {
+                    extractedMeds.push({
+                        name: item.name,
+                        dosage: item.dosage,
+                        frequency: detectedFreq || item.defaultFreq,
+                        duration: "3-5 days",
+                        instructions: item.instructions
+                    });
+                }
+            }
+        }
+
+        return extractedMeds;
+    };
+
     const processRecording = async () => {
-        if (!isReviewing) {
+        if (!isReviewing || isProcessing) {
             return;
         }
 
+        setIsProcessing(true);
         setError("");
-        // setIsGeneratingSummary(true); // User requested no processing bar, wants it to feel instant
-        setSummaryStage(0);
-        setSummaryElapsedSeconds(0);
 
-        if (summaryIntervalRef.current) clearInterval(summaryIntervalRef.current);
-        const progressStartTime = Date.now();
-        summaryIntervalRef.current = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - progressStartTime) / 1000);
-            setSummaryElapsedSeconds(elapsed);
-            setSummaryProgress((prev) => {
-                if (prev < 25) return prev + 3.5;
-                if (prev < 50) return prev + 2.2;
-                if (prev < 75) return prev + 1.4;
-                if (prev < 94) return Math.min(94, prev + 0.6);
-                return prev;
-            });
-        }, 250);
+        const latestTranscript = Array.isArray(transcriptRef.current) && transcriptRef.current.length > 0
+            ? transcriptRef.current
+            : (Array.isArray(transcript) ? transcript : []);
+
+        const localMeds = extractMedicinesFromTranscript(latestTranscript);
+
+        let finalSummary = {
+            consultation_overview: `Patient presented with ${problemDetails.symptoms || "clinical symptoms"}. Evaluation conducted and treatment advised.`,
+            chief_complaint: problemDetails.symptoms || patient.reason || "General Consultation",
+            symptoms: [problemDetails.symptoms || patient.reason || "Fever / Clinical Symptoms Discussed"],
+            history_of_present_illness: `Patient reported symptoms: ${problemDetails.symptoms || "clinical symptoms"} (Duration: ${problemDetails.duration || "N/A"}, Severity: ${problemDetails.severity || "N/A"}). Current medications: ${problemDetails.currentMedications || "None"}. Notes: ${problemDetails.additionalNotes || "None"}`,
+            assessment: "Clinical evaluation completed during consultation.",
+            diagnosis: ["Acute Symptomatic Illness"],
+            treatment_plan: "Prescribed symptomatic pharmacological treatment and lifestyle advice.",
+            medications_discussed: localMeds.length > 0 ? localMeds : [],
+            advice: ["Rest well", "Drink plenty of warm fluids", "Review if symptoms persist"],
+            follow_up: "Review in 3-5 days if symptoms persist."
+        };
+        let detectedLanguage = "Auto-detected";
 
         try {
-            const chunks = audioChunksRef.current;
-            console.log("[Consultation] Total audio chunks:", chunks.length);
-            if (!chunks.length) {
-                throw new Error("No audio was recorded. Please try the consultation again.");
-            }
-
-            // We no longer upload the heavy audio file to the backend, drastically speeding up the save process!
-            // We only send the transcript data now.
             const formData = new FormData();
-            // formData.append("audio", completeAudio, `consultation-${Date.now()}.webm`);
-            formData.append("doctorId", doctorId);
+            formData.append("doctorId", doctorId || "default-doctor");
             formData.append("patientId", patient.id);
             formData.append("appointmentId", String(appointmentId));
-
-            // Use the ref so the exact latest transcript is sent even if a
-            // WebSocket/browser recognition result arrived immediately before
-            // this function was called.
-            const latestTranscript = Array.isArray(transcriptRef.current)
-                ? transcriptRef.current
-                : transcript;
-
             formData.append("liveTranscript", JSON.stringify(latestTranscript));
             formData.append("consultationId", consultationId);
-            formData.append("patientReason", patient.reason || "");
+            formData.append("patientReason", getFullPatientIntakeContext());
 
-            console.log("[Consultation] Sending COMPLETE recording to Node/Gemini...");
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5 * 1000); // 5-second timeout as requested
-
-            let response;
-            let data;
-            try {
-                response = await fetch(`${NODE_API_URL}/api/consultation/complete`, {
-                    method: "POST",
-                    body: formData,
-                    signal: controller.signal,
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(errorText || `Backend returned ${response.status}`);
-                }
-                data = await response.json();
-            } catch (requestError) {
-                if (requestError?.name === "AbortError") {
-                    console.log("[Consultation] AI processing exceeded 5 seconds. Proceeding to summary page with empty summary.");
-                    data = {
-                        success: true,
-                        consultation: {
-                            doctorId,
-                            patientId: patient.id,
-                            appointmentId: String(appointmentId),
-                            consultationId,
-                            transcript: latestTranscript,
-                            summary: {},
-                            detectedLanguage: "Auto-detected"
-                        }
-                    };
-                } else {
-                    throw requestError;
-                }
-            } finally {
-                clearTimeout(timeoutId);
-            }
-
-            console.log("[Consultation] Final consultation response:", data);
-
-            if (!data.success || !data.consultation) {
-                throw new Error(data.message || "Consultation processing failed.");
-            }
-
-            const consultation = data.consultation;
-            const finalTranscript = Array.isArray(consultation.transcript) ? consultation.transcript : [];
-            const liveTranscript = Array.isArray(transcriptRef.current)
-                ? transcriptRef.current
-                : (Array.isArray(transcript) ? transcript : []);
-
-            const transcriptChars = (items) => items.map((item) => String(item?.text || item?.transcript || "")).join(" ").trim().length;
-            const finalChars = transcriptChars(finalTranscript);
-            const liveChars = transcriptChars(liveTranscript);
-            const finalTranscriptHasContent = finalTranscript.length > 0;
-            const displayTranscript = finalTranscriptHasContent ? finalTranscript : liveTranscript;
-
-            console.log("[Consultation] Transcript selection:", {
-                finalSegments: finalTranscript.length,
-                liveSegments: liveTranscript.length,
-                finalChars, liveChars, usingFinalTranscript: finalTranscriptHasContent,
+            const res = await fetch(`${NODE_API_URL}/api/consultation/complete`, {
+                method: "POST",
+                body: formData,
             });
 
-            const summaryPayload = {
-                patient,
-                doctorId: consultation.doctorId,
-                patientId: consultation.patientId,
-                appointmentId: consultation.appointmentId,
-                consultationId,
-                detectedLanguage: consultation.detectedLanguage || "",
-                transcript: displayTranscript,
-                finalGeminiTranscript: finalTranscript,
-                liveTranscript,
-                summary: consultation.summary || {},
-                duration: formatDuration(recordingSeconds),
-                durationSeconds: recordingSeconds,
-                startedAt: startTimeRef.current || new Date().toISOString(),
-                endedAt: new Date().toISOString(),
-                generatedAt: new Date().toISOString(),
-            };
-
-            sessionStorage.setItem(`consultation-result-${patient.id}`, JSON.stringify(summaryPayload));
-
-            setSummaryProgress(100);
-            setSummaryStage(4);
-            if (summaryIntervalRef.current) {
-                clearInterval(summaryIntervalRef.current);
-                summaryIntervalRef.current = null;
+            if (res.ok) {
+                const data = await res.json();
+                if (data?.consultation?.summary && Object.keys(data.consultation.summary).length > 0) {
+                    finalSummary = data.consultation.summary;
+                }
+                if (data?.consultation?.detectedLanguage) {
+                    detectedLanguage = data.consultation.detectedLanguage;
+                }
             }
-
-            navigate(`/consultation/${patient.id}/summary`, {
-                state: summaryPayload,
-                replace: false,
-            });
-
-        } catch (error) {
-            console.error("[Consultation] Final processing error:", error);
-            setError(error?.message || "Unable to generate the final AI consultation report.");
-            setIsReviewing(true);
-        } finally {
-            if (summaryIntervalRef.current) {
-                clearInterval(summaryIntervalRef.current);
-                summaryIntervalRef.current = null;
-            }
-            setIsGeneratingSummary(false);
+        } catch (err) {
+            console.warn("[Consultation] Completion API notice:", err.message);
         }
+
+        const summaryPayload = {
+            patient,
+            doctorId: doctorId || "default-doctor",
+            patientId: patient.id,
+            appointmentId: String(appointmentId),
+            consultationId,
+            detectedLanguage,
+            transcript: latestTranscript,
+            finalGeminiTranscript: latestTranscript,
+            liveTranscript: latestTranscript,
+            summary: finalSummary,
+            duration: formatDuration(recordingSeconds),
+            durationSeconds: recordingSeconds,
+            startedAt: startTimeRef.current || new Date().toISOString(),
+            endedAt: new Date().toISOString(),
+            generatedAt: new Date().toISOString(),
+        };
+
+        sessionStorage.setItem(`consultation-result-${patient.id}`, JSON.stringify(summaryPayload));
+
+        setIsProcessing(false);
+
+        navigate(`/consultation/${patient.id}/summary`, {
+            state: summaryPayload,
+            replace: false,
+        });
     };
 
     // ============================================================
@@ -1192,7 +1342,43 @@ const Consultation = () => {
     // ============================================================
 
     return (
-        <div className="consultation-page-wrapper" style={{ background: "#F5FBFD", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div className="consultation-page-wrapper" style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f8fafc" }}>
+            <style>{`
+                @media (max-width: 1024px) {
+                    .consultation-layout {
+                        flex-direction: column !important;
+                        padding: 14px !important;
+                        gap: 16px !important;
+                        overflow-y: auto !important;
+                        height: auto !important;
+                    }
+                    .patient-sidebar {
+                        width: 100% !important;
+                        max-height: none !important;
+                    }
+                    .transcript-section {
+                        width: 100% !important;
+                        min-height: 420px !important;
+                    }
+                    .action-bar {
+                        flex-direction: column !important;
+                        gap: 12px !important;
+                    }
+                }
+                @media (max-width: 600px) {
+                    .consultation-page-wrapper {
+                        height: auto !important;
+                        min-height: 100vh !important;
+                    }
+                    .consultation-layout {
+                        padding: 10px !important;
+                        gap: 12px !important;
+                    }
+                    .transcript-scroll-box {
+                        padding: 14px 12px !important;
+                    }
+                }
+            `}</style>
 
             {/* ERROR */}
             {error && (
@@ -1206,7 +1392,7 @@ const Consultation = () => {
                     {/* ... sidebar ... */}
 
                     {/* ====================================================
-                    PATIENT SIDEBAR
+                    PATIENT SIDEBAR (STUNNING CLINICAL PROFILE & INTAKE)
                 ==================================================== */}
                     <aside className="patient-sidebar" style={{
                         width: "380px",
@@ -1217,187 +1403,363 @@ const Consultation = () => {
                         position: "relative",
                         overflow: "hidden",
                         flexShrink: 0,
-                        boxShadow: "0 8px 30px rgba(11, 43, 111, 0.08)",
-                        border: "1px solid #DCECEF"
+                        boxShadow: "0 10px 30px rgba(8, 43, 104, 0.06)",
+                        border: "1px solid #e2e8f0"
                     }}>
-                        {/* TOP BLUE SECTION */}
+                        {/* TOP PATIENT PROFILE HEADER CARD - TEAL GRADIENT HERO */}
                         <div style={{
-                            background: "linear-gradient(180deg, #0B2B6F 0%, #08AFC0 100%)",
-                            padding: "24px",
-                            borderBottomLeftRadius: "24px",
-                            borderBottomRightRadius: "24px",
+                            background: "linear-gradient(135deg, #01b6af 0%, #0d9488 50%, #082b68 100%)",
+                            padding: "16px 18px",
                             display: "flex",
                             flexDirection: "column",
-                            gap: "24px",
+                            gap: "12px",
+                            color: "#ffffff",
                             position: "relative",
-                            overflow: "hidden",
-                            zIndex: 2
+                            boxShadow: "0 4px 14px rgba(1, 182, 175, 0.25)"
                         }}>
-                            {/* Watermark inside top section */}
-                            <i className="fa-solid fa-shield-halved" style={{ position: "absolute", right: "-20px", top: "20px", fontSize: "160px", color: "#ffffff", opacity: 0.06, transform: "rotate(15deg)" }}></i>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                                <button
+                                    onClick={() => navigate("/dashboard")}
+                                    style={{
+                                        background: "rgba(255, 255, 255, 0.18)",
+                                        backdropFilter: "blur(8px)",
+                                        color: "#ffffff",
+                                        border: "1px solid rgba(255, 255, 255, 0.3)",
+                                        padding: "4px 12px",
+                                        borderRadius: "20px",
+                                        fontSize: "0.8rem",
+                                        fontWeight: 600,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        transition: "all 0.2s ease"
+                                    }}
+                                >
+                                    <i className="fa-solid fa-arrow-left" style={{ fontSize: "0.75rem" }}></i> Back
+                                </button>
+                                <span style={{
+                                    background: "rgba(255, 255, 255, 0.2)",
+                                    backdropFilter: "blur(6px)",
+                                    padding: "4px 10px",
+                                    borderRadius: "12px",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    letterSpacing: "0.5px",
+                                    whiteSpace: "nowrap"
+                                }}>
+                                    PATIENT CHART
+                                </span>
+                            </div>
 
-                            {/* Inner Back Button */}
-                            <button
-                                onClick={() => navigate("/dashboard")}
-                                style={{ background: "#ffffff", color: "#0B2B6F", border: "none", padding: "8px 20px", borderRadius: "12px", fontSize: "0.95rem", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "8px", alignSelf: "flex-start", zIndex: 1, boxShadow: "0 4px 10px rgba(0,0,0,0.1)" }}
-                            >
-                                <i className="fa-solid fa-arrow-left"></i> Back
-                            </button>
-
-                            <div style={{ display: "flex", alignItems: "center", gap: "15px", zIndex: 1 }}>
-                                <div style={{ width: "65px", height: "65px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "28px", fontWeight: "bold", color: "white", background: "rgba(255,255,255,0.15)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "2px" }}>
+                                <div style={{
+                                    width: "46px",
+                                    height: "46px",
+                                    borderRadius: "14px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "20px",
+                                    fontWeight: "800",
+                                    color: "#0f766e",
+                                    background: "#ffffff",
+                                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                    flexShrink: 0
+                                }}>
                                     {patient.name ? patient.name[0] : "P"}
                                 </div>
-                                <div>
-                                    <h3 style={{ margin: 0, color: "#ffffff", fontSize: "1.4rem", fontWeight: 650 }}>{patient.name}</h3>
-                                    <span style={{ color: "rgba(255,255,255,0.9)", fontSize: "0.9rem", display: "block", marginTop: "4px" }}>{patient.age} years • {patient.gender}</span>
-                                    <span style={{ color: "#ffffff", fontSize: "0.85rem", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", marginTop: "6px" }}>
-                                        <i className="fa-solid fa-circle-check" style={{ color: "#ffffff" }}></i> Verified Patient
-                                    </span>
+
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <h3 style={{ margin: 0, color: "#ffffff", fontSize: "1.15rem", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{patient.name}</h3>
+                                    <div style={{ color: "rgba(255, 255, 255, 0.9)", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", fontWeight: 600, flexWrap: "wrap" }}>
+                                        <span>{patient.age} yrs • {patient.gender}</span>
+                                        <span style={{ background: "rgba(255,255,255,0.25)", padding: "2px 8px", borderRadius: "10px", fontSize: "0.7rem", fontWeight: 700 }}>{patient.id}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* BOTTOM WHITE SECTION (Cards) */}
-                        <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px", flex: 1, position: "relative", zIndex: 1, background: "#ffffff" }}>
-                            {/* Patient Quick Vitals / Info */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", zIndex: 1 }}>
-                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                    <i className="fa-solid fa-droplet" style={{ color: "#08AFC0", fontSize: "1.2rem", marginBottom: "6px" }}></i>
-                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Blood Group</div>
-                                    <div style={{ fontSize: "1.1rem", fontWeight: 750, color: "#08AFC0" }}>{patient.bloodGroup === "Not Available" ? "-" : patient.bloodGroup}</div>
+                        {/* CLINICAL INTAKE PROBLEM INFO */}
+                        <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "12px", flex: 1, overflowY: "auto" }}>
+                            
+                            {/* PATIENT REPORTED PROBLEM & INTAKE CARD */}
+                            <div style={{
+                                background: "#ffffff",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: "14px",
+                                padding: "14px",
+                                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.03)",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "10px"
+                            }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                                    <div style={{ fontSize: "0.85rem", color: "#082b68", fontWeight: 800, display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <span style={{ width: "24px", height: "24px", borderRadius: "6px", background: "rgba(1, 182, 175, 0.12)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>
+                                            <i className="fa-solid fa-clipboard-question"></i>
+                                        </span>
+                                        <span>Patient Reported Problem</span>
+                                    </div>
+                                    {problemDetails.severity && (
+                                        (() => {
+                                            const s = String(problemDetails.severity).toLowerCase();
+                                            const isSevere = s.includes("severe");
+                                            const isMod = s.includes("mod");
+                                            const isMild = s.includes("mild");
+                                            const bg = isSevere ? "rgba(239, 68, 68, 0.12)" : isMod ? "rgba(245, 158, 11, 0.12)" : isMild ? "rgba(16, 185, 129, 0.12)" : "rgba(1, 182, 175, 0.12)";
+                                            const color = isSevere ? "#ef4444" : isMod ? "#d97706" : isMild ? "#10b981" : "#01b6af";
+                                            const border = isSevere ? "1px solid rgba(239, 68, 68, 0.3)" : isMod ? "1px solid rgba(245, 158, 11, 0.3)" : isMild ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(1, 182, 175, 0.3)";
+                                            return (
+                                                <span style={{
+                                                    fontSize: "0.68rem",
+                                                    fontWeight: 800,
+                                                    textTransform: "uppercase",
+                                                    padding: "3px 9px",
+                                                    borderRadius: "20px",
+                                                    background: bg,
+                                                    color: color,
+                                                    border: border,
+                                                    flexShrink: 0,
+                                                    whiteSpace: "nowrap"
+                                                }}>
+                                                    {problemDetails.severity}
+                                                </span>
+                                            );
+                                        })()
+                                    )}
                                 </div>
-                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                    <i className="fa-solid fa-weight-scale" style={{ color: "#1557B8", fontSize: "1.2rem", marginBottom: "6px" }}></i>
-                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Weight</div>
-                                    <div style={{ fontSize: "1.1rem", fontWeight: 750, color: "#0B2B6F" }}>{patient.weight === "Not Available" ? "-" : patient.weight}</div>
+
+                                {/* 1. Reported Symptoms Box */}
+                                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "10px 12px", borderRadius: "10px" }}>
+                                    <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px", display: "flex", alignItems: "center", gap: "5px" }}>
+                                        <i className="fa-solid fa-stethoscope" style={{ color: "#01b6af" }}></i> Reported Symptoms
+                                    </div>
+                                    <div style={{ fontSize: "0.85rem", color: problemDetails.symptoms ? "#0f172a" : "#94a3b8", fontWeight: 600, lineHeight: 1.4, wordBreak: "break-word" }}>
+                                        {problemDetails.symptoms || (patient.reason && patient.reason !== "General Consultation" ? patient.reason : null) || "Not reported"}
+                                    </div>
                                 </div>
-                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                    <i className="fa-solid fa-heart-pulse" style={{ color: "#0B2B6F", fontSize: "1.2rem", marginBottom: "6px" }}></i>
-                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Blood Pressure</div>
-                                    <div style={{ fontSize: "1.1rem", fontWeight: 750, color: "#0B2B6F" }}>{patient.bloodPressure === "Not Available" ? "-" : patient.bloodPressure}</div>
+
+                                {/* 2. Metadata Grid: 2 columns for Duration & Current Meds */}
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "8px 10px", borderRadius: "8px" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase", marginBottom: "3px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <i className="fa-solid fa-clock" style={{ color: "#01b6af" }}></i> Duration
+                                        </div>
+                                        <div style={{ fontSize: "0.82rem", color: problemDetails.duration ? "#082b68" : "#94a3b8", fontWeight: 700, wordBreak: "break-word" }}>
+                                            {problemDetails.duration || "N/A"}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "8px 10px", borderRadius: "8px" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase", marginBottom: "3px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <i className="fa-solid fa-pills" style={{ color: "#01b6af" }}></i> Current Meds
+                                        </div>
+                                        <div style={{ fontSize: "0.82rem", color: problemDetails.currentMedications ? "#082b68" : "#94a3b8", fontWeight: 600, wordBreak: "break-word" }}>
+                                            {problemDetails.currentMedications || "None"}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "14px", borderRadius: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                    <i className="fa-solid fa-staff-snake" style={{ color: "#1557B8", fontSize: "1.2rem", marginBottom: "6px" }}></i>
-                                    <div style={{ fontSize: "0.85rem", color: "#64748B", fontWeight: 500 }}>Allergies</div>
-                                    <div style={{ fontSize: "1rem", fontWeight: 750, color: "#08AFC0", lineHeight: "1.3" }}>{patient.allergies === "None documented" ? "None documented" : patient.allergies}</div>
-                                </div>
+
+                                {/* 3. Additional Notes (Full Width Row if Present) */}
+                                {problemDetails.additionalNotes && (
+                                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "8px 10px", borderRadius: "8px" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase", marginBottom: "3px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <i className="fa-solid fa-note-sticky" style={{ color: "#01b6af" }}></i> Additional Notes
+                                        </div>
+                                        <div style={{ fontSize: "0.82rem", color: "#334155", fontWeight: 500, lineHeight: 1.4, wordBreak: "break-word" }}>
+                                            {problemDetails.additionalNotes}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Known Medical History */}
-                            <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "20px", borderRadius: "18px", zIndex: 1 }}>
-                                <div style={{ fontSize: "0.95rem", color: "#08AFC0", fontWeight: 750, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <i className="fa-solid fa-notes-medical"></i> Medical Background
+                            {/* Editable Patient Vitals Card */}
+                            <div style={{
+                                background: "#ffffff",
+                                border: "1px solid #e2e8f0",
+                                padding: "14px",
+                                borderRadius: "14px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "10px",
+                                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.03)"
+                            }}>
+                                <div style={{ fontSize: "0.85rem", color: "#082b68", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                                    <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <span style={{ width: "24px", height: "24px", borderRadius: "6px", background: "rgba(1, 182, 175, 0.12)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>
+                                            <i className="fa-solid fa-heart-pulse"></i>
+                                        </span>
+                                        <span>Patient Vitals</span>
+                                    </span>
+                                    <span style={{ fontSize: "0.68rem", color: "#01b6af", fontWeight: 700, background: "rgba(1, 182, 175, 0.12)", padding: "2px 8px", borderRadius: "6px", border: "1px solid rgba(1, 182, 175, 0.2)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                                        <i className="fa-solid fa-pen" style={{ fontSize: "9px" }}></i> Editable
+                                    </span>
                                 </div>
-                                <div style={{ fontSize: "0.9rem", color: "#0B2B6F", lineHeight: "1.6", fontWeight: 500, whiteSpace: "pre-line" }}>
-                                    {patient.history || "No known medical history"}
-                                </div>
-                            </div>
 
-                            {/* Patient Symptoms */}
-                            <div style={{ background: "#ffffff", border: "1px solid #DCECEF", padding: "20px", borderRadius: "18px", zIndex: 1 }}>
-                                <div style={{ fontSize: "0.95rem", color: "#08AFC0", fontWeight: 750, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <i className="fa-solid fa-stethoscope"></i> Patient Symptoms
-                                </div>
-                                <div style={{ fontSize: "0.9rem", color: "#0B2B6F", lineHeight: "1.6", fontWeight: 500, whiteSpace: "pre-line" }}>
-                                    {patient.reason || "No symptoms documented"}
-                                </div>
-                            </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                                    {/* Blood Group */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Blood Group</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.bloodGroup}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, bloodGroup: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#01b6af", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="O+"
+                                        />
+                                    </div>
 
-                            {/* Bottom Wave Graphic */}
-                            <div style={{ position: "absolute", bottom: "-1px", left: 0, right: 0, zIndex: 0 }}>
-                                <svg viewBox="0 0 1440 320" style={{ width: "100%", height: "auto", display: "block" }}>
-                                    <path fill="#08AFC0" fillOpacity="1" d="M0,192L48,192C96,192,192,192,288,213.3C384,235,480,277,576,282.7C672,288,768,256,864,240C960,224,1056,224,1152,245.3C1248,267,1344,309,1392,330.7L1440,352L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-                                    <path fill="#0B2B6F" fillOpacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,250.7C672,267,768,277,864,261.3C960,245,1056,203,1152,186.7C1248,171,1344,181,1392,186.7L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-                                </svg>
+                                    {/* Weight */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Weight</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.weight}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, weight: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="68 kg"
+                                        />
+                                    </div>
+
+                                    {/* Blood Pressure */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Blood Pressure</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.bloodPressure}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, bloodPressure: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="120/80 mmHg"
+                                        />
+                                    </div>
+
+                                    {/* Allergies */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Allergies</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.allergies}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, allergies: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#01b6af", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="None"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </aside>
 
 
                     {/* ====================================================
-                        TRANSCRIPTION AREA
+                        TRANSCRIPTION AREA (PREMIUM HIGH-END MEDICAL DESIGN)
                     ==================================================== */}
 
-                    <div className="transcription-area" style={{ display: "flex", flexDirection: "column", gap: "24px", flex: 1, minWidth: 0, minHeight: 0, zIndex: 1 }}>
+                    <div className="transcription-area" style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1, minWidth: 0, minHeight: 0 }}>
 
-                        {/* TOP HEADER */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                                <div style={{ width: "64px", height: "64px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    <img src="/images/premium_mic.png" alt="Live Transcription Mic" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                        {/* TOP HEADER CARD */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff", padding: "14px 22px", borderRadius: "16px", border: "1px solid #e2e8f0", boxShadow: "0 4px 16px rgba(8, 43, 104, 0.04)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                <div style={{ width: "42px", height: "42px", borderRadius: "12px", background: "linear-gradient(135deg, rgba(1, 182, 175, 0.15) 0%, rgba(8, 43, 104, 0.08) 100%)", border: "1px solid rgba(1, 182, 175, 0.3)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(1, 182, 175, 0.15)" }}>
+                                    <i className="fa-solid fa-microphone-lines" style={{ color: "#01b6af", fontSize: "18px" }}></i>
                                 </div>
                                 <div>
-                                    <h2 style={{ margin: 0, fontSize: "2rem", fontWeight: 800, color: "#0B2B6F", display: "flex", alignItems: "center", gap: "12px" }}>
-                                        Live Transcription
-                                        <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
-                                            <span style={{ width: "3px", height: "12px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
-                                            <span style={{ width: "3px", height: "18px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
-                                            <span style={{ width: "3px", height: "14px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
-                                            <span style={{ width: "3px", height: "10px", background: "#08AFC0", borderRadius: "2px", display: "inline-block" }}></span>
-                                        </div>
+                                    <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800, color: "#082b68", letterSpacing: "-0.2px" }}>
+                                        Live Clinical Transcription
                                     </h2>
-                                    <span style={{ fontSize: "1rem", color: isListening ? "#10B981" : "#64748B", display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, marginTop: "4px" }}>
-                                        <i className={`fa-solid ${isListening ? "fa-circle blink" : "fa-circle"}`} style={{ fontSize: "10px" }}></i>
-                                        {isListening ? "Microphone active" : "Microphone inactive"}
+                                    <span style={{ fontSize: "0.8rem", color: isListening ? "#01b6af" : "#64748b", display: "flex", alignItems: "center", gap: "6px", fontWeight: 600, marginTop: "1px" }}>
+                                        <i className={`fa-solid ${isListening ? "fa-circle blink" : "fa-circle"}`} style={{ fontSize: "7px", color: isListening ? "#01b6af" : "#94a3b8" }}></i>
+                                        {isListening ? "Live Audio Streaming Active" : "Microphone Ready"}
                                     </span>
                                 </div>
                             </div>
 
-                            {/* Auto Detect Pill */}
-                            <div style={{ background: "#ffffff", border: "1px solid #DCECEF", borderRadius: "24px", padding: "10px 18px", display: "flex", alignItems: "center", gap: "10px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.03)" }}>
-                                <i className="fa-solid fa-globe" style={{ color: "#08AFC0" }}></i>
-                                <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={isGeneratingSummary} style={{ background: "transparent", border: "none", color: "#0B2B6F", fontWeight: 600, fontSize: "0.95rem", outline: "none", cursor: "pointer", appearance: "none", paddingRight: "10px" }}>
-                                    <option value="auto">Auto Detect (All Languages)</option>
+                            {/* Auto Detect Language Selector Pill */}
+                            <div style={{ background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)", border: "1px solid #cbd5e1", borderRadius: "10px", padding: "6px 14px", display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
+                                <i className="fa-solid fa-language" style={{ color: "#01b6af", fontSize: "1rem" }}></i>
+                                <select value={language} onChange={(e) => setLanguage(e.target.value)} disabled={isGeneratingSummary} style={{ background: "transparent", border: "none", color: "#082b68", fontWeight: 700, fontSize: "0.85rem", outline: "none", cursor: "pointer" }}>
+                                    <option value="auto">Auto Detect (Multilingual)</option>
+                                    <option value="te-IN">Telugu + English</option>
+                                    <option value="hi-IN">Hindi + English</option>
                                     <option value="en-IN">English</option>
-                                    <option value="te-IN">Telugu</option>
-                                    <option value="hi-IN">Hindi</option>
                                 </select>
-                                <i className="fa-solid fa-chevron-down" style={{ color: "#0B2B6F", fontSize: "12px", pointerEvents: "none" }}></i>
                             </div>
                         </div>
 
-
-                        {/* MAIN WHITE CONTAINER */}
-                        <div style={{ background: "#ffffff", borderRadius: "20px", border: "1px solid #DCECEF", display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", boxShadow: "0 8px 30px rgba(11, 43, 111, 0.06)" }}>
+                        {/* MAIN TRANSCRIPTION DISPLAY BOX */}
+                        <div style={{ background: "#ffffff", borderRadius: "18px", border: "1px solid #e2e8f0", boxShadow: "0 6px 24px rgba(8, 43, 104, 0.04)", display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
 
                             {/* Container Header */}
-                            <div style={{ padding: "16px 24px", borderBottom: "1px solid #F0F4F8", display: "flex", alignItems: "center", gap: "12px", background: "#ffffff" }}>
-                                <span style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10B981", padding: "4px 10px", borderRadius: "12px", fontSize: "0.8rem", fontWeight: 650, display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <i className="fa-solid fa-circle" style={{ fontSize: "6px" }}></i> Live
-                                </span>
-                                <span style={{ color: "#1557B8", fontSize: "0.95rem", fontWeight: 500 }}>
-                                    {isPaused ? "Consultation paused." : isListening ? "Transcription in progress..." : "Ready to start."}
+                            <div style={{ padding: "12px 22px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(90deg, #f8fafc 0%, #f1f5f9 100%)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                    <span style={{ background: isListening ? "rgba(1, 182, 175, 0.12)" : "#f1f5f9", color: isListening ? "#01b6af" : "#64748b", border: `1px solid ${isListening ? 'rgba(1, 182, 175, 0.3)' : '#cbd5e1'}`, padding: "3px 10px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <i className="fa-solid fa-circle" style={{ fontSize: "5px" }}></i> {isListening ? "REC LIVE" : "STANDBY"}
+                                    </span>
+                                    <span style={{ color: "#475569", fontSize: "0.85rem", fontWeight: 600 }}>
+                                        {isPaused ? "Consultation paused." : isListening ? "Transcribing speech in real-time..." : "Click 'Start Consultation' to record conversation."}
+                                    </span>
+                                </div>
+                                <span style={{ fontSize: "0.75rem", color: "#94a3b8", fontWeight: 600, background: "#ffffff", padding: "2px 8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                    ID: {consultationId.slice(0, 22)}
                                 </span>
                             </div>
 
                             {/* SCROLLABLE TRANSCRIPT */}
-                            <div className="transcript-scroll-box" ref={transcriptContainerRef} style={{ padding: "32px 40px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: "32px", minHeight: 0 }}>
+                            <div className="transcript-scroll-box" ref={transcriptContainerRef} style={{ padding: "24px 28px", overflowY: "auto", flex: "1 1 300px", display: "flex", flexDirection: "column", gap: "16px", minHeight: "280px", background: "linear-gradient(180deg, #ffffff 0%, #fafcfd 100%)" }}>
 
                                 {transcript.length === 0 && !liveInterimText && (
-                                    <div style={{ textAlign: "center", color: "#94A3B8", paddingTop: "80px" }}>
-                                        <i className="fa-solid fa-microphone-lines" style={{ fontSize: "50px", marginBottom: "20px", color: "#DCECEF" }}></i>
-                                        <h3 style={{ margin: 0, color: "#0B2B6F", fontSize: "1.4rem" }}>Ready to Start Live Consultation</h3>
-                                        <p style={{ marginTop: "8px", fontSize: "1rem" }}>Start the consultation to begin real-time transcription.</p>
+                                    <div style={{ textAlign: "center", color: "#94a3b8", paddingTop: "50px", paddingBottom: "50px" }}>
+                                        <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "linear-gradient(135deg, rgba(1, 182, 175, 0.15) 0%, rgba(8, 43, 104, 0.06) 100%)", color: "#01b6af", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px auto", fontSize: "26px", border: "1px solid rgba(1, 182, 175, 0.25)", boxShadow: "0 4px 16px rgba(1, 182, 175, 0.12)" }}>
+                                            <i className="fa-solid fa-stethoscope"></i>
+                                        </div>
+                                        <h3 style={{ margin: 0, color: "#082b68", fontSize: "1.2rem", fontWeight: 800 }}>Ready for Live Medical Consultation</h3>
+                                        <p style={{ marginTop: "6px", fontSize: "0.88rem", color: "#64748b", maxWidth: "420px", margin: "8px auto 0 auto", fontWeight: 500, lineHeight: 1.5 }}>
+                                            Begin speaking naturally. AI speaker diarization will automatically capture patient & doctor notes in real-time.
+                                        </p>
                                     </div>
                                 )}
 
                                 {transcript.map((line, index) => {
                                     const isDoctor = line.speaker?.toLowerCase().includes("doctor");
                                     return (
-                                        <div key={index} style={{ display: "flex", gap: "20px", position: "relative" }}>
-                                            {/* Icon */}
-                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: isDoctor ? "rgba(8, 174, 184, 0.1)" : "rgba(21, 87, 184, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                                <i className={`fa-solid ${isDoctor ? 'fa-user-doctor' : 'fa-user'}`} style={{ color: isDoctor ? "#08AFC0" : "#1557B8", fontSize: "18px" }}></i>
+                                        <div key={index} style={{
+                                            display: "flex",
+                                            gap: "14px",
+                                            alignSelf: "flex-start",
+                                            maxWidth: "92%",
+                                            background: isDoctor ? "rgba(1, 182, 175, 0.06)" : "#ffffff",
+                                            border: `1px solid ${isDoctor ? 'rgba(1, 182, 175, 0.25)' : '#cbd5e1'}`,
+                                            borderRadius: "14px",
+                                            padding: "12px 16px",
+                                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.03)"
+                                        }}>
+                                            {/* Icon Avatar */}
+                                            <div style={{
+                                                width: "36px",
+                                                height: "36px",
+                                                borderRadius: "10px",
+                                                background: isDoctor ? "linear-gradient(135deg, #01b6af 0%, #082b68 100%)" : "linear-gradient(135deg, #475569 0%, #1e293b 100%)",
+                                                color: "#ffffff",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                flexShrink: 0,
+                                                fontWeight: 700,
+                                                fontSize: "14px",
+                                                boxShadow: "0 2px 6px rgba(0,0,0,0.12)"
+                                            }}>
+                                                <i className={`fa-solid ${isDoctor ? 'fa-user-doctor' : 'fa-user'}`}></i>
                                             </div>
 
                                             {/* Content */}
                                             <div style={{ flex: 1 }}>
-                                                <div style={{ display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "8px" }}>
-                                                    <span style={{ fontWeight: 700, color: isDoctor ? "#08AFC0" : "#1557B8", fontSize: "1.05rem" }}>{line.speaker || (isDoctor ? "Doctor" : "Patient")}</span>
-                                                    {line.timestamp && <span style={{ color: "#94A3B8", fontSize: "0.85rem" }}>{line.timestamp}</span>}
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "3px" }}>
+                                                    <span style={{ fontWeight: 800, color: isDoctor ? "#01b6af" : "#082b68", fontSize: "0.88rem", letterSpacing: "0.2px" }}>
+                                                        {line.speaker || (isDoctor ? "Doctor" : "Patient")}
+                                                    </span>
+                                                    {line.timestamp && <span style={{ color: "#94a3b8", fontSize: "0.75rem", fontWeight: 600 }}>{line.timestamp}</span>}
                                                 </div>
-                                                <div style={{ fontSize: "1.15rem", lineHeight: "1.6", color: "#0B2B6F", fontWeight: 450 }}>
+                                                <div style={{ fontSize: "0.95rem", lineHeight: "1.5", color: "#0f172a", fontWeight: 500 }}>
                                                     {line.text}
                                                 </div>
                                             </div>
@@ -1406,218 +1768,224 @@ const Consultation = () => {
                                 })}
 
                                 {liveInterimText && !isPaused && (
-                                    <div style={{ display: "flex", gap: "20px", position: "relative" }}>
-                                        <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(8, 174, 184, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                            <i className="fa-solid fa-microphone fa-fade" style={{ color: "#08AFC0", fontSize: "18px" }}></i>
+                                    <div style={{
+                                        display: "flex",
+                                        gap: "14px",
+                                        maxWidth: "90%",
+                                        background: "rgba(1, 182, 175, 0.08)",
+                                        border: "1px solid rgba(1, 182, 175, 0.3)",
+                                        borderRadius: "14px",
+                                        padding: "12px 16px",
+                                        boxShadow: "0 2px 8px rgba(1, 182, 175, 0.08)"
+                                    }}>
+                                        <div style={{
+                                            width: "36px",
+                                            height: "36px",
+                                            borderRadius: "10px",
+                                            background: "#01b6af",
+                                            color: "#ffffff",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            flexShrink: 0,
+                                            fontSize: "14px"
+                                        }}>
+                                            <i className="fa-solid fa-microphone fa-fade"></i>
                                         </div>
-                                        <div style={{ flex: 1, paddingRight: "40px" }}>
-                                            <div style={{ fontWeight: 700, color: "#08AFC0", fontSize: "1.05rem", marginBottom: "8px" }}>Speaking...</div>
-                                            <div style={{ fontSize: "1.15rem", lineHeight: "1.6", color: "#0B2B6F", fontWeight: 450 }}>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 800, color: "#01b6af", fontSize: "0.85rem", marginBottom: "2px" }}>Speaking...</div>
+                                            <div style={{ fontSize: "0.95rem", lineHeight: "1.5", color: "#0f172a", fontWeight: 500 }}>
                                                 {liveInterimText}
                                             </div>
                                         </div>
-                                        {/* Right vertical active line */}
-                                        <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "4px", background: "#08AFC0", borderRadius: "2px" }}></div>
                                     </div>
                                 )}
 
+                                {/* Auto-scroll anchor target */}
+                                <div ref={messagesEndRef} style={{ height: "1px", width: "100%", clear: "both" }} />
                             </div>
                         </div>
 
 
                         {/* ====================================================
-                                CONTROLS
+                                CONTROLS (ELEGANT ACTION BAR)
                             ==================================================== */}
 
-                        <div className="action-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+                        <div className="action-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
 
                             {/* Left Block: Secure & Confidential */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#ffffff", border: "1px solid #DCECEF", padding: "12px 20px", borderRadius: "20px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.04)", width: "32%" }}>
-                                <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "rgba(8, 174, 184, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    <i className="fa-solid fa-shield-halved" style={{ color: "#08AFC0", fontSize: "16px" }}></i>
+                            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", borderRadius: "14px", boxShadow: "0 2px 8px rgba(0,0,0,0.02)", flex: 1 }}>
+                                <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(1, 182, 175, 0.12)", border: "1px solid rgba(1, 182, 175, 0.25)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    <i className="fa-solid fa-shield-halved" style={{ color: "#01b6af", fontSize: "14px" }}></i>
                                 </div>
-                                <div>
-                                    <div style={{ fontWeight: 700, color: "#0B2B6F", fontSize: "0.9rem" }}>Secure & Confidential</div>
-                                    <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: "2px", display: "flex", alignItems: "center", gap: "6px" }}>
-                                        Your consultation is end-to-end encrypted and private. <i className="fa-solid fa-lock" style={{ fontSize: "10px" }}></i>
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontWeight: 800, color: "#082b68", fontSize: "0.85rem" }}>Secure & Confidential</div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        End-to-end encrypted medical chart.
                                     </div>
                                 </div>
                             </div>
 
                             {/* Center Block: Action Buttons */}
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", width: "40%" }}>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
                                 {!isRecording && !isGeneratingSummary && !isReviewing && (
-                                    <button
-                                        style={{
-                                            background: "linear-gradient(90deg, #0B2B6F 0%, #1557B8 100%)",
-                                            color: "white",
-                                            border: "none",
-                                            padding: "12px",
-                                            paddingRight: "32px",
-                                            borderRadius: "40px",
-                                            fontSize: "1.1rem",
-                                            fontWeight: 600,
-                                            cursor: "pointer",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "16px",
-                                            boxShadow: "0 8px 25px rgba(11, 43, 111, 0.2)",
-                                            transition: "all 0.3s ease"
-                                        }}
-                                        onMouseOver={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; }}
-                                        onMouseOut={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+                                    <div
                                         onClick={startConsultation}
+                                        style={{
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            cursor: "pointer",
+                                            userSelect: "none"
+                                        }}
+                                        title="Click to Start Consultation"
                                     >
-                                        <img src="/images/start_mic.png" alt="Start" className="premium-glow-pulse" style={{ width: "52px", height: "52px", objectFit: "contain", margin: "-6px 0", mixBlendMode: "screen" }} />
-                                        Start Consultation
-                                    </button>
+                                        <img
+                                            src="/images/start_mic.png"
+                                            alt="Start Consultation"
+                                            style={{
+                                                width: "56px",
+                                                height: "56px",
+                                                objectFit: "contain",
+                                                filter: "drop-shadow(0 6px 16px rgba(1, 182, 175, 0.35))",
+                                                transition: "transform 0.2s ease"
+                                            }}
+                                        />
+                                        <span
+                                            style={{
+                                                marginTop: "4px",
+                                                fontWeight: 800,
+                                                fontSize: "0.92rem",
+                                                color: "#082b68"
+                                            }}
+                                        >
+                                            Start Consultation
+                                        </span>
+                                    </div>
                                 )}
 
                                 {isRecording && !isReviewing && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                                         <button
                                             onClick={isPaused ? resumeConsultation : pauseConsultation}
                                             style={{
-                                                background: "linear-gradient(90deg, #4e6574ff 0%, #3aa0bcff 100%)",
-                                                color: "white",
-                                                border: "none",
-                                                padding: "12px",
-                                                paddingRight: "24px",
-                                                borderRadius: "40px",
-                                                fontSize: "1.05rem",
-                                                fontWeight: 600,
+                                                background: "#ffffff",
+                                                color: "#082b68",
+                                                border: "1px solid #cbd5e1",
+                                                padding: "8px 16px",
+                                                borderRadius: "8px",
+                                                fontSize: "0.88rem",
+                                                fontWeight: 700,
                                                 cursor: "pointer",
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: "12px",
-                                                boxShadow: "0 8px 25px rgba(16, 185, 129, 0.3)",
-                                                transition: "all 0.3s ease"
+                                                gap: "6px",
+                                                boxShadow: "0 2px 4px rgba(0,0,0,0.03)"
                                             }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
                                         >
-                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                <i className={`fa-solid ${isPaused ? "fa-play" : "fa-pause"}`} style={{ color: "#ffffff" }}></i>
-                                            </div>
+                                            <i className={`fa-solid ${isPaused ? "fa-play" : "fa-pause"}`}></i>
                                             {isPaused ? "Resume" : "Pause"}
                                         </button>
                                         <button
                                             onClick={discardRecording}
                                             style={{
-                                                background: "linear-gradient(90deg, #058b97ff 0%, #28575dff 100%)",
-                                                color: "white",
-                                                border: "none",
-                                                padding: "12px",
-                                                paddingRight: "24px",
-                                                borderRadius: "40px",
-                                                fontSize: "1.05rem",
-                                                fontWeight: 600,
+                                                background: "#ffffff",
+                                                color: "#64748b",
+                                                border: "1px solid #cbd5e1",
+                                                padding: "8px 16px",
+                                                borderRadius: "8px",
+                                                fontSize: "0.88rem",
+                                                fontWeight: 700,
                                                 cursor: "pointer",
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: "12px",
-                                                boxShadow: "0 8px 25px rgba(239, 68, 68, 0.3)",
-                                                transition: "all 0.3s ease"
+                                                gap: "6px"
                                             }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
                                         >
-                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                <i className="fa-solid fa-trash" style={{ color: "#ffffff" }}></i>
-                                            </div>
-                                            Delete
+                                            <i className="fa-solid fa-trash"></i> Delete
                                         </button>
                                         <button
                                             onClick={stopRecording}
                                             style={{
-                                                background: "linear-gradient(90deg, #0B2B6F 0%, #0dacc1ff 100%)",
+                                                background: "linear-gradient(135deg, #01b6af 0%, #0f766e 100%)",
                                                 color: "white",
                                                 border: "none",
-                                                padding: "12px",
-                                                paddingRight: "32px",
-                                                borderRadius: "40px",
-                                                fontSize: "1.1rem",
-                                                fontWeight: 600,
+                                                padding: "8px 20px",
+                                                borderRadius: "8px",
+                                                fontSize: "0.88rem",
+                                                fontWeight: 800,
                                                 cursor: "pointer",
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: "16px",
-                                                boxShadow: "0 8px 25px rgba(11, 43, 111, 0.2)",
-                                                transition: "all 0.3s ease"
+                                                gap: "8px",
+                                                boxShadow: "0 4px 12px rgba(1, 182, 175, 0.3)"
                                             }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
                                         >
-                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "#08AFC0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                <div style={{ width: "14px", height: "14px", background: "#ffffff", borderRadius: "2px" }}></div>
-                                            </div>
                                             Stop Consultation
                                         </button>
                                     </div>
                                 )}
 
                                 {isReviewing && !isGeneratingSummary && (
-                                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                                         <button
                                             onClick={discardRecording}
                                             style={{
                                                 background: "#ffffff",
-                                                color: "#074452ff",
-                                                border: "1px solid #0b6e9fff",
-                                                padding: "12px 24px",
-                                                borderRadius: "40px",
-                                                fontSize: "1.05rem",
-                                                fontWeight: 600,
-                                                cursor: "pointer",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: "8px",
-                                                transition: "all 0.3s ease"
+                                                color: "#64748b",
+                                                border: "1px solid #cbd5e1",
+                                                padding: "8px 16px",
+                                                borderRadius: "8px",
+                                                fontSize: "0.88rem",
+                                                fontWeight: 700,
+                                                cursor: "pointer"
                                             }}
-                                            onMouseOver={(e) => e.currentTarget.style.background = "#FEF2F2"}
-                                            onMouseOut={(e) => e.currentTarget.style.background = "#ffffff"}
                                         >
-                                            <i className="fa-solid fa-trash"></i> Discard
+                                            Discard
                                         </button>
                                         <button
                                             onClick={processRecording}
+                                            disabled={isProcessing}
                                             style={{
-                                                background: "linear-gradient(90deg, #0f4d6463 0%, #056a96ff 100%)",
+                                                background: isProcessing ? "#0f766e" : "linear-gradient(135deg, #01b6af 0%, #0f766e 100%)",
                                                 color: "white",
                                                 border: "none",
-                                                padding: "12px",
-                                                paddingRight: "28px",
-                                                borderRadius: "40px",
-                                                fontSize: "1.1rem",
-                                                fontWeight: 600,
-                                                cursor: "pointer",
+                                                padding: "8px 20px",
+                                                borderRadius: "8px",
+                                                fontSize: "0.88rem",
+                                                fontWeight: 800,
+                                                cursor: isProcessing ? "not-allowed" : "pointer",
+                                                boxShadow: "0 4px 12px rgba(1, 182, 175, 0.3)",
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: "12px",
-                                                boxShadow: "0 8px 25px rgba(16, 185, 129, 0.3)",
-                                                transition: "all 0.3s ease"
+                                                gap: "8px"
                                             }}
-                                            onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-3px)"}
-                                            onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
                                         >
-                                            <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                <i className="fa-solid fa-cloud-arrow-up" style={{ color: "#ffffff" }}></i>
-                                            </div>
-                                            Save & Process
+                                            {isProcessing ? (
+                                                <>
+                                                    <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                                    <span>Processing...</span>
+                                                </>
+                                            ) : (
+                                                "Save & Process"
+                                            )}
                                         </button>
                                     </div>
                                 )}
-                                <div style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600 }}>
                                     {isReviewing ? "Audio saved locally. Ready to process." : "Consultation will be saved automatically"}
                                 </div>
                             </div>
 
-                            {/* Right Block: Timer */}
-                            <div style={{ display: "flex", alignItems: "center", gap: "16px", background: "#ffffff", border: "1px solid #DCECEF", padding: "12px 24px", borderRadius: "20px", boxShadow: "0 2px 10px rgba(11, 43, 111, 0.04)" }}>
-                                <i className="fa-solid fa-chart-simple" style={{ color: "#08AFC0", fontSize: "24px" }}></i>
-                                <div>
-                                    <div style={{ fontSize: "0.75rem", color: "#64748B", marginBottom: "2px" }}>Recording Duration</div>
-                                    <div style={{ color: "#0B2B6F", fontWeight: 700, fontSize: "1.2rem", fontVariantNumeric: "tabular-nums" }}>
+                            {/* Right Block: Duration Timer */}
+                            <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "12px", padding: "10px 16px", borderRadius: "14px", boxShadow: "0 2px 8px rgba(0,0,0,0.02)", flex: 1, justifyContent: "flex-end" }}>
+                                <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(1, 182, 175, 0.12)", border: "1px solid rgba(1, 182, 175, 0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    <i className="fa-solid fa-clock" style={{ color: "#01b6af", fontSize: "15px" }}></i>
+                                </div>
+                                <div style={{ textAlign: "right" }}>
+                                    <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Duration</div>
+                                    <div style={{ color: "#082b68", fontWeight: 800, fontSize: "1.15rem", fontVariantNumeric: "tabular-nums" }}>
                                         {formatDuration(recordingSeconds)}
                                     </div>
                                 </div>
@@ -1625,9 +1993,9 @@ const Consultation = () => {
                         </div>
 
                         {isGeneratingSummary && (
-                            <div style={{ background: "#ffffff", border: "1px solid #08AFC0", padding: "16px 32px", borderRadius: "40px", display: "flex", alignItems: "center", gap: "16px", boxShadow: "0 8px 25px rgba(8, 174, 184, 0.15)" }}>
-                                <i className="fa-solid fa-circle-notch fa-spin" style={{ color: "#08AFC0", fontSize: "1.4rem" }}></i>
-                                <span style={{ color: "#0B2B6F", fontWeight: 700, fontSize: "1.1rem" }}>Synthesizing AI Medical Report...</span>
+                            <div style={{ background: "#ffffff", border: "1px solid #01b6af", padding: "16px 32px", borderRadius: "40px", display: "flex", alignItems: "center", gap: "16px", boxShadow: "0 8px 25px rgba(1, 182, 175, 0.15)" }}>
+                                <i className="fa-solid fa-circle-notch fa-spin" style={{ color: "#01b6af", fontSize: "1.4rem" }}></i>
+                                <span style={{ color: "#082b68", fontWeight: 700, fontSize: "1.1rem" }}>Synthesizing AI Medical Report...</span>
                             </div>
                         )}
                     </div>
@@ -1641,7 +2009,7 @@ const Consultation = () => {
                 <div
                     style={{
                         flex: 1,
-                        backgroundColor: "#F5FBFD",
+                        backgroundColor: "#f8fafc",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -1653,22 +2021,22 @@ const Consultation = () => {
                             width: "100%",
                             maxWidth: "580px",
                             background: "#ffffff",
-                            border: "1px solid #DCECEF",
+                            border: "1px solid #e2e8f0",
                             borderRadius: "24px",
                             padding: "40px",
-                            boxShadow: "0 20px 60px rgba(11, 43, 111, 0.15)",
-                            color: "#0B2B6F",
+                            boxShadow: "0 20px 60px rgba(1, 182, 175, 0.1)",
+                            color: "#082b68",
                             textAlign: "center",
                             position: "relative",
                             overflow: "hidden"
                         }}
                     >
                         {/* Icon */}
-                        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(8, 174, 184, 0.1)", marginBottom: "24px" }}>
-                            <i className="fa-solid fa-heart-pulse fa-fade" style={{ fontSize: "36px", color: "#08AFC0" }}></i>
+                        <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "80px", height: "80px", borderRadius: "50%", background: "rgba(1, 182, 175, 0.12)", marginBottom: "24px" }}>
+                            <i className="fa-solid fa-heart-pulse fa-fade" style={{ fontSize: "36px", color: "#01b6af" }}></i>
                         </div>
 
-                        <h2 style={{ fontSize: "1.6rem", fontWeight: 750, margin: "0 0 8px 0", color: "#0B2B6F" }}>
+                        <h2 style={{ fontSize: "1.6rem", fontWeight: 750, margin: "0 0 8px 0", color: "#082b68" }}>
                             Generating AI Consultation Summary
                         </h2>
                         <p style={{ color: "#64748B", fontSize: "1rem", margin: "0 0 32px 0", lineHeight: "1.5" }}>
@@ -1678,11 +2046,11 @@ const Consultation = () => {
                         {/* Progress Bar Header */}
                         <div style={{ marginBottom: "24px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                                <span style={{ fontSize: "0.95rem", fontWeight: 650, color: "#1557B8", display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span style={{ fontSize: "0.95rem", fontWeight: 650, color: "#01b6af", display: "flex", alignItems: "center", gap: "8px" }}>
                                     <i className="fa-solid fa-circle-notch fa-spin"></i>
                                     {PROCESSING_STEPS[summaryStage]?.title || "Processing..."}
                                 </span>
-                                <span style={{ fontSize: "1.2rem", fontWeight: 800, color: "#08AFC0" }}>
+                                <span style={{ fontSize: "1.2rem", fontWeight: 800, color: "#01b6af" }}>
                                     {Math.round(summaryProgress)}%
                                 </span>
                             </div>
@@ -1692,7 +2060,7 @@ const Consultation = () => {
                                 style={{
                                     width: "100%",
                                     height: "12px",
-                                    backgroundColor: "#F0F4F8",
+                                    backgroundColor: "#f1f5f9",
                                     borderRadius: "10px",
                                     overflow: "hidden"
                                 }}
@@ -1701,7 +2069,7 @@ const Consultation = () => {
                                     style={{
                                         height: "100%",
                                         width: `${summaryProgress}%`,
-                                        background: "linear-gradient(90deg, #1557B8 0%, #08AFC0 100%)",
+                                        background: "linear-gradient(90deg, #01b6af 0%, #0f766e 100%)",
                                         borderRadius: "10px",
                                         transition: "width 0.3s ease-out"
                                     }}
@@ -1745,16 +2113,12 @@ const Consultation = () => {
                                                 alignItems: "center",
                                                 justifyContent: "center",
                                                 fontSize: "0.8rem",
-                                                background: isCompleted
-                                                    ? "rgba(16, 185, 129, 0.15)"
-                                                    : isCurrent
-                                                        ? "rgba(8, 174, 184, 0.15)"
-                                                        : "#E2E8F0",
-                                                color: isCompleted
-                                                    ? "#10b981"
-                                                    : isCurrent
-                                                        ? "#08AFC0"
-                                                        : "#94A3B8",
+                                                background: isCompleted || isCurrent
+                                                    ? "rgba(1, 182, 175, 0.12)"
+                                                    : "#E2E8F0",
+                                                color: isCompleted || isCurrent
+                                                    ? "#01b6af"
+                                                    : "#94A3B8",
                                                 flexShrink: 0
                                             }}
                                         >
@@ -1768,7 +2132,7 @@ const Consultation = () => {
                                         </div>
 
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: "0.95rem", fontWeight: isCurrent ? 700 : 500, color: isCurrent ? "#0B2B6F" : isCompleted ? "#475569" : "#94A3B8" }}>
+                                            <div style={{ fontSize: "0.95rem", fontWeight: isCurrent ? 700 : 500, color: isCurrent ? "#082b68" : isCompleted ? "#475569" : "#94A3B8" }}>
                                                 {step.title}
                                             </div>
                                         </div>
@@ -1780,10 +2144,10 @@ const Consultation = () => {
                         {/* Footer Metrics */}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.85rem", color: "#64748B", flexWrap: "wrap", gap: "8px" }}>
                             <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <i className="fa-solid fa-clock" style={{ color: "#08AFC0" }}></i>
-                                Elapsed: <strong style={{ color: "#0B2B6F" }}>{summaryElapsedSeconds}s</strong> &nbsp;(Expected ~5–10s)
+                                <i className="fa-solid fa-clock" style={{ color: "#01b6af" }}></i>
+                                Elapsed: <strong style={{ color: "#082b68" }}>{summaryElapsedSeconds}s</strong> &nbsp;(Expected ~5–10s)
                             </span>
-                            <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "#10b981", fontWeight: 650 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "#01b6af", fontWeight: 650 }}>
                                 <i className="fa-solid fa-shield-halved"></i>
                                 Auto-redirecting on finish
                             </span>

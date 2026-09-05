@@ -63,12 +63,13 @@ class AppointmentController {
                 return res.json({ success: true, appointments: [] });
             }
 
-            // 3. Fetch related Patient details
+            // 3. Fetch related Patient details & Appointment Symptoms
             const patientIds = [...new Set(appointmentsData.map((a) => a.patient_id).filter(Boolean))];
+            const appointmentIds = appointmentsData.map((a) => a.id).filter(Boolean);
             
             let patientsMap = {};
             if (patientIds.length > 0) {
-                const { data: patientsData, error: patientsError } = await supabase
+                const { data: patientsData } = await supabase
                     .from("patients")
                     .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
                     .in("user_id", patientIds);
@@ -80,9 +81,24 @@ class AppointmentController {
                 }
             }
 
+            let symptomsMap = {};
+            if (appointmentIds.length > 0) {
+                const { data: symptomsData } = await supabase
+                    .from("appointment_symptoms")
+                    .select("*")
+                    .in("appointment_id", appointmentIds);
+
+                if (symptomsData) {
+                    symptomsData.forEach(s => {
+                        symptomsMap[s.appointment_id] = s;
+                    });
+                }
+            }
+
             // 4. Merge and format the response
             const formattedAppointments = appointmentsData.map((app) => {
                 const patient = patientsMap[app.patient_id] || {};
+                const sym = symptomsMap[app.id] || {};
                 
                 // Calculate age dynamically
                 let age = null;
@@ -106,7 +122,14 @@ class AppointmentController {
                     time: app.appointment_time,
                     type: app.appointment_type || "Consultation",
                     status: app.status,
-                    reason: app.reason || app.notes || "",
+                    reason: sym.symptoms || app.reason || app.notes || "",
+                    symptoms: sym.symptoms || app.reason || "",
+                    duration: sym.duration || "",
+                    severity: sym.severity || "",
+                    current_medications: sym.current_medications || "",
+                    currentMedications: sym.current_medications || "",
+                    additional_notes: sym.additional_notes || "",
+                    additionalNotes: sym.additional_notes || "",
                     paymentMethod: app.payment_method || "pay_at_clinic",
                     paymentStatus: app.payment_status || "pending",
                     consultationFee: req.doctor.consultationFee || app.consultation_fee || "500",
@@ -121,7 +144,7 @@ class AppointmentController {
     }
 
     /**
-     * Get a single appointment by ID including patient details
+     * Get a single appointment by ID including patient details and appointment symptoms
      */
     async getAppointmentById(req, res) {
         try {
@@ -139,11 +162,17 @@ class AppointmentController {
                 return res.status(404).json({ success: false, error: "Appointment not found" });
             }
 
-            const { data: patient, error: patientError } = await supabase
+            const { data: patient } = await supabase
                 .from("patients")
                 .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
                 .eq("user_id", appointment.patient_id)
                 .single();
+
+            const { data: sym } = await supabase
+                .from("appointment_symptoms")
+                .select("*")
+                .eq("appointment_id", appointment.id)
+                .maybeSingle();
 
             let age = null;
             if (patient && patient.date_of_birth) {
@@ -166,6 +195,13 @@ class AppointmentController {
                 time: appointment.appointment_time,
                 type: appointment.appointment_type || "Consultation",
                 status: appointment.status,
+                symptoms: sym?.symptoms || appointment.reason || "",
+                duration: sym?.duration || "",
+                severity: sym?.severity || "",
+                current_medications: sym?.current_medications || "",
+                currentMedications: sym?.current_medications || "",
+                additional_notes: sym?.additional_notes || "",
+                additionalNotes: sym?.additional_notes || "",
                 fee: req.doctor.consultationFee || appointment.consultation_fee || "500",
                 paymentStatus: appointment.payment_status || "pending",
                 paymentMethod: appointment.payment_method || "pay_at_clinic"
@@ -174,6 +210,39 @@ class AppointmentController {
             return res.json({ success: true, appointment: formattedAppointment });
         } catch (error) {
             console.error("Error fetching appointment by ID:", error);
+            return res.status(500).json({ success: false, error: error.message });
+        }
+    }
+
+    /**
+     * Get appointment symptoms from appointment_symptoms table
+     */
+    async getAppointmentSymptoms(req, res) {
+        try {
+            const { appointmentId, patientId } = req.query;
+            const validApptId = appointmentId && appointmentId !== "null" && appointmentId !== "undefined" && String(appointmentId).trim() !== "" ? String(appointmentId).trim() : null;
+            const validPatientId = patientId && patientId !== "null" && patientId !== "undefined" && String(patientId).trim() !== "" ? String(patientId).trim() : null;
+
+            let query = supabase.from("appointment_symptoms").select("*");
+
+            if (validApptId) {
+                query = query.eq("appointment_id", validApptId);
+            } else if (validPatientId) {
+                query = query.eq("patient_id", validPatientId);
+            } else {
+                return res.json({ success: true, symptoms: null });
+            }
+
+            const { data, error } = await query.order("created_at", { ascending: false }).limit(1);
+
+            if (error) {
+                console.warn("[AppointmentController] Error querying appointment_symptoms:", error.message);
+                return res.json({ success: true, symptoms: null });
+            }
+
+            return res.json({ success: true, symptoms: data?.[0] || null });
+        } catch (error) {
+            console.error("Error fetching appointment symptoms:", error);
             return res.status(500).json({ success: false, error: error.message });
         }
     }

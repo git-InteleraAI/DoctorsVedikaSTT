@@ -952,138 +952,67 @@ async function completeConsultation(
      * This is what removes the normal 5–10 second Processing
      * wait.
      */
+    const hasSubstantialNewLines =
+      liveTranscript.length > (state.preparedTranscriptLength || 0) + 2;
+
     if (
       state.summary &&
-      state.preparedTranscriptLength >
-      0
+      Object.keys(state.summary).length > 0
     ) {
-
       console.log(
-        "[Consultation] Using pre-prepared AI summary."
+        "[Consultation] Using pre-prepared AI summary (instant response)."
       );
-
-
-      console.log(
-        `[Consultation] Prepared summary covers ${state.preparedTranscriptLength} transcript lines.`
-      );
-
 
       return res.json({
         success: true,
-
         consultation: {
-
           doctorId,
-
           patientId,
-
-          appointmentId:
-            String(
-              appointmentId
-            ),
-
-          consultationId:
-            consultationId ||
-            null,
-
-          detectedLanguage:
-            state.detectedLanguage ||
-            "Auto-detected",
-
-          transcript:
-            liveTranscript.length
-              ? liveTranscript
-              : state.transcript,
-
-          summary:
-            state.summary,
+          appointmentId: String(appointmentId),
+          consultationId: consultationId || null,
+          detectedLanguage: state.detectedLanguage || "Auto-detected",
+          transcript: liveTranscript.length ? liveTranscript : state.transcript,
+          summary: state.summary,
         },
-
-        summarySource:
-          "background-prepared",
-
-        processing:
-          false,
+        summarySource: "background-prepared",
+        processing: false,
       });
     }
 
-
-    // ==========================================================
-    // IF A BACKGROUND REQUEST IS STILL RUNNING
-    // ==========================================================
-
-    /**
-     * This situation can occur if the doctor ends the
-     * consultation immediately after a background preparation
-     * started.
-     *
-     * We wait only for the already-running request instead of
-     * starting a SECOND Gemini request.
-     */
     if (
       state.preparationInProgress &&
       state.preparationPromise
     ) {
-
       console.log(
-        "[Consultation] Background AI preparation is already running. Waiting for existing request instead of starting another Gemini request."
+        "[Consultation] Waiting briefly for in-progress AI summary..."
       );
 
-
       try {
-
-        const preparedResult =
-          await state.preparationPromise;
-
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 1200));
+        const preparedResult = await Promise.race([state.preparationPromise, timeoutPromise]);
 
         if (
           preparedResult &&
           preparedResult.consultation_summary
         ) {
-
           return res.json({
             success: true,
-
             consultation: {
-
               doctorId,
-
               patientId,
-
-              appointmentId:
-                String(
-                  appointmentId
-                ),
-
-              consultationId:
-                consultationId ||
-                null,
-
-              detectedLanguage:
-                preparedResult.detected_language ||
-                "Auto-detected",
-
-              transcript:
-                liveTranscript.length
-                  ? liveTranscript
-                  : state.transcript,
-
-              summary:
-                preparedResult.consultation_summary,
+              appointmentId: String(appointmentId),
+              consultationId: consultationId || null,
+              detectedLanguage: preparedResult.detected_language || "Auto-detected",
+              transcript: liveTranscript.length ? liveTranscript : state.transcript,
+              summary: preparedResult.consultation_summary,
             },
-
-            summarySource:
-              "background-prepared",
-
-            processing:
-              false,
+            summarySource: "background-prepared",
+            processing: false,
           });
         }
-
       } catch (backgroundError) {
-
         console.warn(
-          "[Consultation] Existing background summary could not be used:",
+          "[Consultation] In-progress summary wait notice:",
           backgroundError.message
         );
       }

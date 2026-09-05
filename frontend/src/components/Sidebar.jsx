@@ -18,7 +18,7 @@ export default function Sidebar({
     const { logout } = useAuth();
 
     const [isAppointmentsOpen, setIsAppointmentsOpen] =
-        useState(activePage === "dashboard");
+        useState(activePage === "dashboard" || activePage === "appointments" || location.pathname === "/appointments");
 
     const [isPatientsOpen, setIsPatientsOpen] =
         useState(activePage === "patients");
@@ -29,21 +29,25 @@ export default function Sidebar({
      * Keep dropdowns synchronized with the page.
      */
     useEffect(() => {
-        if (activePage === "dashboard") {
+        if (activePage === "dashboard" || activePage === "appointments" || location.pathname === "/appointments") {
             setIsAppointmentsOpen(true);
         }
 
         if (activePage === "patients") {
             setIsPatientsOpen(true);
         }
-    }, [activePage]);
+    }, [activePage, location.pathname]);
 
     /*
      * Current page detection.
      */
     const isDashboard =
         activePage === "dashboard" ||
-        location.pathname === "/dashboard";
+        (location.pathname === "/dashboard" && activePage !== "appointments");
+
+    const isAppointments =
+        activePage === "appointments" ||
+        location.pathname === "/appointments";
 
     const isPatients =
         activePage === "patients" ||
@@ -73,12 +77,17 @@ export default function Sidebar({
      * Appointment navigation.
      */
     const goTab = (tab) => {
+        if (activePage === "appointments") {
+            navigate(`/appointments?tab=${tab}`);
+            return;
+        }
+
         if (activePage === "dashboard" && onDashboardTab) {
             onDashboardTab(tab);
             return;
         }
 
-        navigate(`/dashboard?tab=${tab}`);
+        navigate(`/appointments?tab=${tab}`);
     };
 
     /*
@@ -113,12 +122,12 @@ export default function Sidebar({
      * Colors.
      */
     const COLORS = {
-        navy: "#082B68",
-        cyan: "#08AEB8",
-        text: "#17233C",
-        muted: "#64748B",
-        border: "#E5EDF3",
-        submenuBorder: "#DCE7ED",
+        navy: "#0f172a",
+        cyan: "#01b6af",
+        text: "#e2e8f0",
+        muted: "#94A3B8",
+        border: "rgba(255, 255, 255, 0.05)",
+        submenuBorder: "rgba(255, 255, 255, 0.05)",
         red: "#EF4444",
         green: "#10B981",
         orange: "#F59E0B",
@@ -146,9 +155,9 @@ export default function Sidebar({
             borderRadius: 10,
 
             background: active
-                ? "linear-gradient(135deg, #082B68 0%, #08AEB8 100%)"
+                ? "linear-gradient(135deg, #01b6af 0%, #0ea5e9 100%)"
                 : hovered
-                    ? "rgba(8,174,184,0.07)"
+                    ? "rgba(255, 255, 255, 0.05)"
                     : "transparent",
 
             color: active ? "#FFFFFF" : COLORS.text,
@@ -177,7 +186,7 @@ export default function Sidebar({
         const themes = {
             cyan: {
                 color: COLORS.cyan,
-                background: "rgba(8,174,184,0.10)",
+                background: "rgba(1, 182, 175, 0.15)",
             },
 
             orange: {
@@ -212,7 +221,7 @@ export default function Sidebar({
             background: active
                 ? selected.background
                 : hovered
-                    ? "rgba(15,23,42,0.035)"
+                    ? "rgba(255, 255, 255, 0.05)"
                     : "transparent",
 
             color: active
@@ -435,7 +444,7 @@ export default function Sidebar({
                     width: "100%",
                     height: "100%",
                     boxSizing: "border-box",
-                    background: "#FFFFFF",
+                    background: "transparent",
                     display: "flex",
                     flexDirection: "column",
                     padding: "16px 14px 14px",
@@ -476,8 +485,7 @@ export default function Sidebar({
                             <PrimaryButton
                                 itemKey="dashboard"
                                 active={
-                                    isDashboard &&
-                                    !isAppointmentsOpen
+                                    isDashboard
                                 }
                                 iconClass="fa-solid fa-house"
                                 onClick={() => {
@@ -496,8 +504,7 @@ export default function Sidebar({
                             <PrimaryButton
                                 itemKey="appointments"
                                 active={
-                                    isDashboard &&
-                                    isAppointmentsOpen
+                                    isAppointments
                                 }
                                 iconClass="fa-solid fa-calendar-days"
                                 rightIcon={
@@ -507,9 +514,9 @@ export default function Sidebar({
                                     }`
                                 }
                                 onClick={() => {
-                                    if (!isDashboard) {
+                                    if (!isAppointments) {
                                         navigate(
-                                            "/dashboard"
+                                            "/appointments"
                                         );
 
                                         setIsAppointmentsOpen(
@@ -552,9 +559,8 @@ export default function Sidebar({
                                             itemKey="confirmed"
                                             theme="cyan"
                                             active={
-                                                isDashboard &&
-                                                dashboardTab ===
-                                                "confirmed"
+                                                (isAppointments || isDashboard) &&
+                                                (dashboardTab === "confirmed" || location.search.includes("tab=confirmed"))
                                             }
                                             iconClass="fa-solid fa-calendar-check"
                                             onClick={() =>
@@ -567,30 +573,11 @@ export default function Sidebar({
                                         </SubmenuButton>
 
                                         <SubmenuButton
-                                            itemKey="pending"
-                                            theme="orange"
-                                            active={
-                                                isDashboard &&
-                                                dashboardTab ===
-                                                "pending"
-                                            }
-                                            iconClass="fa-solid fa-clock"
-                                            onClick={() =>
-                                                goTab(
-                                                    "pending"
-                                                )
-                                            }
-                                        >
-                                            Pending
-                                        </SubmenuButton>
-
-                                        <SubmenuButton
                                             itemKey="completed"
                                             theme="green"
                                             active={
-                                                isDashboard &&
-                                                dashboardTab ===
-                                                "completed"
+                                                (isAppointments || isDashboard) &&
+                                                (dashboardTab === "completed" || location.search.includes("tab=completed"))
                                             }
                                             iconClass="fa-solid fa-circle-check"
                                             onClick={() =>

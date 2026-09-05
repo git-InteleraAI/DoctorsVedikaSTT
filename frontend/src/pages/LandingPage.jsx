@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './LandingPage.css'; // Will create this for mobile menu specifics if needed, or put in styles.css
 
 export default function LandingPage() {
+    const navigate = useNavigate();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    
     useEffect(() => {
+        if (window.location.hash.includes('access_token=')) {
+            navigate('/auth/callback' + window.location.hash);
+            return;
+        }
+        
         const observerOptions = { root: null, rootMargin: '0px', threshold: 0.15 };
         const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {

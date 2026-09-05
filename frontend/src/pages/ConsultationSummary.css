@@ -1,11 +1,11 @@
 /* ==========================================================================
-   CONSULTATION SUMMARY - LIGHT THEME (PHASE 2)
+   CONSULTATION SUMMARY - DARK THEME (PHASE 3)
    ========================================================================== */
 
 .consultation-summary-page {
     min-height: 100vh;
-    background-color: #F5FBFD;
-    color: #0f172a;
+    background-color: #0f172a;
+    color: #ffffff;
     font-family: 'Outfit', Inter, -apple-system, sans-serif;
     display: flex;
     flex-direction: column;
@@ -14,8 +14,8 @@
 /* --- HEADER NAVBAR --- */
 .cs-navbar {
     height: 70px;
-    background: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+    background: #0f172a;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -23,7 +23,7 @@
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
 }
 
 .cs-nav-left {
@@ -38,7 +38,7 @@
     gap: 8px;
     font-weight: 700;
     font-size: 1.25rem;
-    color: #0f172a;
+    color: #ffffff;
 }
 
 .cs-logo-icon {
@@ -55,7 +55,7 @@
 .cs-nav-center {
     font-size: 1.15rem;
     font-weight: 600;
-    color: #0f172a;
+    color: #cbd5e1;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -80,19 +80,19 @@
 .cs-nav-profile-name {
     font-weight: 600;
     font-size: 0.95rem;
-    color: #0f172a;
+    color: #ffffff;
 }
 
 .cs-nav-profile-role {
     font-size: 0.8rem;
-    color: #64748b;
+    color: #94a3b8;
 }
 
 .cs-nav-avatar {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: #e2e8f0;
+    background: rgba(255,255,255,0.1);
     object-fit: cover;
 }
 
@@ -142,11 +142,11 @@
 
 /* --- CARDS --- */
 .cs-card {
-    background: #ffffff;
+    background: rgba(255,255,255,0.02);
     border-radius: 20px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid rgba(255,255,255,0.1);
     padding: 28px;
-    box-shadow: 0 10px 25px -5px rgba(11, 43, 111, 0.05);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
     margin-bottom: 24px;
 }
 
@@ -162,7 +162,7 @@
     align-items: center;
     gap: 8px;
     font-weight: 600;
-    color: #0f172a;
+    color: #ffffff;
     font-size: 1.05rem;
 }
 
@@ -185,7 +185,7 @@
     bottom: 20px;
     left: 17px;
     width: 2px;
-    background: #e2e8f0;
+    background: rgba(255,255,255,0.1);
     z-index: 1;
 }
 
@@ -204,12 +204,12 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #ffffff;
-    border: 2px solid #e2e8f0;
+    background: rgba(255,255,255,0.05);
+    border: 2px solid rgba(255,255,255,0.1);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #64748b;
+    color: #94a3b8;
     font-size: 0.9rem;
     flex-shrink: 0;
     transition: all 0.2s;
@@ -234,7 +234,7 @@
 .cs-step-title {
     font-weight: 600;
     font-size: 0.95rem;
-    color: #0f172a;
+    color: #cbd5e1;
     margin-bottom: 4px;
 }
 .cs-step.active .cs-step-title {
@@ -243,7 +243,7 @@
 
 .cs-step-desc {
     font-size: 0.85rem;
-    color: #64748b;
+    color: #94a3b8;
 }
 
 /* --- PATIENT DETAILS CARD --- */
@@ -251,7 +251,7 @@
     display: flex;
     justify-content: space-between;
     padding: 12px 0;
-    border-bottom: 1px dashed #e2e8f0;
+    border-bottom: 1px dashed rgba(255,255,255,0.1);
 }
 .cs-detail-row:last-child {
     border-bottom: none;
@@ -262,13 +262,13 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #64748b;
+    color: #94a3b8;
     font-size: 0.9rem;
 }
 
 .cs-detail-value {
     font-weight: 500;
-    color: #0f172a;
+    color: #ffffff;
     font-size: 0.9rem;
 }
 
@@ -307,15 +307,15 @@
 }
 
 .cs-button-secondary {
-    background: #ffffff;
-    color: #475569;
-    border: 1px solid #cbd5e1;
+    background: rgba(255,255,255,0.05);
+    color: #cbd5e1;
+    border: 1px solid rgba(255,255,255,0.2);
     width: 100%;
     justify-content: center;
     padding: 12px;
 }
 .cs-button-secondary:hover {
-    background: #f1f5f9;
+    background: rgba(255,255,255,0.1);
 }
 
 .cs-actions-row {
@@ -328,19 +328,19 @@
 .cs-textarea {
     width: 100%;
     min-height: 80px;
-    border: 1px solid transparent;
-    background: #f8fafc;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05);
     border-radius: 8px;
     padding: 12px;
     font-family: inherit;
     font-size: 0.95rem;
-    color: #334155;
+    color: #ffffff;
     resize: vertical;
     transition: all 0.2s;
 }
 .cs-textarea:hover, .cs-textarea:focus {
-    border-color: #cbd5e1;
-    background: #ffffff;
+    border-color: #01b6af;
+    background: rgba(255,255,255,0.1);
     outline: none;
 }
 
@@ -356,14 +356,14 @@
 .cs-btn-remove {
     padding: 0 12px;
     background: transparent;
-    border: 1px solid #fecaca;
+    border: 1px solid rgba(239, 68, 68, 0.3);
     color: #ef4444;
     border-radius: 8px;
     cursor: pointer;
     font-weight: 500;
 }
 .cs-btn-remove:hover {
-    background: #fef2f2;
+    background: rgba(239, 68, 68, 0.1);
 }
 
 .cs-btn-add {
@@ -392,7 +392,7 @@
     display: flex;
     gap: 16px;
     padding: 12px 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 .cs-transcript-line:last-child {
     border-bottom: none;
@@ -405,11 +405,11 @@
     color: #01b6af;
 }
 .cs-speaker-badge.patient {
-    color: #6366f1;
+    color: #0ea5e9;
 }
 
 .cs-transcript-content {
-    color: #334155;
+    color: #cbd5e1;
     font-size: 0.95rem;
     line-height: 1.5;
 }
@@ -421,7 +421,7 @@
     background: rgba(1, 182, 175, 0.05);
     border: 1px solid rgba(1, 182, 175, 0.2);
     border-radius: 12px;
-    color: #0f172a;
+    color: #ffffff;
     font-size: 0.9rem;
     margin-bottom: 20px;
 }
@@ -429,3 +429,4 @@
     color: #01b6af;
     font-size: 1.2rem;
 }
+

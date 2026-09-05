@@ -239,10 +239,12 @@ const Patients = () => {
             fetchPatients={fetchPatients}
         >
             {/* PAGE TITLE */}
-            <div style={{ marginBottom: "1.5rem" }}>
-                <h1 style={{ color: "var(--navy-deep,#082B68)", fontWeight: 800, fontSize: "1.8rem", margin: 0 }}>Patient Directory</h1>
-                <p style={{ color: "#64748b", marginTop: 4, fontSize: "1rem" }}>Manage patient records and medical history</p>
-            </div>
+            <section className="theme-section-light">
+                <div style={{ marginBottom: "0" }}>
+                    <h1 style={{ color: "var(--navy-deep,#082B68)", fontWeight: 800, fontSize: "1.8rem", margin: 0 }}>Patient Directory</h1>
+                    <p style={{ color: "#64748b", marginTop: 4, fontSize: "1rem" }}>Manage patient records and medical history</p>
+                </div>
+            </section>
 
             {error && (
 
@@ -252,7 +254,7 @@ const Patients = () => {
                     )}
 
                     {view === "search" && (
-                        <div className="fade-in">
+                        <section className="theme-section-dark fade-in">
                             <form className="responsive-flex-wrap" onSubmit={handleSearch} style={{ marginBottom: "24px", alignItems: "stretch" }}>
                                 <div style={{ flex: 1, position: "relative" }}>
                                     <i className="fa-solid fa-search" style={{ position: "absolute", left: "16px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
@@ -261,63 +263,64 @@ const Patients = () => {
                                         placeholder="Search by ID, Name, Mobile, Email..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        style={{ width: "100%", padding: "14px 20px 14px 45px", borderRadius: "12px", border: "1px solid #e2e8f0", fontSize: "1rem", outline: "none", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}
+                                        className="dark-input"
+                                        style={{ width: "100%", padding: "14px 20px 14px 45px", fontSize: "1rem", boxSizing: "border-box", height: "100%" }}
                                     />
                                 </div>
-                                <button type="submit" style={{ background: "#082B68", color: "white", padding: "0 24px", borderRadius: "12px", fontWeight: 600, border: "none", cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#051b44"} onMouseLeave={(e) => e.currentTarget.style.background = "#082B68"}>
+                                <button type="submit" style={{ background: "#0f172a", color: "white", padding: "0 24px", borderRadius: "10px", fontWeight: 600, border: "none", cursor: "pointer" }}>
                                     Search
                                 </button>
-                                <button type="button" onClick={() => setView("walkin")} style={{ background: "#08AEB8", color: "white", padding: "0 24px", borderRadius: "12px", fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#068f98"} onMouseLeave={(e) => e.currentTarget.style.background = "#08AEB8"}>
+                                <button type="button" onClick={() => setView("walkin")} style={{ background: "#0d9488", color: "white", padding: "0 24px", borderRadius: "10px", fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}>
                                     <i className="fa-solid fa-plus" /> Walk-in
                                 </button>
                             </form>
 
                             {loading ? (
-                                <div style={{ textAlign: "center", padding: "40px" }}><i className="fa-solid fa-spinner fa-spin fa-2x" style={{ color: "#08AEB8" }}></i></div>
+                                <div style={{ textAlign: "center", padding: "40px" }}><i className="fa-solid fa-spinner fa-spin fa-2x" style={{ color: "#0d9488" }}></i></div>
                             ) : (
                                 <div style={{ display: "grid", gap: "16px" }}>
                                     {patients.map(p => (
-                                        <div key={p.id} className="responsive-flex-between" style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "20px", boxShadow: "0 4px 6px rgba(0,0,0,0.02)" }}>
+                                        <div key={p.id} className="classic-card responsive-flex-between">
                                             <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-                                                <img src={p.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.fullName)}&background=08AEB8&color=fff`} style={{ width: "50px", height: "50px", borderRadius: "50%" }} alt="" />
+                                                <img src={p.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.fullName)}&background=0d9488&color=fff`} style={{ width: "48px", height: "48px", borderRadius: "50%" }} alt="" />
                                                 <div>
-                                                    <h3 style={{ margin: "0 0 4px 0", color: "var(--navy-deep)", fontSize: "1.1rem" }}>{p.fullName}</h3>
-                                                    <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>
+                                                    <h3 style={{ margin: "0 0 4px 0", fontSize: "1.1rem", color: "#0f172a" }}>{p.fullName}</h3>
+                                                    <p style={{ margin: 0, fontSize: "0.88rem", color: "#64748b" }}>
                                                         {p.patientCode} • {p.age ? `${p.age} yrs` : "Age -"} • {p.gender || "-"} • <i className="fa-solid fa-phone" style={{fontSize: "0.8rem", marginLeft: "4px"}}></i> {p.mobile}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="responsive-flex-wrap" style={{ alignItems: "center" }}>
+                                            <div className="responsive-flex-wrap" style={{ alignItems: "center", gap: "16px" }}>
                                                 <div style={{ textAlign: "right" }}>
-                                                    <div style={{ color: "#64748b", fontSize: "0.85rem", marginBottom: "2px" }}>Total Visits: <strong style={{ color: "var(--navy-deep)" }}>{p.totalVisits}</strong></div>
-                                                    <div style={{ color: "#64748b", fontSize: "0.85rem" }}>Last Visit: <strong style={{ color: "var(--navy-deep)" }}>{p.lastVisit ? new Date(p.lastVisit).toLocaleDateString() : "Never"}</strong></div>
+                                                    <div style={{ fontSize: "0.85rem", color: "#64748b", marginBottom: "2px" }}>Total Visits: <strong style={{ color: "#0f172a" }}>{p.totalVisits}</strong></div>
+                                                    <div style={{ fontSize: "0.85rem", color: "#64748b" }}>Last Visit: <strong style={{ color: "#0f172a" }}>{p.lastVisit ? new Date(p.lastVisit).toLocaleDateString() : "Never"}</strong></div>
                                                 </div>
-                                                <button onClick={() => openProfile(p.userId)} style={{ background: "#f1f5f9", color: "var(--navy-deep)", border: "1px solid #e2e8f0", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}>
+                                                <button onClick={() => openProfile(p.userId)} style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}>
                                                     View Profile <i className="fa-solid fa-arrow-right" style={{marginLeft: "4px"}}></i>
                                                 </button>
                                             </div>
                                         </div>
                                     ))}
                                     {patients.length === 0 && (
-                                        <div style={{ textAlign: "center", padding: "60px", background: "#f8fafc", borderRadius: "16px", border: "2px dashed #e2e8f0", color: "#64748b" }}>
+                                        <div style={{ textAlign: "center", padding: "60px", background: "rgba(255,255,255,0.05)", borderRadius: "16px", border: "2px dashed rgba(255,255,255,0.1)", color: "#94a3b8" }}>
                                             No patients found. Try adjusting your search.
                                         </div>
                                     )}
                                 </div>
                             )}
-                        </div>
+                        </section>
                     )}
 
                     {view === "walkin" && (
-                        <div className="fade-in glass-panel" style={{ background: "#fff", padding: "30px", borderRadius: "20px", border: "1px solid #e2e8f0" }}>
+                        <section className="theme-section-dark fade-in">
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-                                <h2 style={{ margin: 0, color: "var(--navy-deep)", display: "flex", alignItems: "center", gap: "10px" }}><i className="fa-solid fa-user-plus" style={{color: "#f59e0b"}}></i> Register Walk-in Patient</h2>
-                                <button onClick={() => setView("search")} style={{ background: "transparent", border: "none", color: "#64748b", cursor: "pointer", fontWeight: 600 }}><i className="fa-solid fa-times"></i> Cancel</button>
+                                <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: "10px" }}><i className="fa-solid fa-user-plus" style={{color: "#01b6af"}}></i> Register Walk-in Patient</h2>
+                                <button onClick={() => setView("search")} style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", fontWeight: 600 }}><i className="fa-solid fa-times"></i> Cancel</button>
                             </div>
                             
                             <form onSubmit={handleWalkinSubmit} className="responsive-grid-2">
                                 <div>
-                                    <label style={{ display: "block", marginBottom: "8px", color: "#475569", fontWeight: 600 }}>Full Name *</label>
+                                    <label style={{ display: "block", marginBottom: "8px", color: "#e2e8f0", fontWeight: 600 }}>Full Name *</label>
                                     <input type="text" value={walkinForm.fullName} onChange={e => setWalkinForm({...walkinForm, fullName: e.target.value})} required style={inputStyle} placeholder="John Doe" />
                                 </div>
                                 <div>
@@ -359,18 +362,18 @@ const Patients = () => {
                                     </button>
                                 </div>
                             </form>
-                        </div>
+                        </section>
                     )}
 
                     {view === "profile" && selectedPatient && (
                         <div className="fade-in">
-                            <button onClick={() => setView("search")} style={{ background: "transparent", border: "none", color: "#08AEB8", cursor: "pointer", fontWeight: 600, marginBottom: "20px", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <button onClick={() => setView("search")} style={{ background: "transparent", border: "none", color: "#01b6af", cursor: "pointer", fontWeight: 600, marginBottom: "20px", display: "flex", alignItems: "center", gap: "6px" }}>
                                 <i className="fa-solid fa-arrow-left"></i> Back to Search
                             </button>
                             
                             {/* TOP PROFILE CARD */}
                             <div className="responsive-flex-wrap" style={{ background: "#fff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "24px", marginBottom: "24px", alignItems: "flex-start", boxShadow: "0 10px 30px rgba(0,0,0,0.02)" }}>
-                                <img src={selectedPatient.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPatient.fullName)}&background=082B68&color=fff`} style={{ width: "100px", height: "100px", borderRadius: "50%", border: "4px solid #f1f5f9", flexShrink: 0 }} alt="" />
+                                <img src={selectedPatient.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedPatient.fullName)}&background=01b6af&color=fff`} style={{ width: "100px", height: "100px", borderRadius: "50%", border: "4px solid #f1f5f9", flexShrink: 0 }} alt="" />
                                 <div style={{ flex: 1, minWidth: "200px" }}>
                                     <h2 style={{ margin: "0 0 8px 0", color: "var(--navy-deep)", fontSize: "1.6rem", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                                         {selectedPatient.fullName}
@@ -401,14 +404,15 @@ const Patients = () => {
                             {/* FOLLOW-UP BOOKING MODAL (REMOVED) */}
 
                             {/* VISIT HISTORY TIMELINE */}
-                            <h3 style={{ color: "var(--navy-deep)", display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}><i className="fa-solid fa-clock-rotate-left" style={{color: "#08AEB8"}}></i> Visit History</h3>
+                            <section className="theme-section-dark">
+                                <h3 style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}><i className="fa-solid fa-clock-rotate-left" style={{color: "#01b6af"}}></i> Visit History</h3>
                             
-                            <div style={{ display: "grid", gap: "16px", paddingBottom: "60px" }}>
-                                {patientVisits.map((visit, index) => (
-                                    <div key={visit.appointmentId} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px", padding: "24px", position: "relative", boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
-                                        <div className="appointment-card-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
-                                            <div>
-                                                <div style={{ color: "#08AEB8", fontWeight: 700, fontSize: "1.1rem", marginBottom: "8px" }}>
+                                <div style={{ display: "grid", gap: "16px", paddingBottom: "60px" }}>
+                                    {patientVisits.map((visit, index) => (
+                                        <div key={visit.appointmentId} className="dark-glass-card">
+                                            <div className="appointment-card-inner" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
+                                                <div>
+                                                    <div style={{ color: "#01b6af", fontWeight: 700, fontSize: "1.1rem", marginBottom: "8px" }}>
                                                     {new Date(visit.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} • {visit.time}
                                                 </div>
                                                 <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
@@ -416,19 +420,19 @@ const Patients = () => {
                                                     <span style={{ background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600 }}>{visit.type}</span>
                                                 </div>
                                                 
-                                                <div style={{ display: "grid", gap: "10px" }}>
-                                                    {visit.chiefComplaint && (
-                                                        <div><span style={{color:"#64748b", fontSize:"0.85rem", textTransform:"uppercase", fontWeight:700}}>Symptoms / Complaint</span><p style={{margin:"2px 0 0 0", color:"var(--navy-deep)", fontWeight:500}}>{visit.chiefComplaint}</p></div>
-                                                    )}
-                                                    {visit.diagnosis && (
-                                                        <div><span style={{color:"#64748b", fontSize:"0.85rem", textTransform:"uppercase", fontWeight:700}}>Diagnosis</span><p style={{margin:"2px 0 0 0", color:"#082B68", fontWeight:600}}>{visit.diagnosis}</p></div>
-                                                    )}
+                                                    <div style={{ display: "grid", gap: "10px" }}>
+                                                        {visit.chiefComplaint && (
+                                                            <div><span style={{fontSize:"0.85rem", textTransform:"uppercase", fontWeight:700}}>Symptoms / Complaint</span><p style={{margin:"2px 0 0 0", color:"#ffffff", fontWeight:500}}>{visit.chiefComplaint}</p></div>
+                                                        )}
+                                                        {visit.diagnosis && (
+                                                            <div><span style={{fontSize:"0.85rem", textTransform:"uppercase", fontWeight:700}}>Diagnosis</span><p style={{margin:"2px 0 0 0", color:"#01b6af", fontWeight:600}}>{visit.diagnosis}</p></div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="responsive-flex-wrap" style={{ flexDirection: "column", gap: "12px", alignItems: "flex-end", minWidth: "150px" }}>
-                                                <div style={{ textAlign: "right" }}>
-                                                    <div style={{ color: "var(--navy-deep)", fontWeight: 700, fontSize: "1.1rem", marginBottom: "4px" }}>₹{visit.fee}</div>
-                                                    <div style={{ color: visit.paymentStatus === 'paid' ? "#16a34a" : "#d97706", fontSize: "0.85rem", fontWeight: 600 }}>{visit.paymentStatus === 'paid' ? 'Paid' : 'Pending Payment'}</div>
+                                                <div className="responsive-flex-wrap" style={{ flexDirection: "column", gap: "12px", alignItems: "flex-end", minWidth: "150px" }}>
+                                                    <div style={{ textAlign: "right" }}>
+                                                        <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "4px" }}>₹{visit.fee}</div>
+                                                        <div style={{ color: visit.paymentStatus === 'paid' ? "#16a34a" : "#d97706", fontSize: "0.85rem", fontWeight: 600 }}>{visit.paymentStatus === 'paid' ? 'Paid' : 'Pending Payment'}</div>
                                                 </div>
                                                 
                                                 {visit.status === 'completed' ? (
@@ -454,12 +458,13 @@ const Patients = () => {
                                         </div>
                                     </div>
                                 ))}
-                                {patientVisits.length === 0 && (
-                                    <div style={{ padding: "40px", textAlign: "center", background: "#f8fafc", borderRadius: "16px", border: "1px solid #e2e8f0", color: "#64748b" }}>
-                                        No past visits found for this patient.
-                                    </div>
-                                )}
-                            </div>
+                                    {patientVisits.length === 0 && (
+                                        <div style={{ padding: "40px", textAlign: "center", background: "rgba(255,255,255,0.05)", borderRadius: "16px", border: "1px dashed rgba(255,255,255,0.2)", color: "#94a3b8" }}>
+                                            No past visits found for this patient.
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
                         </div>
                     )}
         </DashboardLayout>
@@ -469,8 +474,8 @@ const Patients = () => {
 
 
 const inputStyle = {
-    width: "100%", padding: "12px 16px", borderRadius: "10px", border: "1px solid #cbd5e1",
-    fontSize: "0.95rem", outline: "none", color: "var(--navy-deep)", background: "#f8fafc"
+    width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid #cbd5e1",
+    fontSize: "0.95rem", outline: "none", color: "#0f172a", background: "#ffffff"
 };
 
 const tagStyle = {

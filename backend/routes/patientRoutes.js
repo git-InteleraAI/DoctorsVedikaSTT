@@ -6,7 +6,8 @@ const { protect } = require("../middleware/authMiddleware");
 // All patient routes require authentication
 router.use(protect);
 
-// Search patients
+// Search or list patients
+router.get("/", (req, res) => patientController.searchPatients(req, res));
 router.get("/search", (req, res) => patientController.searchPatients(req, res));
 
 // Create a walk-in patient

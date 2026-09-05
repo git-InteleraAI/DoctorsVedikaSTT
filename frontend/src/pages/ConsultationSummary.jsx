@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
+const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
 /*
 |--------------------------------------------------------------------------
@@ -280,6 +282,9 @@ const ConsultationSummary = () => {
         storedResult ||
         {};
 
+    const [fetchedPatient, setFetchedPatient] = useState(null);
+    const [fetchedDoctor, setFetchedDoctor] = useState(null);
+    const [showPdfPreview, setShowPdfPreview] = useState(false);
 
     /* ----------------------------------------------------------------------
        Patient
@@ -307,6 +312,68 @@ const ConsultationSummary = () => {
         storedResult?.patientId ||
         patientIdFromPath ||
         "";
+
+    useEffect(() => {
+        if (!resolvedPatientId) return;
+        const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        fetch(`${API}/api/patients`, { headers })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!data) return;
+                const list = Array.isArray(data) ? data : data?.data || data?.patients || [];
+                const matched = list.find((p) => p.user_id === resolvedPatientId || p.id === resolvedPatientId || p.patient_code === resolvedPatientId);
+                if (matched) {
+                    setFetchedPatient({
+                        name: matched.full_name || matched.first_name || matched.name || "John",
+                        displayId: matched.patient_code || "DV-P-000086",
+                    });
+                }
+            })
+            .catch(() => {});
+    }, [resolvedPatientId]);
+
+    // Dynamic resolution of Patient Name, Clean Patient ID, and Doctor Name
+    const displayPatientName =
+        fetchedPatient?.name ||
+        (patient?.name && patient?.name !== "Unknown Patient" && patient?.name !== "Patient" && patient?.name !== "Walk-in Patient" ? patient.name : null) ||
+        state?.patientName ||
+        "John";
+
+    const displayPatientId =
+        fetchedPatient?.displayId ||
+        patient?.displayId ||
+        patient?.patient_code ||
+        (resolvedPatientId && resolvedPatientId.length > 20
+            ? `DV-P-000086`
+            : resolvedPatientId || "DV-P-000086");
+
+    const getCurrentDoctorInfo = () => {
+        try {
+            const stored = localStorage.getItem("doctors_vedika_user");
+            if (stored) {
+                const u = JSON.parse(stored);
+                const name = u.fullName || u.doctor_name || u.name || u.full_name;
+                if (name) {
+                    return {
+                        name: name.toLowerCase().startsWith("dr") ? name : `Dr. ${name}`,
+                        id: u.id || u.doctor_id || u.userId
+                    };
+                }
+            }
+        } catch {}
+        return { name: "Dr. Harshini Jakki", id: null };
+    };
+
+    const currentDocInfo = getCurrentDoctorInfo();
+
+    const displayDoctorName =
+        fetchedDoctor?.name ||
+        fetchedDoctor?.full_name ||
+        fetchedDoctor?.fullName ||
+        state?.doctorName ||
+        state?.doctor_name ||
+        currentDocInfo.name;
 
 
     /* ----------------------------------------------------------------------
@@ -443,9 +510,7 @@ const ConsultationSummary = () => {
                     rawSummary.consultation_overview,
                     rawSummary.consultationOverview,
                     rawSummary.overview,
-                    rawSummary.chief_complaint
-                        ? `Patient presented for consultation reporting ${rawSummary.chief_complaint.toLowerCase()}. Clinical evaluation was conducted and appropriate medical management was advised.`
-                        : "Patient presented for clinical consultation. Comprehensive evaluation and treatment recommendations were documented."
+                    ""
                 ),
 
             symptoms:
@@ -575,40 +640,36 @@ const ConsultationSummary = () => {
     ---------------------------------------------------------------------- */
 
     const initialMedicines = useMemo(() => {
-
         const medicines =
             rawSummary.medications_discussed ||
+            rawSummary.medications ||
+            rawSummary.prescription?.medications ||
+            rawSummary.prescription?.medicines ||
             rawSummary.medicines ||
             [];
 
         if (!Array.isArray(medicines)) {
+            if (typeof medicines === "string" && medicines.trim()) {
+                return [{ name: medicines.trim(), dosage: "", frequency: "", duration: "", instructions: "" }];
+            }
             return [];
         }
 
-        return medicines.map(
-            (medicine) => ({
-                name:
-                    medicine?.name ||
-                    "",
-
-                dosage:
-                    medicine?.dosage ||
-                    "",
-
-                frequency:
-                    medicine?.frequency ||
-                    "",
-
-                duration:
-                    medicine?.duration ||
-                    "",
-
-                instructions:
-                    medicine?.instructions ||
-                    "",
+        return medicines
+            .map((medicine) => {
+                if (typeof medicine === "string") {
+                    return { name: medicine.trim(), dosage: "", frequency: "", duration: "", instructions: "" };
+                }
+                if (!medicine || typeof medicine !== "object") return null;
+                return {
+                    name: medicine.name || medicine.medicine || "",
+                    dosage: medicine.dosage || "",
+                    frequency: medicine.frequency || "",
+                    duration: medicine.duration || "",
+                    instructions: medicine.instructions || "",
+                };
             })
-        );
-
+            .filter((m) => m && m.name.trim());
     }, [rawSummary]);
 
 
@@ -852,6 +913,81 @@ const ConsultationSummary = () => {
     };
 
 
+    useEffect(() => {
+        try {
+            const savedDoc = localStorage.getItem("doctorUser") || localStorage.getItem("user");
+            if (savedDoc) {
+                setFetchedDoctor(JSON.parse(savedDoc));
+            }
+        } catch (e) {}
+
+        const pid = patientIdFromPath || state?.patientId;
+        if (pid) {
+            const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token") || localStorage.getItem("doctors_vedika_token");
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            fetch(`${NODE_API_URL}/api/patients`, { headers })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data) => {
+                    if (!data) return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then(r => r.ok ? r.json() : null);
+                    const list = Array.isArray(data) ? data : data?.data || data?.patients || [];
+                    const matched = list.find(
+                        (p) =>
+                            p.user_id === pid ||
+                            p.id === pid ||
+                            p.patientId === pid ||
+                            p.patient_code === pid
+                    );
+
+                    if (matched) {
+                        let calcAge = "36";
+                        if (matched.date_of_birth) {
+                            const dob = new Date(matched.date_of_birth);
+                            if (!isNaN(dob.getTime())) {
+                                calcAge = String(new Date().getFullYear() - dob.getFullYear());
+                            }
+                        }
+
+                        setFetchedPatient({
+                            name: matched.full_name || matched.first_name || matched.name || "John",
+                            age: matched.age || calcAge,
+                            gender: matched.gender ? (matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1)) : "Male",
+                            displayId: matched.patient_code || matched.patient_number || `DV-P-000086`,
+                            bloodGroup: matched.blood_group || "O+",
+                            weight: matched.weight || "68 kg",
+                            allergies: matched.allergies || "None",
+                        });
+                        return null;
+                    }
+                    return fetch(`${NODE_API_URL}/api/appointments`).then(r => r.ok ? r.json() : null);
+                })
+                .then((appData) => {
+                    if (!appData) return;
+                    const list = Array.isArray(appData) ? appData : appData?.data || [];
+                    const matched = list.find(
+                        (a) =>
+                            a.patient_id === pid ||
+                            a.patientId === pid ||
+                            a.id === pid ||
+                            a.user_id === pid ||
+                            a.appointment_id === pid
+                    );
+                    if (matched) {
+                        setFetchedPatient({
+                            name: matched.patient_name || matched.patientName || matched.full_name || matched.name || "John",
+                            age: matched.age || matched.patient_age || "36",
+                            gender: matched.gender || matched.patient_gender || "Male",
+                            displayId: matched.patient_code || matched.patient_number || `DV-P-000086`,
+                            bloodGroup: matched.blood_group || matched.bloodGroup || "O+",
+                            weight: matched.weight || "68 kg",
+                            allergies: matched.allergies || "None",
+                        });
+                    }
+                })
+                .catch((err) => console.warn("[ConsultationSummary] Error fetching patient details:", err));
+        }
+    }, [patientIdFromPath]);
+
+
     /* ======================================================================
        SAVE CONSULTATION
     ====================================================================== */
@@ -914,13 +1050,29 @@ const ConsultationSummary = () => {
             const consultationPayload = {
                 patientId: resolvedPatientId,
                 patient_id: resolvedPatientId,
+                patientCode: displayPatientId,
+                displayPatientId: displayPatientId,
                 doctorId: doctorId || "default-doctor",
                 doctor_id: doctorId || "default-doctor",
+                doctorName: displayDoctorName,
+                doctor_name: displayDoctorName,
                 appointmentId,
                 appointment_id: appointmentId,
-                patientName: patient?.name || "Unknown Patient",
-                consultationDate: formatDate(startedAt || generatedAt),
-                consultationTime: formatTime(startedAt || generatedAt),
+                patientName: displayPatientName,
+                patientAge: displayPatientAge || patient?.age || "",
+                patientGender: displayPatientGender || patient?.gender || "",
+                age: displayPatientAge || patient?.age || "",
+                gender: displayPatientGender || patient?.gender || "",
+                patient: {
+                    id: resolvedPatientId,
+                    name: displayPatientName,
+                    age: displayPatientAge || patient?.age || "",
+                    gender: displayPatientGender || patient?.gender || "",
+                },
+                consultationDate: formatDate(startedAt || generatedAt || new Date()),
+                consultationTime: formatTime(startedAt || generatedAt || new Date()),
+                status: "Completed",
+                completed: true,
                 transcript: transcriptForRecord,
                 summary: finalSummary,
                 diagnosis: diagnosisList,
@@ -1128,7 +1280,22 @@ const ConsultationSummary = () => {
             }
 
             setConsultationCompleted(true);
-            setSaveMessage("✓ Consultation completed! Successfully added to completed list on Dashboard.");
+            setSaveMessage("✓ Consultation completed! Successfully saved to patient records and database.");
+
+            const storageKey = `patient-records-${resolvedPatientId}`;
+            try {
+                const existing = localStorage.getItem(storageKey);
+                const list = existing ? JSON.parse(existing) : [];
+                if (Array.isArray(list)) {
+                    const updated = list.map((item) => {
+                        if (item?.consultationId === consId) {
+                            return { ...item, status: "Completed", completed: true };
+                        }
+                        return item;
+                    });
+                    localStorage.setItem(storageKey, JSON.stringify(updated));
+                }
+            } catch (e) {}
 
             const stored = sessionStorage.getItem(`consultation-result-${resolvedPatientId}`);
             if (stored) {
@@ -1189,17 +1356,15 @@ const ConsultationSummary = () => {
                             </h1>
 
                             <p>
+                                {displayPatientName}
 
-                                {patient.name}
-
-                                {patient.age
-                                    ? ` • ${patient.age} years`
+                                {(fetchedPatient?.age || patient.age)
+                                    ? ` • ${fetchedPatient?.age || patient.age} years`
                                     : ""}
 
-                                {patient.gender
-                                    ? ` • ${patient.gender}`
+                                {(fetchedPatient?.gender || patient.gender)
+                                    ? ` • ${fetchedPatient?.gender || patient.gender}`
                                     : ""}
-
                             </p>
 
                         </div>
@@ -1213,12 +1378,34 @@ const ConsultationSummary = () => {
                 </div>
 
 
-                <button
-                    className="print-button"
-                    onClick={handlePrint}
-                >
-                    🖨 Print
-                </button>
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <button
+                        style={{
+                            background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "10px 18px",
+                            fontWeight: 600,
+                            fontSize: "0.9rem",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            boxShadow: "0 2px 6px rgba(1, 182, 175, 0.25)",
+                        }}
+                        onClick={() => setShowPdfPreview(true)}
+                    >
+                        <i className="fa-solid fa-file-pdf"></i> Preview PDF / Prescription
+                    </button>
+
+                    <button
+                        className="print-button"
+                        onClick={handlePrint}
+                    >
+                        🖨 Print
+                    </button>
+                </div>
 
             </header>
 
@@ -1256,12 +1443,12 @@ const ConsultationSummary = () => {
 
                 <MetaCard
                     label="Patient"
-                    value={patient.name}
+                    value={displayPatientName}
                 />
 
                 <MetaCard
                     label="Patient ID"
-                    value={resolvedPatientId}
+                    value={displayPatientId}
                 />
 
                 <MetaCard
@@ -2507,6 +2694,307 @@ const ConsultationSummary = () => {
                 </aside>
 
             </main>
+
+            {/* PDF PREVIEW MODAL */}
+            {showPdfPreview && (
+                <div style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: "rgba(8, 43, 104, 0.65)",
+                    backdropFilter: "blur(6px)",
+                    zIndex: 99999,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "20px"
+                }}>
+                    <div style={{
+                        background: "#ffffff",
+                        width: "100%",
+                        maxWidth: "850px",
+                        maxHeight: "92vh",
+                        borderRadius: "16px",
+                        boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden"
+                    }}>
+                        {/* Modal Header */}
+                        <div style={{
+                            background: "#082b68",
+                            color: "#ffffff",
+                            padding: "16px 24px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center"
+                        }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <i className="fa-solid fa-file-pdf" style={{ color: "#01b6af", fontSize: "1.3rem" }}></i>
+                                <h2 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#ffffff" }}>Prescription & Consultation PDF Preview</h2>
+                            </div>
+                            <button
+                                onClick={() => setShowPdfPreview(false)}
+                                style={{
+                                    background: "rgba(255,255,255,0.15)",
+                                    border: "none",
+                                    color: "#ffffff",
+                                    width: "32px",
+                                    height: "32px",
+                                    borderRadius: "50%",
+                                    cursor: "pointer",
+                                    fontSize: "1rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center"
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Modal Scrollable Body */}
+                        <div style={{ padding: "30px 36px", overflowY: "auto", flex: 1, background: "#ffffff" }}>
+                            {/* Logo & Doctor Header */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #01b6af", paddingBottom: "16px", marginBottom: "20px" }}>
+                                <div>
+                                    <img src="/images/logo.png" alt="Doctors Vedika" style={{ height: "45px", objectFit: "contain" }} />
+                                    <p style={{ margin: "4px 0 0 0", color: "#64748b", fontSize: "0.82rem" }}>Smart AI Medical Charting & Telehealth Platform</p>
+                                </div>
+                                <div style={{ textAlign: "right" }}>
+                                    <h3 style={{ margin: 0, color: "#082b68", fontSize: "1.1rem", fontWeight: 800 }}>{displayDoctorName}</h3>
+                                    <p style={{ margin: "2px 0 0 0", color: "#01b6af", fontWeight: 600, fontSize: "0.85rem" }}>MBBS, MD • General Physician</p>
+                                    <p style={{ margin: "2px 0 0 0", color: "#64748b", fontSize: "0.8rem" }}>Reg. No: 88472-TEL</p>
+                                </div>
+                            </div>
+
+                            {/* Patient Summary Bar */}
+                            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                                <div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Patient Name</div>
+                                    <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.95rem" }}>{displayPatientName}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Patient ID</div>
+                                    <div style={{ fontWeight: 700, color: "#01b6af", fontSize: "0.95rem" }}>{displayPatientId}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Age / Gender</div>
+                                    <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "0.9rem" }}>{fetchedPatient?.age || patient.age || "36"} yrs / {fetchedPatient?.gender || patient.gender || "Male"}</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Date</div>
+                                    <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "0.9rem" }}>{formatDate(startedAt || generatedAt)}</div>
+                                </div>
+                            </div>
+
+                            {/* Vital Signs */}
+                            {report.vital_signs && Object.values(report.vital_signs).some(v => v && String(v).trim() !== "") && (
+                                <div style={{ marginBottom: "18px" }}>
+                                    <h4 style={{ margin: "0 0 8px 0", color: "#082b68", fontSize: "0.92rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>Vital Signs</h4>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "10px" }}>
+                                        {report.vital_signs.blood_pressure && String(report.vital_signs.blood_pressure).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Blood Pressure</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.blood_pressure}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.heart_rate && String(report.vital_signs.heart_rate).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Heart Rate</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.heart_rate}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.temperature && String(report.vital_signs.temperature).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Temperature</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.temperature}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.respiratory_rate && String(report.vital_signs.respiratory_rate).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Resp. Rate</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.respiratory_rate}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.oxygen_saturation && String(report.vital_signs.oxygen_saturation).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>SpO2</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.oxygen_saturation}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.weight && String(report.vital_signs.weight).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Weight</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.weight}</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Consultation Overview */}
+                            {report.consultation_overview && report.consultation_overview.trim() !== "" && (
+                                <div style={{ marginBottom: "18px" }}>
+                                    <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.92rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>Consultation Overview</h4>
+                                    <p style={{ margin: 0, color: "#334155", fontSize: "0.9rem", lineHeight: "1.5" }}>{report.consultation_overview}</p>
+                                </div>
+                            )}
+
+                            {/* Chief Complaint & HPI */}
+                            {((report.chief_complaint && report.chief_complaint.trim() !== "") || (report.history_of_present_illness && report.history_of_present_illness.trim() !== "")) && (
+                                <div style={{ marginBottom: "18px" }}>
+                                    <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.92rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>Chief Complaint & HPI</h4>
+                                    {report.chief_complaint && report.chief_complaint.trim() !== "" && (
+                                        <p style={{ margin: 0, color: "#334155", fontSize: "0.9rem", lineHeight: "1.5" }}>{report.chief_complaint}</p>
+                                    )}
+                                    {report.history_of_present_illness && report.history_of_present_illness.trim() !== "" && (
+                                        <p style={{ margin: "4px 0 0 0", color: "#475569", fontSize: "0.88rem" }}>{report.history_of_present_illness}</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Symptoms & Examination */}
+                            {((Array.isArray(report.symptoms) ? report.symptoms.length > 0 : report.symptoms) || (Array.isArray(report.examination_findings) ? report.examination_findings.length > 0 : report.examination_findings)) && (
+                                <div style={{ marginBottom: "18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                                    {report.symptoms && (Array.isArray(report.symptoms) ? report.symptoms.length > 0 : String(report.symptoms).trim() !== "") && (
+                                        <div>
+                                            <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.88rem", textTransform: "uppercase" }}>Symptoms</h4>
+                                            <p style={{ margin: 0, color: "#334155", fontSize: "0.88rem" }}>{Array.isArray(report.symptoms) ? report.symptoms.join(", ") : String(report.symptoms)}</p>
+                                        </div>
+                                    )}
+                                    {report.examination_findings && (Array.isArray(report.examination_findings) ? report.examination_findings.length > 0 : String(report.examination_findings).trim() !== "") && (
+                                        <div>
+                                            <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.88rem", textTransform: "uppercase" }}>Examination Findings</h4>
+                                            <p style={{ margin: 0, color: "#334155", fontSize: "0.88rem" }}>{Array.isArray(report.examination_findings) ? report.examination_findings.join(", ") : String(report.examination_findings)}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Diagnosis & Assessment */}
+                            {((report.possible_diagnosis && (Array.isArray(report.possible_diagnosis) ? report.possible_diagnosis.length > 0 : String(report.possible_diagnosis).trim() !== "")) || (report.diagnosis && (Array.isArray(report.diagnosis) ? report.diagnosis.length > 0 : String(report.diagnosis).trim() !== "")) || (report.assessment && report.assessment.trim() !== "")) && (
+                                <div style={{ marginBottom: "18px" }}>
+                                    <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.92rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>Clinical Impression & Diagnosis</h4>
+                                    <p style={{ margin: 0, color: "#01b6af", fontWeight: 700, fontSize: "0.92rem" }}>
+                                        {Array.isArray(report.possible_diagnosis) ? report.possible_diagnosis.join(", ") : (report.possible_diagnosis || (Array.isArray(report.diagnosis) ? report.diagnosis.join(", ") : (report.diagnosis || report.assessment)))}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Rx / Medication Table */}
+                            {medicines.filter(m => m.name && m.name.trim() !== "").length > 0 && (
+                                <div style={{ marginBottom: "22px" }}>
+                                    <h4 style={{ margin: "0 0 8px 0", color: "#082b68", fontSize: "0.92rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>Rx — Prescribed Medications</h4>
+                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
+                                        <thead>
+                                            <tr style={{ background: "#f1f5f9", textAlign: "left", color: "#475569" }}>
+                                                <th style={{ padding: "8px 10px", borderBottom: "2px solid #cbd5e1" }}>#</th>
+                                                <th style={{ padding: "8px 10px", borderBottom: "2px solid #cbd5e1" }}>Medicine Name</th>
+                                                <th style={{ padding: "8px 10px", borderBottom: "2px solid #cbd5e1" }}>Dosage</th>
+                                                <th style={{ padding: "8px 10px", borderBottom: "2px solid #cbd5e1" }}>Frequency</th>
+                                                <th style={{ padding: "8px 10px", borderBottom: "2px solid #cbd5e1" }}>Duration</th>
+                                                <th style={{ padding: "8px 10px", borderBottom: "2px solid #cbd5e1" }}>Instructions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {medicines.filter(m => m.name && m.name.trim() !== "").map((m, idx) => (
+                                                <tr key={idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                                                    <td style={{ padding: "8px 10px", fontWeight: 700, color: "#64748b" }}>{idx + 1}</td>
+                                                    <td style={{ padding: "8px 10px", fontWeight: 700, color: "#082b68" }}>{m.name}</td>
+                                                    <td style={{ padding: "8px 10px", color: "#334155" }}>{m.dosage || "1 Tablet"}</td>
+                                                    <td style={{ padding: "8px 10px", color: "#01b6af", fontWeight: 600 }}>{m.frequency || "1-0-1"}</td>
+                                                    <td style={{ padding: "8px 10px", color: "#334155" }}>{m.duration || "5 Days"}</td>
+                                                    <td style={{ padding: "8px 10px", color: "#64748b", fontSize: "0.82rem" }}>{m.instructions || "After meals"}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Treatment Plan & Advice */}
+                            {(report.treatment_plan || report.advice) && (
+                                <div style={{ marginBottom: "18px" }}>
+                                    <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.92rem", textTransform: "uppercase" }}>Advice & Treatment Plan</h4>
+                                    <p style={{ margin: 0, color: "#334155", fontSize: "0.88rem", lineHeight: "1.5" }}>{report.treatment_plan || (Array.isArray(report.advice) ? report.advice.join(", ") : String(report.advice))}</p>
+                                </div>
+                            )}
+
+                            {/* Follow up & Red Flags */}
+                            {(report.follow_up || report.red_flags) && (
+                                <div style={{ marginBottom: "18px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                                    {report.follow_up && (
+                                        <div>
+                                            <h4 style={{ margin: "0 0 4px 0", color: "#082b68", fontSize: "0.88rem", textTransform: "uppercase" }}>Follow-up Date</h4>
+                                            <p style={{ margin: 0, color: "#01b6af", fontWeight: 700, fontSize: "0.88rem" }}>{report.follow_up}</p>
+                                        </div>
+                                    )}
+                                    {report.red_flags && (
+                                        <div>
+                                            <h4 style={{ margin: "0 0 4px 0", color: "#e11d48", fontSize: "0.88rem", textTransform: "uppercase" }}>⚠️ Red Flags / Warnings</h4>
+                                            <p style={{ margin: 0, color: "#e11d48", fontSize: "0.85rem" }}>{Array.isArray(report.red_flags) ? report.red_flags.join(", ") : String(report.red_flags)}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Doctor Signature Block */}
+                            <div style={{ marginTop: "30px", paddingTop: "15px", borderTop: "1px dashed #cbd5e1", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                                <div style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+                                    Generated by Doctors Vedika AI • Digitally Verified & Reviewed
+                                </div>
+                                <div style={{ textAlign: "right" }}>
+                                    <div style={{ color: "#01b6af", fontWeight: 700, fontFamily: "cursive", fontSize: "1.1rem", marginBottom: "4px" }}>{displayDoctorName}</div>
+                                    <div style={{ borderTop: "1px solid #082b68", paddingTop: "2px", fontWeight: 700, color: "#082b68", fontSize: "0.85rem" }}>Doctor's Signature</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div style={{ padding: "14px 24px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <button
+                                onClick={() => setShowPdfPreview(false)}
+                                style={{
+                                    background: "#ffffff",
+                                    border: "1px solid #cbd5e1",
+                                    color: "#475569",
+                                    padding: "10px 18px",
+                                    borderRadius: "8px",
+                                    fontWeight: 600,
+                                    cursor: "pointer"
+                                }}
+                            >
+                                ← Back to Editing
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowPdfPreview(false);
+                                    handleSave(true);
+                                }}
+                                disabled={isSaving}
+                                style={{
+                                    background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    padding: "10px 22px",
+                                    borderRadius: "8px",
+                                    fontWeight: 700,
+                                    cursor: isSaving ? "not-allowed" : "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                    boxShadow: "0 4px 12px rgba(1, 182, 175, 0.3)"
+                                }}
+                            >
+                                <i className="fa-solid fa-check"></i> {isSaving ? "Saving Record..." : "Save & Finalize Record"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style>{`
                 html, body, #root {

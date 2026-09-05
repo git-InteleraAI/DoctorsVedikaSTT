@@ -151,8 +151,9 @@ class AuthController {
      */
     googleRedirect(req, res) {
         try {
-            // Frontend callback URL where Supabase will redirect back with the token hash
-            const frontendCallbackUrl = "http://localhost:5173/auth/callback";
+            // Allow frontend to specify the callback URL dynamically, fallback to localhost
+            const clientRedirect = req.query.redirect_to;
+            const frontendCallbackUrl = clientRedirect || "http://localhost:5173/auth/callback";
             const authorizeUrl = authService.generateGoogleOAuthUrl(frontendCallbackUrl);
             return res.redirect(authorizeUrl);
         } catch (error) {

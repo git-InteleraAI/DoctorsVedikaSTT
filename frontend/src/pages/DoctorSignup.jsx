@@ -351,11 +351,11 @@ const DoctorSignup = () => {
             <span>or sign up with</span>
           </div>
 
-          {/* Social Google Login */}
           <div className="auth-social-row">
             <button type="button" className="auth-social-btn" onClick={() => {
               const API_BASE_URL = import.meta.env.VITE_NODE_API_URL;
-              window.location.href = `${API_BASE_URL}/api/auth/google`;
+              const redirectUrl = encodeURIComponent(window.location.origin + "/auth/callback");
+              window.location.href = `${API_BASE_URL}/api/auth/google?redirect_to=${redirectUrl}`;
             }}>
               <svg width="20" height="20" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

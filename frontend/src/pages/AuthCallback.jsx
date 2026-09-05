@@ -61,7 +61,7 @@ const AuthCallback = () => {
   }, [location, navigate, verifyGoogleAuth]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#F3FAFE]">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[#F8FBFF]">
       <div className="bg-white p-10 rounded-2xl shadow-xl max-w-md w-full text-center">
         <div className="mb-6">
           {/* Simple animated spinner */}
