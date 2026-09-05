@@ -353,7 +353,7 @@ const DoctorSignup = () => {
 
           <div className="auth-social-row">
             <button type="button" className="auth-social-btn" onClick={() => {
-              const API_BASE_URL = import.meta.env.VITE_NODE_API_URL;
+              const API_BASE_URL = import.meta.env.VITE_NODE_API_URL || "";
               const redirectUrl = encodeURIComponent(window.location.origin + "/auth/callback");
               window.location.href = `${API_BASE_URL}/api/auth/google?redirect_to=${redirectUrl}`;
             }}>

@@ -3,7 +3,7 @@
  * Communicates ONLY with backend API endpoints (NO direct Supabase SDK on frontend)
  */
 
-const API_BASE_URL = import.meta.env.VITE_NODE_API_URL;
+const API_BASE_URL = import.meta.env.VITE_NODE_API_URL || "";
 
 class AuthService {
     /**
