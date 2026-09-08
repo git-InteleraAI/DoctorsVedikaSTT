@@ -37,26 +37,44 @@ const PatientRecord = () => {
             try {
                 const rawId = String(patientId || "").trim();
                 const slugId = rawId.replace(/\s+/g, "-");
-                const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token") || localStorage.getItem("doctors_vedika_token");
+                const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("sb-access-token");
                 const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
                 let matchedPatient = null;
-                // Fetch patient profile details with Auth header for dynamic name resolution
+                // Fetch patient profile details via /api/patients/:patientId/history or /api/patients
                 try {
-                    const patRes = await fetch(`${API}/api/patients`, { headers });
-                    if (patRes.ok) {
-                        const patData = await patRes.json();
-                        const list = Array.isArray(patData) ? patData : patData?.data || patData?.patients || [];
-                        matchedPatient = list.find((p) => p.user_id === rawId || p.id === rawId || p.patient_code === rawId);
-                        if (matchedPatient && !cancelled) {
+                    const histRes = await fetch(`${API}/api/patients/${encodeURIComponent(rawId)}/history`, { headers });
+                    if (histRes.ok) {
+                        const histData = await histRes.json();
+                        if (histData?.patient && !cancelled) {
+                            matchedPatient = histData.patient;
                             setFetchedPatient({
-                                name: matchedPatient.full_name || matchedPatient.first_name || matchedPatient.name || "John",
-                                code: matchedPatient.patient_code || matchedPatient.user_id || "DV-P-000086",
+                                name: histData.patient.fullName || histData.patient.name,
+                                code: histData.patient.patientCode || histData.patient.code || rawId,
                             });
                         }
                     }
                 } catch (e) {
-                    console.warn("[PatientRecord] Patient profile fetch warning:", e);
+                    console.warn("[PatientRecord] Direct history fetch warning:", e);
+                }
+
+                if (!matchedPatient) {
+                    try {
+                        const patRes = await fetch(`${API}/api/patients`, { headers });
+                        if (patRes.ok) {
+                            const patData = await patRes.json();
+                            const list = Array.isArray(patData) ? patData : patData?.data || patData?.patients || [];
+                            matchedPatient = list.find((p) => p.user_id === rawId || p.id === rawId || p.patient_code === rawId || p.userId === rawId || p.patientCode === rawId);
+                            if (matchedPatient && !cancelled) {
+                                setFetchedPatient({
+                                    name: matchedPatient.fullName || matchedPatient.full_name || matchedPatient.first_name || matchedPatient.name,
+                                    code: matchedPatient.patientCode || matchedPatient.patient_code || matchedPatient.user_id || matchedPatient.id,
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("[PatientRecord] Patient profile fetch warning:", e);
+                    }
                 }
 
                 let res = await fetch(`${API}/api/v1/clinical/notes/${encodeURIComponent(rawId)}`);
@@ -72,7 +90,7 @@ const PatientRecord = () => {
 
                 // If still no records found and we resolved a patient_code or id, try fetching with code
                 if ((!data?.records || !data.records.length) && matchedPatient) {
-                    const altId = matchedPatient.patient_code || matchedPatient.user_id || matchedPatient.id;
+                    const altId = matchedPatient.patient_code || matchedPatient.patientCode || matchedPatient.user_id || matchedPatient.id;
                     if (altId && altId !== rawId) {
                         const altRes = await fetch(`${API}/api/v1/clinical/notes/${encodeURIComponent(altId)}`);
                         const altData = await altRes.json().catch(() => ({}));
@@ -87,14 +105,14 @@ const PatientRecord = () => {
                     if (finalRecords.length === 0) {
                         try {
                             const localStr = localStorage.getItem(`patient-records-${rawId}`) ||
-                                (matchedPatient ? localStorage.getItem(`patient-records-${matchedPatient.patient_code || matchedPatient.user_id}`) : null);
+                                (matchedPatient ? localStorage.getItem(`patient-records-${matchedPatient.patient_code || matchedPatient.patientCode || matchedPatient.user_id}`) : null);
                             if (localStr) {
                                 const parsed = JSON.parse(localStr);
                                 if (Array.isArray(parsed) && parsed.length > 0) {
                                     finalRecords = parsed.filter((r) => r && (r.completed === true || String(r.status).toLowerCase() === "completed"));
                                 }
                             }
-                        } catch (e) {}
+                        } catch (e) { }
                     }
                     setRecords(finalRecords);
                 }
@@ -115,14 +133,15 @@ const PatientRecord = () => {
         const resolvedName =
             fetchedPatient?.name ||
             (first?.patientName && first?.patientName !== "Unknown Patient" ? first.patientName : null) ||
-            "John";
+            first?.summary?.patientName ||
+            (records.length > 0 ? "Patient" : "");
 
         const resolvedCode =
             fetchedPatient?.code ||
             first?.patientCode ||
             first?.displayPatientId ||
-            (patientId && patientId.length > 20 ? "DV-P-000086" : patientId) ||
-            "DV-P-000086";
+            first?.patientId ||
+            patientId;
 
         return {
             name: resolvedName,
@@ -140,9 +159,11 @@ const PatientRecord = () => {
                                 ← Back to Dashboard
                             </Link>
                             <h1 style={{ margin: "10px 0 4px", fontSize: "1.75rem", fontWeight: 800, color: "#082b68" }}>Patient Medical Record</h1>
-                            <p style={{ margin: 0, color: "#64748b", fontSize: "0.95rem" }}>
-                                {patientInfo.name} • Patient ID: <strong style={{ color: "#01b6af" }}>{patientInfo.id}</strong>
-                            </p>
+                            {patientInfo.name && (
+                                <p style={{ margin: 0, color: "#64748b", fontSize: "0.95rem" }}>
+                                    {patientInfo.name} • Patient ID: <strong style={{ color: "#01b6af" }}>{patientInfo.id}</strong>
+                                </p>
+                            )}
                         </div>
                     </div>
                 </section>
@@ -183,10 +204,24 @@ const RecordCard = ({ record, patientInfo }) => {
         ? record.medications
         : (summary.medications_discussed || summary.medicines || []);
 
-    const transcript = Array.isArray(record.transcript) ? record.transcript : [];
+    let transcript = [];
+    if (Array.isArray(record.transcript) && record.transcript.length > 0) {
+        transcript = record.transcript;
+    } else if (record.audio_transcript && typeof record.audio_transcript === 'string') {
+        const lines = record.audio_transcript.split('\n').map(l => l.trim()).filter(Boolean);
+        transcript = lines.map((line) => {
+            const match = line.match(/^\[?(.*?)\]?\s*(Doctor|Patient|User|Speaker\s*\d*|.*?):\s*(.*)$/i);
+            if (match) {
+                return { timestamp: match[1] || '00:00', speaker: match[2] || 'Speaker', text: match[3] || line };
+            }
+            return { timestamp: '00:00', speaker: 'Transcript', text: line };
+        });
+    }
 
     const rawPdfUrl = record.pdfUrl || `/api/v1/clinical/notes/${encodeURIComponent(record.patientId || "patient")}/${encodeURIComponent(record.consultationId)}/pdf`;
     const fullPdfUrl = rawPdfUrl.startsWith("http") ? rawPdfUrl : `${API}${rawPdfUrl}`;
+
+    const diagnosisStr = Array.isArray(diagnosis) ? diagnosis.join(", ") : formatText(diagnosis);
 
     return (
         <article style={{ background: "#ffffff", borderRadius: "16px", border: "1px solid #e2e8f0", boxShadow: "0 6px 20px rgba(0,0,0,0.05)", overflow: "hidden" }}>
@@ -236,30 +271,20 @@ const RecordCard = ({ record, patientInfo }) => {
                     ]} />
                 </Section>
 
-                {/* CLINICAL SUMMARY */}
-                <Section title="Clinical Summary">
-                    <Detail label="Chief Complaint" value={summary.chief_complaint} />
-                    <Detail label="Consultation Overview" value={summary.consultation_overview} />
-                    <Detail label="History of Present Illness" value={summary.history_of_present_illness} />
-                    <Detail label="Symptoms" value={summary.symptoms} />
-                    <Detail label="Past Medical History" value={summary.past_medical_history} />
-                    <Detail label="Allergies" value={summary.allergies} />
-                    <Detail label="Current Medications" value={summary.current_medications} />
-                    <Detail label="Examination Findings" value={summary.examination_findings} />
-                </Section>
-
-                {/* VITALS & INVESTIGATIONS */}
-                {(Object.values(vitals).some(v => v) || summary.investigations) && (
-                    <Section title="Vitals & Investigations">
-                        <Grid items={[
-                            ["Blood Pressure", formatText(vitals.blood_pressure || vitals.bp)],
-                            ["Heart Rate / Pulse", formatText(vitals.heart_rate || vitals.pulse)],
-                            ["Temperature", formatText(vitals.temperature || vitals.temp)],
-                            ["Respiratory Rate", formatText(vitals.respiratory_rate)],
-                            ["SpO2", formatText(vitals.oxygen_saturation || vitals.spo2)],
-                            ["Weight", formatText(vitals.weight)],
-                        ].filter(([, v]) => v)} />
-                        <Detail label="Investigations" value={summary.investigations} />
+                {/* DIAGNOSIS & VITALS */}
+                {(diagnosisStr || Object.values(vitals).some(v => v)) && (
+                    <Section title="Clinical Diagnosis & Vitals">
+                        {diagnosisStr && <Detail label="Diagnosis" value={diagnosisStr} />}
+                        {Object.values(vitals).some(v => v) && (
+                            <Grid items={[
+                                ["Blood Pressure", formatText(vitals.blood_pressure || vitals.bp)],
+                                ["Heart Rate / Pulse", formatText(vitals.heart_rate || vitals.pulse)],
+                                ["Temperature", formatText(vitals.temperature || vitals.temp)],
+                                ["Respiratory Rate", formatText(vitals.respiratory_rate)],
+                                ["SpO2", formatText(vitals.oxygen_saturation || vitals.spo2)],
+                                ["Weight", formatText(vitals.weight)],
+                            ].filter(([, v]) => v)} />
+                        )}
                     </Section>
                 )}
 
@@ -316,7 +341,7 @@ const RecordCard = ({ record, patientInfo }) => {
                                         <span style={{ color: String(line.speaker || "").toLowerCase().includes("doctor") ? "#01b6af" : "#082b68", fontWeight: 800, fontSize: "0.85rem" }}>
                                             {formatText(line.speaker) || "Speaker"}
                                         </span>
-                                        <span style={{ color: "#64748b", fontSize: "0.8rem", fontWeight: 600 }}>
+                                        <span style={{ color: "#373c45ff", fontSize: "0.8rem", fontWeight: 600 }}>
                                             [{formatText(line.timestamp) || "00:00"}]
                                         </span>
                                     </div>

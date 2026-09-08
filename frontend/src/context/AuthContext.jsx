@@ -1,54 +1,112 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+    createContext,
+    useContext,
+    useEffect,
+    useState,
+} from "react";
+
 import authService from "../services/authService";
 
-const AuthContext = createContext(null);
+const AuthContext =
+    createContext(null);
 
-export function AuthProvider({ children }) {
-    const [doctor, setDoctor] = useState(authService.getCurrentDoctor());
-    const [loading, setLoading] = useState(true);
+export function AuthProvider({
+    children,
+}) {
+    const [doctor, setDoctor] =
+        useState(
+            authService.getCurrentDoctor()
+        );
+
+    const [loading, setLoading] =
+        useState(true);
 
     useEffect(() => {
-        const initAuth = async () => {
-            try {
-                if (authService.isAuthenticated()) {
-                    const profile = await authService.fetchProfile();
-                    if (profile) {
-                        setDoctor(profile);
+        let mounted = true;
+
+        const initialize =
+            async () => {
+                try {
+                    if (
+                        authService.isAuthenticated()
+                    ) {
+                        const profile =
+                            await authService.fetchProfile();
+
+                        if (
+                            mounted &&
+                            profile
+                        ) {
+                            setDoctor(
+                                profile
+                            );
+                        }
+                    }
+                } catch (error) {
+                    console.error(
+                        "[AuthContext] Initialization error:",
+                        error
+                    );
+                } finally {
+                    if (mounted) {
+                        setLoading(
+                            false
+                        );
                     }
                 }
-            } catch (err) {
-                console.error("[AuthContext] Session init error:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
+            };
 
-        initAuth();
+        initialize();
+
+        return () => {
+            mounted = false;
+        };
     }, []);
 
-    const login = async (email, password) => {
-        const res = await authService.login(email, password);
-        if (res.doctor) {
-            setDoctor(res.doctor);
+    const login = async (
+        email,
+        password
+    ) => {
+        const result =
+            await authService.login(
+                email,
+                password
+            );
+
+        if (result?.doctor) {
+            setDoctor(
+                result.doctor
+            );
         }
-        return res;
+
+        return result;
     };
 
-    const signup = async (doctorData) => {
-        const res = await authService.register(doctorData);
-        if (res.doctor) {
-            setDoctor(res.doctor);
-        }
-        return res;
+    const signup = async (
+        doctorData
+    ) => {
+        return authService.register(
+            doctorData
+        );
     };
 
-    const verifyGoogleAuth = async (token) => {
-        const res = await authService.verifyGoogleAuth(token);
-        if (res.doctor) {
-            setDoctor(res.doctor);
-        }
-        return res;
-    };
+    const verifyGoogleAuth =
+        async (
+            token
+        ) => {
+            const result =
+                await authService.verifyGoogleAuth(
+                    token
+                );
+
+            if (result?.doctor) {
+                setDoctor(
+                    result.doctor
+                );
+            }
+
+            return result;
+        };
 
     const logout = () => {
         authService.logout();
@@ -60,13 +118,22 @@ export function AuthProvider({ children }) {
             value={{
                 doctor,
                 user: doctor,
-                isAuthenticated: Boolean(doctor || authService.isAuthenticated()),
+
+                isAuthenticated:
+                    Boolean(
+                        doctor ||
+                        authService.isAuthenticated()
+                    ),
+
                 loading,
+
                 login,
                 signup,
                 verifyGoogleAuth,
                 logout,
-                updateDoctor: setDoctor,
+
+                updateDoctor:
+                    setDoctor,
             }}
         >
             {children}
@@ -75,21 +142,17 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-    const context = useContext(AuthContext);
+    const context =
+        useContext(
+            AuthContext
+        );
+
     if (!context) {
-        // Safe fallback if used outside provider
-        return {
-            doctor: authService.getCurrentDoctor(),
-            user: authService.getCurrentDoctor(),
-            isAuthenticated: authService.isAuthenticated(),
-            loading: false,
-            login: (e, p) => authService.login(e, p),
-            signup: (data) => authService.register(data),
-            verifyGoogleAuth: (token) => authService.verifyGoogleAuth(token),
-            logout: () => authService.logout(),
-            updateDoctor: () => {},
-        };
+        throw new Error(
+            "useAuth must be used inside AuthProvider."
+        );
     }
+
     return context;
 }
 

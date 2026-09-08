@@ -63,6 +63,19 @@ const PLATFORM_TABS = [
     { key: "instagram-short", label: "Instagram Shorts", icon: "fa-brands fa-instagram", color: "#E1306C" },
 ];
 
+// Utility to derive external link for YouTube or Instagram
+function getExternalUrl(video) {
+    if (video.platform === "instagram") {
+        return video.video_url || "https://www.instagram.com/doctors_vedika/";
+    }
+    if (video.external_id) {
+        return video.content_type === "short"
+            ? `https://www.youtube.com/shorts/${video.external_id}`
+            : `https://www.youtube.com/watch?v=${video.external_id}`;
+    }
+    return video.video_url || "https://www.youtube.com/@doctorsvedika";
+}
+
 /* ──────────────────────────────────────────
    VIDEO PLAYER MODAL
 ────────────────────────────────────────── */
@@ -73,13 +86,42 @@ function VideoModal({ video, onClose }) {
         return () => window.removeEventListener("keydown", handler);
     }, [onClose]);
 
+    // Automatically pause/close in-app video modal when user leaves tab/window
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.hidden) {
+                onClose();
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }, [onClose]);
+
     if (!video) return null;
+
+    let embedUrl = video.video_url;
+    if (video.platform === "youtube" && video.external_id) {
+        embedUrl = `https://www.youtube.com/embed/${video.external_id}?autoplay=1&rel=0`;
+    } else if (embedUrl && embedUrl.includes("/shorts/")) {
+        embedUrl = embedUrl.replace("/shorts/", "/embed/") + "?autoplay=1&rel=0";
+    }
+
+    const isShort = video.content_type === "short";
+    const externalUrl = getExternalUrl(video);
+    const platformName = video.platform === "instagram" ? "Instagram" : "YouTube";
+
+    const handleExternalRedirect = (e) => {
+        e.preventDefault();
+        window.open(externalUrl, "_blank");
+        onClose(); // Stop and unmount in-app video player so audio doesn't overlap
+    };
+
     return (
         <div
             onClick={onClose}
             style={{
                 position: "fixed", inset: 0, zIndex: 9999,
-                background: "rgba(0,0,0,0.82)",
+                background: "rgba(0,0,0,0.85)",
                 backdropFilter: "blur(8px)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 animation: "fadeIn 0.2s ease",
@@ -91,29 +133,58 @@ function VideoModal({ video, onClose }) {
                     background: "#0d1117",
                     borderRadius: "20px",
                     overflow: "hidden",
-                    width: "min(880px, 95vw)",
+                    width: isShort ? "auto" : "min(880px, 95vw)",
+                    maxWidth: "95vw",
                     boxShadow: "0 40px 100px rgba(0,0,0,0.6)",
                     animation: "slideUp 0.25s ease",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "stretch",
                 }}
             >
                 {/* Modal Header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)", background: "#111827", gap: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: "#fff", fontWeight: 700, fontSize: "1rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{video.title}</div>
-                        <div style={{ color: "#9ca3af", fontSize: "0.82rem", marginTop: 3 }}>{video.doctor_name} {video.is_verified && "✓"}</div>
+                        <div style={{ color: "#fff", fontWeight: 700, fontSize: "0.92rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{video.title}</div>
+                        <div style={{ color: "#08AEB8", fontSize: "0.78rem", marginTop: 2, fontWeight: 600 }}>{video.doctor_name || "Dr. D.V.L. Narayana Rao"} {video.is_verified && "✓"}</div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", width: 36, height: 36, borderRadius: "50%", cursor: "pointer", fontSize: "1rem", flexShrink: 0, marginLeft: 12, display: "flex", alignItems: "center", justifyContent: "center" }}
-                    >
-                        <i className="fa-solid fa-xmark" />
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <button
+                            type="button"
+                            onClick={handleExternalRedirect}
+                            style={{
+                                display: "inline-flex", alignItems: "center", gap: 6,
+                                padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+                                background: video.platform === "instagram" ? "linear-gradient(135deg,#f09433,#e6683c,#dc2743)" : "#FF0000",
+                                color: "#fff", fontSize: "0.78rem", fontWeight: 700,
+                                boxShadow: "0 2px 10px rgba(255,0,0,0.3)"
+                            }}
+                        >
+                            <i className={video.platform === "instagram" ? "fa-brands fa-instagram" : "fa-brands fa-youtube"} />
+                            Open in {platformName} <i className="fa-solid fa-arrow-up-right-from-square" style={{ fontSize: "0.68rem" }} />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: 32, height: 32, borderRadius: "50%", cursor: "pointer", fontSize: "0.9rem", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                        >
+                            <i className="fa-solid fa-xmark" />
+                        </button>
+                    </div>
                 </div>
-                {/* Embed */}
-                <div style={{ aspectRatio: video.content_type === "short" ? "9/16" : "16/9", maxHeight: "70vh", background: "#000" }}>
+                {/* Embed Container */}
+                <div style={{
+                    height: isShort ? "min(68vh, 520px)" : "auto",
+                    width: isShort ? "auto" : "100%",
+                    aspectRatio: isShort ? "9/16" : "16/9",
+                    background: "#000",
+                    margin: "0 auto",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                }}>
                     <iframe
-                        src={`${video.video_url}?autoplay=1&rel=0`}
+                        src={embedUrl}
                         title={video.title}
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
@@ -121,16 +192,27 @@ function VideoModal({ video, onClose }) {
                     />
                 </div>
                 {/* Footer */}
-                <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ background: "#1a1f2e", color: "#9ca3af", fontSize: "0.8rem", padding: "4px 10px", borderRadius: 20 }}>
-                        <i className="fa-solid fa-eye" style={{ marginRight: 5 }} />{formatViews(video.views_count)} views
-                    </span>
-                    <span style={{ background: "#1a1f2e", color: "#9ca3af", fontSize: "0.8rem", padding: "4px 10px", borderRadius: 20 }}>
-                        <i className="fa-solid fa-clock" style={{ marginRight: 5 }} />{video.duration}
-                    </span>
-                    <span style={{ background: "#1a1f2e", color: "#9ca3af", fontSize: "0.8rem", padding: "4px 10px", borderRadius: 20 }}>
-                        {timeAgo(video.published_at)}
-                    </span>
+                <div style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ background: "#1a1f2e", color: "#9ca3af", fontSize: "0.78rem", padding: "4px 10px", borderRadius: 20 }}>
+                            <i className="fa-solid fa-eye" style={{ marginRight: 5 }} />{formatViews(video.views_count)} views
+                        </span>
+                        {video.duration && (
+                            <span style={{ background: "#1a1f2e", color: "#9ca3af", fontSize: "0.78rem", padding: "4px 10px", borderRadius: 20 }}>
+                                <i className="fa-solid fa-clock" style={{ marginRight: 5 }} />{video.duration}
+                            </span>
+                        )}
+                        <span style={{ background: "#1a1f2e", color: "#9ca3af", fontSize: "0.78rem", padding: "4px 10px", borderRadius: 20 }}>
+                            {timeAgo(video.published_at)}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleExternalRedirect}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#08AEB8", fontSize: "0.8rem", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}
+                    >
+                        Redirect to {platformName} <i className="fa-solid fa-chevron-right" style={{ fontSize: "0.7rem" }} />
+                    </button>
                 </div>
             </div>
         </div>
@@ -142,6 +224,8 @@ function VideoModal({ video, onClose }) {
 ────────────────────────────────────────── */
 function VideoCard({ video, onClick }) {
     const [hovered, setHovered] = useState(false);
+    const externalUrl = getExternalUrl(video);
+
     return (
         <div
             onClick={() => onClick(video)}
@@ -167,21 +251,42 @@ function VideoCard({ video, onClick }) {
                     style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.4s ease", transform: hovered ? "scale(1.05)" : "scale(1)" }}
                     onError={(e) => { e.target.src = `https://img.youtube.com/vi/${video.external_id}/hqdefault.jpg`; }}
                 />
-                {/* Play Overlay */}
+                {/* Play / Redirect Overlay on Hover */}
                 <div style={{
                     position: "absolute", inset: 0,
-                    background: "rgba(0,0,0,0.35)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "rgba(0,0,0,0.45)",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
                     opacity: hovered ? 1 : 0, transition: "opacity 0.2s ease",
                 }}>
-                    <div style={{ width: 50, height: 50, background: "rgba(255,255,255,0.95)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
-                        <i className="fa-solid fa-play" style={{ color: "#FF0000", fontSize: "1.2rem", marginLeft: 4 }} />
-                    </div>
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onClick(video); }}
+                        style={{
+                            padding: "6px 14px", borderRadius: 20, background: "#08AEB8", color: "#fff",
+                            border: "none", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer",
+                            display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+                        }}
+                    >
+                        <i className="fa-solid fa-play" /> Watch In-App
+                    </button>
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); window.open(externalUrl, "_blank"); }}
+                        style={{
+                            padding: "5px 12px", borderRadius: 20, background: "rgba(255,255,255,0.9)", color: "#FF0000",
+                            border: "none", fontWeight: 700, fontSize: "0.74rem", cursor: "pointer",
+                            display: "flex", alignItems: "center", gap: 5
+                        }}
+                    >
+                        <i className="fa-brands fa-youtube" /> YouTube <i className="fa-solid fa-arrow-up-right-from-square" style={{ fontSize: "0.65rem" }} />
+                    </button>
                 </div>
                 {/* Duration Badge */}
-                <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.8)", color: "#fff", fontSize: "0.75rem", padding: "2px 7px", borderRadius: 6, fontWeight: 600, letterSpacing: "0.02em" }}>
-                    {video.duration}
-                </div>
+                {video.duration && (
+                    <div style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.8)", color: "#fff", fontSize: "0.75rem", padding: "2px 7px", borderRadius: 6, fontWeight: 600, letterSpacing: "0.02em" }}>
+                        {video.duration}
+                    </div>
+                )}
             </div>
             {/* Info */}
             <div style={{ padding: "12px 14px 14px" }}>
@@ -192,7 +297,7 @@ function VideoCard({ video, onClick }) {
                     <div style={{ width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg, #082B68, #08AEB8)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <i className="fa-solid fa-user-doctor" style={{ color: "#fff", fontSize: "0.65rem" }} />
                     </div>
-                    <span style={{ fontSize: "0.8rem", color: "#374151", fontWeight: 600 }}>{video.doctor_name || "Medical Expert"}</span>
+                    <span style={{ fontSize: "0.8rem", color: "#374151", fontWeight: 600 }}>{video.doctor_name || "Dr. D.V.L. Narayana Rao"}</span>
                     {video.is_verified && <i className="fa-solid fa-circle-check" style={{ color: "#08AEB8", fontSize: "0.72rem" }} />}
                 </div>
                 <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
@@ -208,18 +313,11 @@ function VideoCard({ video, onClick }) {
 ────────────────────────────────────────── */
 function ShortCard({ video, onClick }) {
     const [hovered, setHovered] = useState(false);
+    const externalUrl = getExternalUrl(video);
+
     return (
         <div
-            onClick={() => {
-                const videoId = video.external_id || (video.video_url && video.video_url.match(/embed\/([^?]+)/)?.[1]);
-                if (videoId) {
-                    window.open(`https://www.youtube.com/shorts/${videoId}`, '_blank');
-                } else if (video.video_url) {
-                    window.open(video.video_url, '_blank');
-                } else {
-                    onClick(video);
-                }
-            }}
+            onClick={() => onClick(video)}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             style={{
@@ -239,18 +337,45 @@ function ShortCard({ video, onClick }) {
                 src={video.thumbnail_url}
                 alt={video.title}
                 style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }}
+                onError={(e) => { if (video.external_id) e.target.src = `https://img.youtube.com/vi/${video.external_id}/hqdefault.jpg`; }}
             />
             {/* Gradient overlay */}
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.85) 40%, transparent 70%)" }} />
             {/* Duration */}
-            <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.75)", color: "#fff", fontSize: "0.72rem", padding: "2px 7px", borderRadius: 6, fontWeight: 700 }}>
-                {video.duration}
-            </div>
-            {/* Play icon overlay on hover */}
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: hovered ? 1 : 0, transition: "opacity 0.2s" }}>
-                <div style={{ width: 44, height: 44, background: "rgba(255,255,255,0.9)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <i className="fa-solid fa-play" style={{ color: "#FF0000", fontSize: "1.1rem", marginLeft: 3 }} />
+            {video.duration && (
+                <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.75)", color: "#fff", fontSize: "0.72rem", padding: "2px 7px", borderRadius: 6, fontWeight: 700 }}>
+                    {video.duration}
                 </div>
+            )}
+            {/* Dual Actions overlay on hover */}
+            <div style={{
+                position: "absolute", inset: 0,
+                background: "rgba(0,0,0,0.5)",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+                opacity: hovered ? 1 : 0, transition: "opacity 0.2s"
+            }}>
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onClick(video); }}
+                    style={{
+                        padding: "7px 14px", borderRadius: 20, background: "#08AEB8", color: "#fff",
+                        border: "none", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+                    }}
+                >
+                    <i className="fa-solid fa-play" /> Watch In-App
+                </button>
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); window.open(externalUrl, "_blank"); }}
+                    style={{
+                        padding: "6px 12px", borderRadius: 20, background: "rgba(255,255,255,0.92)", color: "#FF0000",
+                        border: "none", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 5
+                    }}
+                >
+                    <i className="fa-brands fa-youtube" /> YouTube <i className="fa-solid fa-arrow-up-right-from-square" style={{ fontSize: "0.62rem" }} />
+                </button>
             </div>
             {/* Bottom content */}
             <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px 12px 14px" }}>
@@ -258,7 +383,7 @@ function ShortCard({ video, onClick }) {
                     {video.title}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
-                    <span style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem" }}>{video.doctor_name}</span>
+                    <span style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem" }}>{video.doctor_name || "Dr. D.V.L. Narayana Rao"}</span>
                     {video.is_verified && <i className="fa-solid fa-circle-check" style={{ color: "#08AEB8", fontSize: "0.65rem" }} />}
                 </div>
                 <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.68rem", marginTop: 2 }}>
@@ -284,6 +409,8 @@ const IG_GRADIENT_STYLES = [
 function InstagramCard({ video, index, onClick }) {
     const [hovered, setHovered] = useState(false);
     const gradStyle = IG_GRADIENT_STYLES[index % IG_GRADIENT_STYLES.length];
+    const externalUrl = getExternalUrl(video);
+
     return (
         <div
             onClick={() => onClick(video)}
@@ -315,15 +442,41 @@ function InstagramCard({ video, index, onClick }) {
             </div>
 
             {/* Duration badge */}
-            <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(0,0,0,0.65)", color: "#fff", fontSize: "0.72rem", padding: "2px 7px", borderRadius: 6, fontWeight: 700 }}>
-                {video.duration}
-            </div>
-
-            {/* Play overlay */}
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: hovered ? 1 : 0, transition: "opacity 0.2s" }}>
-                <div style={{ width: 42, height: 42, background: "rgba(255,255,255,0.92)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <i className="fa-solid fa-play" style={{ color: "#E1306C", fontSize: "1rem", marginLeft: 3 }} />
+            {video.duration && (
+                <div style={{ position: "absolute", top: 10, left: 10, background: "rgba(0,0,0,0.65)", color: "#fff", fontSize: "0.72rem", padding: "2px 7px", borderRadius: 6, fontWeight: 700 }}>
+                    {video.duration}
                 </div>
+            )}
+
+            {/* Dual Actions overlay on hover */}
+            <div style={{
+                position: "absolute", inset: 0,
+                background: "rgba(0,0,0,0.5)",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+                opacity: hovered ? 1 : 0, transition: "opacity 0.2s"
+            }}>
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onClick(video); }}
+                    style={{
+                        padding: "7px 14px", borderRadius: 20, background: "#08AEB8", color: "#fff",
+                        border: "none", fontWeight: 700, fontSize: "0.75rem", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+                    }}
+                >
+                    <i className="fa-solid fa-play" /> Watch In-App
+                </button>
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); window.open(externalUrl, "_blank"); }}
+                    style={{
+                        padding: "6px 12px", borderRadius: 20, background: "rgba(255,255,255,0.92)", color: "#E1306C",
+                        border: "none", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 5
+                    }}
+                >
+                    <i className="fa-brands fa-instagram" /> Instagram <i className="fa-solid fa-arrow-up-right-from-square" style={{ fontSize: "0.62rem" }} />
+                </button>
             </div>
 
             {/* Bottom content */}
@@ -332,7 +485,7 @@ function InstagramCard({ video, index, onClick }) {
                     {video.title}
                 </div>
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.72rem", marginTop: 4 }}>
-                    {video.doctor_name}
+                    {video.doctor_name || "Dr. D.V.L. Narayana Rao"}
                 </div>
             </div>
         </div>
@@ -431,9 +584,11 @@ export default function VideosAndShorts() {
                     search: searchQuery || undefined,
                 },
             });
-            if (res.data?.youtubeVideos) setYtVideos(res.data.youtubeVideos.length ? res.data.youtubeVideos : SEED_VIDEOS);
-            if (res.data?.youtubeShorts) setYtShorts(res.data.youtubeShorts.length ? res.data.youtubeShorts : SEED_YT_SHORTS);
-            if (res.data?.instagramShorts) setIgShorts(res.data.instagramShorts.length ? res.data.instagramShorts : SEED_IG_SHORTS);
+            if (res.data?.success) {
+                if (res.data.youtubeVideos) setYtVideos(res.data.youtubeVideos);
+                if (res.data.youtubeShorts) setYtShorts(res.data.youtubeShorts);
+                if (res.data.instagramShorts) setIgShorts(res.data.instagramShorts);
+            }
         } catch {
             // fall back to seed data silently
         } finally {

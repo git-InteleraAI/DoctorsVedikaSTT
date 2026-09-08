@@ -5,7 +5,7 @@ import "./DoctorAuth.css";
 
 // Assets
 import vedikaLogo from "../assets/vedika_logo.png";
-import doctorCutout from "../assets/doctor_cutout.png";
+import doctorCutout from "../assets/doctor_bg.png";
 import iconSecure from "../assets/secure.png";
 import iconNeedHelp from "../assets/need_help.png";
 import iconDoctor from "../assets/doctor.png";
@@ -35,6 +35,11 @@ const DoctorSignup = () => {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  // Calculate maximum allowed DOB (at least 18 years old)
+  const todayDate = new Date();
+  const maxDobDate = new Date(todayDate.getFullYear() - 18, todayDate.getMonth(), todayDate.getDate());
+  const maxDobAllowed = maxDobDate.toISOString().split("T")[0];
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData({
@@ -50,6 +55,30 @@ const DoctorSignup = () => {
     if (!formData.fullName || !formData.email || !formData.password) {
       setErrorMsg("Full name, email address, and password are required.");
       return;
+    }
+
+    if (formData.dob) {
+      const selectedDate = new Date(formData.dob);
+      if (selectedDate > todayDate) {
+        setErrorMsg("Date of birth cannot be in the future.");
+        return;
+      }
+      if (selectedDate > maxDobDate) {
+        setErrorMsg("You must be at least 18 years old to register as a doctor.");
+        return;
+      }
+    }
+
+    if (formData.mobileNumber) {
+      const mobileDigits = formData.mobileNumber.replace(/\D/g, "");
+      if (mobileDigits.length !== 10) {
+        setErrorMsg("Mobile number must be exactly 10 digits.");
+        return;
+      }
+      if (!/^[6-9]/.test(mobileDigits)) {
+        setErrorMsg("Mobile number must start with 6, 7, 8, or 9.");
+        return;
+      }
     }
 
     if (formData.password.length < 6) {
@@ -105,13 +134,13 @@ const DoctorSignup = () => {
       <div className="auth-floating-plus p2">+</div>
 
       {/* Absolute Top Left Branding (Logo & Title) */}
-      <div className="auth-top-left-brand">
+      <Link to="/" className="auth-top-left-brand">
         <img src={vedikaLogo} alt="Doctors Vedika Logo" className="auth-brand-logo-img" />
         <div className="auth-brand-info">
           <div className="auth-brand-title">Doctors <span>Vedika</span></div>
           <div className="auth-brand-subtitle">Care. Consult. Cure.</div>
         </div>
-      </div>
+      </Link>
 
       {/* Main Content Grid */}
       <div className="doctor-auth-container animated-entry">
@@ -209,7 +238,7 @@ const DoctorSignup = () => {
                   type="text"
                   name="fullName"
                   className="auth-text-input"
-                  placeholder="Dr. Full Name"
+                  placeholder="e.g. Dr. Ramesh Kumar"
                   value={formData.fullName}
                   onChange={handleChange}
                   required
@@ -227,7 +256,7 @@ const DoctorSignup = () => {
                     type="email"
                     name="email"
                     className="auth-text-input"
-                    placeholder="doctor@hospital.com"
+                    placeholder="e.g. dr.ramesh@gmail.com"
                     value={formData.email}
                     onChange={handleChange}
                     required
@@ -243,7 +272,7 @@ const DoctorSignup = () => {
                     type="tel"
                     name="mobileNumber"
                     className="auth-text-input"
-                    placeholder="+91 98765 43210"
+                    placeholder="e.g. 9876543210"
                     value={formData.mobileNumber}
                     onChange={handleChange}
                   />
@@ -254,13 +283,14 @@ const DoctorSignup = () => {
             {/* DOB & Reg Number */}
             <div className="auth-form-grid-2">
               <div className="auth-input-group">
-                <label className="auth-input-label">Date of Birth</label>
+                <label className="auth-input-label">Date of Birth (Must be 18+)</label>
                 <div className="auth-input-field-wrapper">
                   <img src={iconCalender} alt="DOB" className="auth-input-icon-3d" />
                   <input
                     type="date"
                     name="dob"
                     className="auth-text-input"
+                    max={maxDobAllowed}
                     value={formData.dob}
                     onChange={handleChange}
                   />
@@ -275,7 +305,7 @@ const DoctorSignup = () => {
                     type="text"
                     name="registrationNumber"
                     className="auth-text-input"
-                    placeholder="MCI-XXXXXX"
+                    placeholder="e.g. MCI/2026/12345"
                     value={formData.registrationNumber}
                     onChange={handleChange}
                   />
@@ -298,6 +328,24 @@ const DoctorSignup = () => {
                     onChange={handleChange}
                     required
                   />
+                  <button
+                    type="button"
+                    className="auth-toggle-pwd-btn"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label="Toggle Password Visibility"
+                  >
+                    {showPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -314,6 +362,24 @@ const DoctorSignup = () => {
                     onChange={handleChange}
                     required
                   />
+                  <button
+                    type="button"
+                    className="auth-toggle-pwd-btn"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label="Toggle Password Visibility"
+                  >
+                    {showPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

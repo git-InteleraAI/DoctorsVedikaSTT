@@ -48,10 +48,7 @@ export default function LandingPage() {
                     </div>
 
                     <div className="nav-right" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                        <a href="/login" className="nav-item desktop-only" style={{ fontWeight: 600, color: "#0093a8" }}>
-                            Doctor Portal
-                        </a>
-                        <a href="#collaborate" className="btn-nav-action desktop-only">
+                        <a href="/login" className="btn-nav-action desktop-only">
                             Partner With Us <i className="fa-solid fa-arrow-up-right"></i>
                         </a>
                         <button 
@@ -73,8 +70,7 @@ export default function LandingPage() {
                         <a href="#operations" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Operations</a>
                         <a href="/dashboard" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Live Transcribe</a>
                         <div className="mobile-nav-divider"></div>
-                        <a href="/login" className="mobile-nav-item" style={{ color: "#0093a8", fontWeight: 700 }} onClick={() => setIsMobileMenuOpen(false)}>Doctor Portal</a>
-                        <a href="#collaborate" className="btn-nav-action" style={{ textAlign: 'center', marginTop: '1rem' }} onClick={() => setIsMobileMenuOpen(false)}>Partner With Us</a>
+                        <a href="/login" className="btn-nav-action" style={{ textAlign: 'center', marginTop: '1rem' }} onClick={() => setIsMobileMenuOpen(false)}>Partner With Us</a>
                     </div>
                 </div>
             </nav>
@@ -103,7 +99,7 @@ export default function LandingPage() {
                             post-surgery AI care pathways. Run your entire practice on a single secure ecosystem.
                         </p>
                         <div className="hero-actions entry-reveal-item" style={{ "--anim-order": "4" }}>
-                            <a href="#collaborate" className="btn-hero-primary">Partner With Us</a>
+                            <a href="/login" className="btn-hero-primary">Partner With Us</a>
                             <a href="#modules" className="btn-hero-secondary">Explore AI Modules <i
                                 className="fa-solid fa-arrow-right"></i></a>
                         </div>

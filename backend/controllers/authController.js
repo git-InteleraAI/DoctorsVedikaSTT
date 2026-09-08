@@ -1,185 +1,254 @@
-const authService = require("../services/authService");
+const authService =
+    require("../services/authService");
 
-/**
- * Controller for Doctor Authentication
- */
 class AuthController {
-    /**
-     * POST /api/auth/register
-     */
     async register(req, res) {
         try {
-            const { fullName, email, mobileNumber, dob, registrationNumber, password } = req.body || {};
-
-            if (!fullName || !email || !password) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Full name, email address, and password are required.",
-                });
-            }
-
-            if (password.length < 6) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Password must be at least 6 characters long.",
-                });
-            }
-
-            const result = await authService.register({
+            const {
                 fullName,
                 email,
                 mobileNumber,
                 dob,
                 registrationNumber,
                 password,
-            });
+            } = req.body || {};
+
+            if (
+                !fullName ||
+                !email ||
+                !password
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Full name, email address, and password are required.",
+                });
+            }
+
+            if (
+                password.length < 6
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Password must be at least 6 characters long.",
+                });
+            }
+
+            const result =
+                await authService.register({
+                    fullName,
+                    email,
+                    mobileNumber,
+                    dob,
+                    registrationNumber,
+                    password,
+                });
 
             return res.status(201).json({
                 success: true,
-                message: "Doctor account registered successfully.",
-                doctor: result.doctor,
-                token: result.token,
+                message:
+                    "Doctor account registered successfully.",
+                doctor:
+                    result.doctor,
+                token:
+                    result.token,
             });
         } catch (error) {
-            console.error("[AuthController] Registration error:", error.message);
+            console.error(
+                "[AuthController] Registration error:",
+                error
+            );
+
+            let friendlyMessage = error?.message || "Failed to create account. Please try again.";
+
+            if (
+                friendlyMessage.includes("duplicate key") ||
+                friendlyMessage.includes("violates unique constraint") ||
+                friendlyMessage.includes("23505") ||
+                friendlyMessage.includes("doctors_user_id_key")
+            ) {
+                friendlyMessage = "An account with this email address already exists. Please log in instead.";
+            } else if (friendlyMessage.includes("Database error:")) {
+                friendlyMessage = "An account with these details already exists. Please log in instead.";
+            }
+
             return res.status(400).json({
                 success: false,
-                message: error.message || "Failed to create account.",
+                message: friendlyMessage,
             });
         }
     }
 
-    /**
-     * POST /api/auth/login
-     */
     async login(req, res) {
         try {
-            const { email, password } = req.body || {};
+            const {
+                email,
+                password,
+            } = req.body || {};
 
-            if (!email || !password) {
+            if (
+                !email ||
+                !password
+            ) {
                 return res.status(400).json({
                     success: false,
-                    message: "Please provide both email and password.",
+                    message:
+                        "Please provide both email and password.",
                 });
             }
 
-            const result = await authService.login({ email, password });
+            const result =
+                await authService.login({
+                    email,
+                    password,
+                });
 
             return res.status(200).json({
                 success: true,
-                message: "Login successful.",
-                doctor: result.doctor,
-                token: result.token,
+                message:
+                    "Login successful.",
+                doctor:
+                    result.doctor,
+                token:
+                    result.token,
             });
         } catch (error) {
-            console.error("[AuthController] Login error:", error.message);
+            console.error(
+                "[AuthController] Login error:",
+                error
+            );
+
             return res.status(401).json({
                 success: false,
-                message: error.message || "Invalid credentials.",
+                message:
+                    error.message ||
+                    "Invalid credentials.",
             });
         }
     }
 
-    /**
-     * GET /api/auth/me
-     */
     async getMe(req, res) {
-        try {
-            return res.status(200).json({
-                success: true,
-                doctor: req.doctor,
-            });
-        } catch (error) {
-            return res.status(500).json({
-                success: false,
-                message: "Internal server error retrieving profile.",
-            });
-        }
+        return res.status(200).json({
+            success: true,
+            doctor:
+                req.doctor,
+        });
     }
 
-    /**
-     * PUT /api/auth/profile
-     */
     async updateProfile(req, res) {
         try {
-            const data = req.body || {};
-            const doctorId = req.doctor.id;
-            const doctorProfile = await authService.updateProfile(doctorId, data);
+            const doctor =
+                await authService.updateProfile(
+                    req.doctor.id,
+                    req.body || {}
+                );
+
             return res.status(200).json({
                 success: true,
-                message: "Profile updated successfully.",
-                doctor: doctorProfile,
+                message:
+                    "Profile updated successfully.",
+                doctor,
             });
         } catch (error) {
-            console.error("[AuthController] Update profile error:", error.message);
+            console.error(
+                "[AuthController] Profile error:",
+                error
+            );
+
             return res.status(500).json({
                 success: false,
-                message: error.message || "Failed to update profile.",
+                message:
+                    error.message ||
+                    "Failed to update profile.",
             });
         }
     }
 
-    /**
-     * POST /api/auth/forgot-password
+    async forgotPassword(
+        req,
+        res
+    ) {
+        const {
+            email,
+        } = req.body || {};
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Please provide your registered email address.",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message:
+                `Password reset instructions have been sent to ${email}`,
+        });
+    }
+
+    /*
+     * GOOGLE REDIRECT
      */
-    async forgotPassword(req, res) {
+    googleRedirect(
+        req,
+        res
+    ) {
         try {
-            const { email } = req.body || {};
-            if (!email) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Please provide your registered email address.",
-                });
-            }
+            const redirectTo =
+                req.query.redirect_to ||
+                "http://localhost:3000/auth/callback";
 
-            // In production, send reset email with magic link or OTP
-            return res.status(200).json({
-                success: true,
-                message: `Password reset instructions have been sent to ${email}`,
-            });
+            const url =
+                authService.generateGoogleOAuthUrl(
+                    redirectTo
+                );
+
+            return res.redirect(url);
         } catch (error) {
+            console.error(
+                "[AuthController] Google redirect error:",
+                error
+            );
+
             return res.status(500).json({
                 success: false,
-                message: "Failed to process forgot password request.",
+                message:
+                    error.message ||
+                    "Failed to initialize Google login.",
             });
         }
     }
 
-    /**
-     * GET /api/auth/google
-     * Redirects to Supabase Google OAuth
-     */
-    googleRedirect(req, res) {
-        try {
-            // Allow frontend to specify the callback URL dynamically, fallback to localhost
-            const clientRedirect = req.query.redirect_to;
-            const frontendCallbackUrl = clientRedirect || "http://localhost:5173/auth/callback";
-            const authorizeUrl = authService.generateGoogleOAuthUrl(frontendCallbackUrl);
-            return res.redirect(authorizeUrl);
-        } catch (error) {
-            console.error("[AuthController] Google Redirect error:", error.message);
-            return res.status(500).json({
-                success: false,
-                message: "Failed to initialize Google login.",
-            });
-        }
-    }
-
-    /**
-     * POST /api/auth/google/verify
-     * Verifies the Supabase access token and provisions the doctor
+    /*
+     * GOOGLE VERIFY
      */
     async googleVerify(req, res) {
         try {
             const { token } = req.body || {};
+
             if (!token) {
                 return res.status(400).json({
                     success: false,
-                    message: "Access token is required.",
+                    message: "Google access token is required.",
                 });
             }
 
-            const result = await authService.verifyGoogleToken(token);
+            console.log(
+                "[GoogleVerify] Received Google/Supabase access token."
+            );
+
+            const result =
+                await authService.verifyGoogleToken(token);
+
+            console.log(
+                "[GoogleVerify] Doctor authentication completed successfully:",
+                {
+                    doctorId: result?.doctor?.id,
+                    email: result?.doctor?.email,
+                }
+            );
 
             return res.status(200).json({
                 success: true,
@@ -187,71 +256,165 @@ class AuthController {
                 doctor: result.doctor,
                 token: result.token,
             });
+
         } catch (error) {
-            console.error("[AuthController] Google Verify error:", error.message);
-            return res.status(401).json({
+            console.error(
+                "================================================"
+            );
+
+            console.error(
+                "[GoogleVerify] GOOGLE AUTH ERROR"
+            );
+
+            console.error(
+                "message:",
+                error?.message
+            );
+
+            console.error(
+                "code:",
+                error?.code
+            );
+
+            console.error(
+                "details:",
+                error?.details
+            );
+
+            console.error(
+                "hint:",
+                error?.hint
+            );
+
+            console.error(
+                "stack:",
+                error?.stack
+            );
+
+            console.error(
+                "================================================"
+            );
+
+            return res.status(500).json({
                 success: false,
-                message: error.message || "Invalid Google authentication token.",
+
+                message:
+                    error?.message ||
+                    "Google authentication failed.",
+
+                error: {
+                    code:
+                        error?.code || null,
+
+                    details:
+                        error?.details || null,
+
+                    hint:
+                        error?.hint || null,
+                },
             });
         }
     }
-    /**
-     * POST /api/auth/onboarding
-     */
-    async completeOnboarding(req, res) {
+    async completeOnboarding(
+        req,
+        res
+    ) {
         try {
-            const data = req.body || {};
-            const doctorId = req.doctor.id; // from protect middleware
-
-            const doctorProfile = await authService.completeOnboarding(doctorId, data);
+            const doctor =
+                await authService.completeOnboarding(
+                    req.doctor.id,
+                    req.body || {}
+                );
 
             return res.status(200).json({
                 success: true,
-                message: "Onboarding completed successfully.",
-                doctor: doctorProfile,
+                message:
+                    "Onboarding completed successfully.",
+                doctor,
             });
         } catch (error) {
-            console.error("[AuthController] Onboarding error:", error.message);
+            console.error(
+                "[AuthController] Onboarding error:",
+                error
+            );
+
             return res.status(500).json({
                 success: false,
-                message: error.message || "Failed to complete onboarding.",
+                message:
+                    error.message ||
+                    "Failed to complete onboarding.",
             });
         }
     }
 
-    /**
-     * POST /api/auth/upload
-     */
-    async uploadFile(req, res) {
+    async uploadFile(
+        req,
+        res
+    ) {
         try {
             if (!req.file) {
-                return res.status(400).json({ success: false, message: "No file provided" });
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "No file provided.",
+                });
             }
 
-            const { type } = req.body; // 'profile', 'document', or 'gov_id'
-            if (!type || (type !== "profile" && type !== "document" && type !== "gov_id")) {
-                return res.status(400).json({ success: false, message: "Invalid or missing file type" });
+            const {
+                type,
+            } = req.body;
+
+            if (
+                ![
+                    "profile",
+                    "document",
+                    "gov_id",
+                ].includes(type)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Invalid file type.",
+                });
             }
 
-            const doctorId = req.doctor.id;
-            const extension = req.file.originalname.split('.').pop();
-            const filename = `${doctorId}_${Date.now()}.${extension}`;
+            const extension =
+                req.file.originalname
+                    .split(".")
+                    .pop();
 
-            const url = await authService.uploadToStorage(req.file.buffer, req.file.mimetype, type, filename);
+            const filename =
+                `${req.doctor.id}_${Date.now()}.${extension}`;
+
+            const url =
+                await authService.uploadToStorage(
+                    req.file.buffer,
+                    req.file.mimetype,
+                    type,
+                    filename
+                );
 
             return res.status(200).json({
                 success: true,
-                message: "File uploaded successfully",
-                url: url,
+                message:
+                    "File uploaded successfully.",
+                url,
             });
         } catch (error) {
-            console.error("[AuthController] Upload error:", error.message);
+            console.error(
+                "[AuthController] Upload error:",
+                error
+            );
+
             return res.status(500).json({
                 success: false,
-                message: error.message || "Failed to upload file.",
+                message:
+                    error.message ||
+                    "Failed to upload file.",
             });
         }
     }
 }
 
-module.exports = new AuthController();
+module.exports =
+    new AuthController();

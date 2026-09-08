@@ -1,4 +1,5 @@
-const { supabase } = require("../config/supabase");
+const { supabase, supabaseAdmin } = require("../config/supabase");
+const db = supabaseAdmin || supabase;
 
 // Shared in-memory appointments store for fallback conflict checking
 const inMemoryAppointments = [];
@@ -7,83 +8,129 @@ class AppointmentController {
     static getInMemoryAppointments() {
         return inMemoryAppointments;
     }
+
+    /**
+     * Helper to extract all doctor identifier keys
+     */
+    _getDoctorIds(reqDoctor) {
+        if (!reqDoctor) return [];
+        return [...new Set([
+            reqDoctor.id,
+            reqDoctor.doctor_id,
+            reqDoctor.userId,
+            reqDoctor.user_id,
+            reqDoctor.doctorId
+        ].filter(Boolean))];
+    }
+
     /**
      * Get appointments for the logged-in doctor
      * Supports filtering by tab and date
      */
     async getAppointments(req, res) {
         try {
-            const doctorId = req.doctor.id;
-            const { tab = "confirmed", dateFilter = "today", customDate } = req.query;
+            const doctorIds = this._getDoctorIds(req.doctor);
+            const { tab = "confirmed", dateFilter = "all", customDate } = req.query;
+            const todayDateStr = new Date().toISOString().split("T")[0];
 
-            // 1. Determine Date Range
-            // 2. Fetch Appointments
-            let query = supabase
-                .from("appointments")
-                .select("*")
-                .eq("doctor_id", doctorId);
+            // 1. Fetch all appointments for doctor matching any doctor identifier
+            let appointmentsDataRaw = [];
+            if (db && doctorIds.length > 0) {
+                const { data, error: appointmentsError } = await db
+                    .from("appointments")
+                    .select("*")
+                    .in("doctor_id", doctorIds);
 
-            if (dateFilter === "all") {
-                // If it's not completed, disable past dates by filtering >= today
-                if (tab !== "completed") {
-                    const todayDateStr = new Date().toISOString().split("T")[0];
-                    query = query.gte("appointment_date", todayDateStr);
+                if (appointmentsError) {
+                    console.error("[AppointmentController] Fetch error:", appointmentsError.message);
+                } else if (data) {
+                    appointmentsDataRaw = data;
                 }
-            } else {
-                let targetDate = new Date();
-                if (dateFilter === "tomorrow") {
-                    targetDate.setDate(targetDate.getDate() + 1);
-                } else if (dateFilter === "custom" && customDate) {
-                    targetDate = new Date(customDate);
+            }
+
+            // Fallback to in-memory if DB yields nothing
+            if (appointmentsDataRaw.length === 0 && inMemoryAppointments.length > 0) {
+                appointmentsDataRaw = inMemoryAppointments.filter(a => doctorIds.includes(a.doctor_id));
+            }
+
+            if (!appointmentsDataRaw || appointmentsDataRaw.length === 0) {
+                return res.json({ success: true, appointments: [] });
+            }
+
+            // 2. Filter appointments by tab & date filter
+            const appointmentsData = appointmentsDataRaw.filter((app) => {
+                const appDate = app.appointment_date;
+                const status = (app.status || "").toLowerCase();
+
+                // Specific Date Filter condition
+                if (dateFilter && dateFilter !== "all") {
+                    let targetDateStr = todayDateStr;
+                    if (dateFilter === "tomorrow") {
+                        const tomorrow = new Date();
+                        tomorrow.setDate(tomorrow.getDate() + 1);
+                        targetDateStr = tomorrow.toISOString().split("T")[0];
+                    } else if (dateFilter === "custom" && customDate) {
+                        targetDateStr = customDate;
+                    }
+                    if (appDate !== targetDateStr) {
+                        return false;
+                    }
                 }
-                
-                const formattedDate = targetDate.toISOString().split("T")[0];
-                query = query.eq("appointment_date", formattedDate);
-            }
 
-            // Filter by tab
-            if (tab === "completed") {
-                query = query.eq("status", "completed");
-            } else if (tab === "pending") {
-                // Assuming pending means consultation started but not finished, or past time
-                // For now we map it to a specific status or just fallback to confirmed
-                query = query.in("status", ["pending_consultation", "pending"]);
-            } else {
-                // "confirmed" tab
-                query = query.in("status", ["confirmed", "Confirmed"]);
-            }
-
-            const { data: appointmentsData, error: appointmentsError } = await query;
-
-            if (appointmentsError) {
-                throw new Error(appointmentsError.message);
-            }
+                // Tab Filter condition
+                if (tab === "completed") {
+                    return status === "completed";
+                } else if (tab === "pending") {
+                    const isExplicitPending = status === "pending" || status === "pending_consultation";
+                    const isPastConfirmed = status === "confirmed" && appDate < todayDateStr;
+                    return isExplicitPending || isPastConfirmed;
+                } else if (tab === "confirmed" || tab === "upcoming") {
+                    const isConfirmedStatus = status === "confirmed";
+                    if (dateFilter === "all") {
+                        return isConfirmedStatus && appDate >= todayDateStr;
+                    }
+                    return isConfirmedStatus;
+                } else if (tab === "today") {
+                    return appDate === todayDateStr && status !== "cancelled";
+                }
+                return status !== "cancelled";
+            });
 
             if (!appointmentsData || appointmentsData.length === 0) {
                 return res.json({ success: true, appointments: [] });
             }
+
+            // Sort appointments by time / date
+            appointmentsData.sort((a, b) => {
+                if (a.appointment_date !== b.appointment_date) {
+                    return a.appointment_date.localeCompare(b.appointment_date);
+                }
+                return (a.appointment_time || "").localeCompare(b.appointment_time || "");
+            });
 
             // 3. Fetch related Patient details & Appointment Symptoms
             const patientIds = [...new Set(appointmentsData.map((a) => a.patient_id).filter(Boolean))];
             const appointmentIds = appointmentsData.map((a) => a.id).filter(Boolean);
             
             let patientsMap = {};
-            if (patientIds.length > 0) {
-                const { data: patientsData } = await supabase
+            if (patientIds.length > 0 && db) {
+                const formattedIds = patientIds.map(id => `"${id}"`).join(",");
+                const { data: patientsData } = await db
                     .from("patients")
                     .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
-                    .in("user_id", patientIds);
+                    .or(`user_id.in.(${formattedIds}),id.in.(${formattedIds})`);
 
                 if (patientsData) {
                     patientsData.forEach(p => {
-                        patientsMap[p.user_id] = p;
+                        if (p.user_id) patientsMap[p.user_id] = p;
+                        if (p.id) patientsMap[p.id] = p;
                     });
                 }
             }
 
             let symptomsMap = {};
-            if (appointmentIds.length > 0) {
-                const { data: symptomsData } = await supabase
+            if (appointmentIds.length > 0 && db) {
+                const { data: symptomsData } = await db
                     .from("appointment_symptoms")
                     .select("*")
                     .in("appointment_id", appointmentIds);
@@ -109,17 +156,23 @@ class AppointmentController {
                     age = Math.abs(ageDt.getUTCFullYear() - 1970);
                 }
 
+                const name = patient.full_name || (patient.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || app.patient_name || "Unknown Patient";
+
                 return {
                     id: app.id,
-                    patientId: app.patient_id,
+                    patientId: patient.user_id || patient.id || app.patient_id,
                     patientCode: patient.patient_code || "",
-                    patientName: patient.full_name || app.patient_name || "Unknown Patient",
+                    patientName: name,
+                    patient_name: name,
                     patientPhoto: patient.profile_photo || null,
+                    profile_photo: patient.profile_photo || null,
                     age: age || app.age || null,
                     gender: patient.gender || app.gender || "Unknown",
                     bloodGroup: patient.blood_group || app.blood_group || "-",
                     appointmentDate: app.appointment_date,
+                    appointment_date: app.appointment_date,
                     time: app.appointment_time,
+                    appointment_time: app.appointment_time,
                     type: app.appointment_type || "Consultation",
                     status: app.status,
                     reason: sym.symptoms || app.reason || app.notes || "",
@@ -131,8 +184,10 @@ class AppointmentController {
                     additional_notes: sym.additional_notes || "",
                     additionalNotes: sym.additional_notes || "",
                     paymentMethod: app.payment_method || "pay_at_clinic",
+                    payment_method: app.payment_method || "pay_at_clinic",
                     paymentStatus: app.payment_status || "pending",
-                    consultationFee: req.doctor.consultationFee || app.consultation_fee || "500",
+                    payment_status: app.payment_status || "pending",
+                    consultationFee: req.doctor?.consultationFee || app.consultation_fee || "500",
                 };
             });
 
@@ -149,26 +204,26 @@ class AppointmentController {
     async getAppointmentById(req, res) {
         try {
             const { id } = req.params;
-            const doctorId = req.doctor.id;
+            const doctorIds = this._getDoctorIds(req.doctor);
 
-            const { data: appointment, error: appointmentError } = await supabase
+            const { data: appointment, error: appointmentError } = await db
                 .from("appointments")
                 .select("*")
                 .eq("id", id)
-                .eq("doctor_id", doctorId)
+                .in("doctor_id", doctorIds)
                 .single();
 
             if (appointmentError || !appointment) {
                 return res.status(404).json({ success: false, error: "Appointment not found" });
             }
 
-            const { data: patient } = await supabase
+            const { data: patient } = await db
                 .from("patients")
                 .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
-                .eq("user_id", appointment.patient_id)
-                .single();
+                .or(`user_id.eq."${appointment.patient_id}",id.eq."${appointment.patient_id}"`)
+                .maybeSingle();
 
-            const { data: sym } = await supabase
+            const { data: sym } = await db
                 .from("appointment_symptoms")
                 .select("*")
                 .eq("appointment_id", appointment.id)
@@ -182,27 +237,35 @@ class AppointmentController {
                 age = Math.abs(ageDt.getUTCFullYear() - 1970);
             }
 
+            const name = patient?.full_name || (patient?.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || appointment.patient_name || "Unknown Patient";
+
             const formattedAppointment = {
                 id: appointment.id,
-                patientId: appointment.patient_id,
+                patientId: patient?.user_id || patient?.id || appointment.patient_id,
                 patientCode: patient?.patient_code || "",
-                patientName: patient?.full_name || patient?.first_name || appointment.patient_name || "Unknown Patient",
+                patientName: name,
+                patient_name: name,
                 patientPhoto: patient?.profile_photo || null,
+                profile_photo: patient?.profile_photo || null,
                 age: age,
                 gender: patient?.gender || appointment.gender || "Unknown",
                 bloodGroup: patient?.blood_group || appointment.blood_group || "-",
                 appointmentDate: appointment.appointment_date,
+                appointment_date: appointment.appointment_date,
                 time: appointment.appointment_time,
+                appointment_time: appointment.appointment_time,
                 type: appointment.appointment_type || "Consultation",
                 status: appointment.status,
                 symptoms: sym?.symptoms || appointment.reason || "",
+                reason: sym?.symptoms || appointment.reason || "",
                 duration: sym?.duration || "",
                 severity: sym?.severity || "",
                 current_medications: sym?.current_medications || "",
                 currentMedications: sym?.current_medications || "",
                 additional_notes: sym?.additional_notes || "",
                 additionalNotes: sym?.additional_notes || "",
-                fee: req.doctor.consultationFee || appointment.consultation_fee || "500",
+                fee: req.doctor?.consultationFee || appointment.consultation_fee || "500",
+                consultationFee: req.doctor?.consultationFee || appointment.consultation_fee || "500",
                 paymentStatus: appointment.payment_status || "pending",
                 paymentMethod: appointment.payment_method || "pay_at_clinic"
             };
@@ -223,7 +286,7 @@ class AppointmentController {
             const validApptId = appointmentId && appointmentId !== "null" && appointmentId !== "undefined" && String(appointmentId).trim() !== "" ? String(appointmentId).trim() : null;
             const validPatientId = patientId && patientId !== "null" && patientId !== "undefined" && String(patientId).trim() !== "" ? String(patientId).trim() : null;
 
-            let query = supabase.from("appointment_symptoms").select("*");
+            let query = db.from("appointment_symptoms").select("*");
 
             if (validApptId) {
                 query = query.eq("appointment_id", validApptId);
@@ -254,17 +317,17 @@ class AppointmentController {
         try {
             const { id } = req.params;
             const { status } = req.body;
-            const doctorId = req.doctor.id;
+            const doctorIds = this._getDoctorIds(req.doctor);
 
             if (!status) {
                 return res.status(400).json({ success: false, message: "Status is required" });
             }
 
-            const { data, error } = await supabase
+            const { data, error } = await db
                 .from("appointments")
                 .update({ status: status, updated_at: new Date().toISOString() })
                 .eq("id", id)
-                .eq("doctor_id", doctorId)
+                .in("doctor_id", doctorIds)
                 .select()
                 .single();
 
@@ -292,7 +355,8 @@ class AppointmentController {
      */
     async bookAppointment(req, res) {
         try {
-            const doctorId = req.body.doctorId || req.doctor?.id;
+            const doctorIds = this._getDoctorIds(req.doctor);
+            const doctorId = req.body.doctorId || doctorIds[0] || req.doctor?.id;
             const { patientId, date, time, appointmentType = "Consultation", reason = "", fee = "500" } = req.body;
 
             if (!doctorId || !patientId || !date || !time) {
@@ -303,10 +367,10 @@ class AppointmentController {
             }
 
             // 1. Check Blocked Dates
-            const { data: blocked } = await supabase
+            const { data: blocked } = await db
                 .from("blocked_dates")
                 .select("*")
-                .eq("doctor_id", doctorId)
+                .in("doctor_id", doctorIds)
                 .eq("blocked_date", date)
                 .maybeSingle();
 
@@ -322,10 +386,10 @@ class AppointmentController {
             const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
             const dayName = dayNames[targetDate.getDay()];
 
-            const { data: avail } = await supabase
+            const { data: avail } = await db
                 .from("availability")
                 .select("*")
-                .eq("doctor_id", doctorId)
+                .in("doctor_id", doctorIds)
                 .eq("day_of_week", dayName)
                 .maybeSingle();
 
@@ -338,11 +402,11 @@ class AppointmentController {
 
             // 3. Conflict Check (Existing Bookings)
             let existingInDb = null;
-            if (supabase) {
-                const { data } = await supabase
+            if (db) {
+                const { data } = await db
                     .from("appointments")
                     .select("id, status")
-                    .eq("doctor_id", doctorId)
+                    .in("doctor_id", doctorIds)
                     .eq("appointment_date", date)
                     .eq("appointment_time", time)
                     .neq("status", "cancelled")
@@ -351,7 +415,7 @@ class AppointmentController {
             }
 
             const existingInMemory = inMemoryAppointments.find(
-                a => a.doctor_id === doctorId && a.appointment_date === date && a.appointment_time === time && a.status !== "cancelled"
+                a => doctorIds.includes(a.doctor_id) && a.appointment_date === date && a.appointment_time === time && a.status !== "cancelled"
             );
 
             if (existingInDb || existingInMemory) {
@@ -361,46 +425,28 @@ class AppointmentController {
                 });
             }
 
-            // 4. Fetch Patient Name for record fallback
-            let patientName = "Walk-in / Follow-up Patient";
-            let age = null;
-            if (supabase) {
-                const { data: patient } = await supabase
-                    .from("patients")
-                    .select("full_name, date_of_birth, gender, blood_group")
-                    .eq("user_id", patientId)
-                    .maybeSingle();
-
-                if (patient?.full_name) patientName = patient.full_name;
-                if (patient?.date_of_birth) {
-                    const dob = new Date(patient.date_of_birth);
-                    const diffMs = Date.now() - dob.getTime();
-                    age = Math.abs(new Date(diffMs).getUTCFullYear() - 1970);
-                }
-            }
-
-            // 5. Create Confirmed Appointment
+            // 4. Create Confirmed Appointment
             const newApp = {
                 doctor_id: doctorId,
                 patient_id: patientId,
                 appointment_date: date,
                 appointment_time: time,
-                status: "Confirmed",
+                status: "confirmed",
                 reason: reason || `${appointmentType} Appointment`,
-                payment_status: "paid",
+                payment_status: "pending",
                 payment_method: "pay_at_clinic"
             };
 
             let created = null;
-            if (supabase) {
-                const { data: inserted, error: createErr } = await supabase
+            if (db) {
+                const { data: inserted, error: createErr } = await db
                     .from("appointments")
                     .insert([newApp])
                     .select()
                     .single();
 
                 if (createErr) {
-                    console.warn("[AppointmentController] Supabase insert warning (using resilient record):", createErr.message);
+                    console.warn("[AppointmentController] Supabase insert warning:", createErr.message);
                     created = {
                         id: Date.now(),
                         ...newApp,
@@ -417,7 +463,6 @@ class AppointmentController {
                 };
             }
 
-            // Also keep track in memory for instant conflict detection
             inMemoryAppointments.push(newApp);
 
             return res.status(201).json({
@@ -437,50 +482,110 @@ class AppointmentController {
      */
     async getDashboardMetrics(req, res) {
         try {
-            const doctorId = req.doctor.id;
+            const doctorIds = this._getDoctorIds(req.doctor);
             const todayStr = new Date().toISOString().split("T")[0];
             
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-            // Fetch all appointments for doctor
-            const { data: allApps } = await supabase
-                .from("appointments")
-                .select("*")
-                .eq("doctor_id", doctorId);
+            let apps = [];
+            if (db && doctorIds.length > 0) {
+                const { data: allApps, error: fetchErr } = await db
+                    .from("appointments")
+                    .select("*")
+                    .in("doctor_id", doctorIds);
 
-            const apps = allApps || [];
+                if (fetchErr) {
+                    console.error("[AppointmentController] Metrics fetch error:", fetchErr.message);
+                } else if (allApps) {
+                    apps = allApps;
+                }
+            }
 
-            const todayApps = apps.filter(a => a.appointment_date === todayStr);
-            const tomorrowApps = apps.filter(a => a.appointment_date === tomorrowStr);
-            const pendingApps = apps.filter(a => a.status === "pending" || a.status === "pending_consultation");
-            const completedApps = apps.filter(a => a.status === "completed");
-            const confirmedApps = apps.filter(a => a.status === "Confirmed" || a.status === "confirmed");
+            if (apps.length === 0 && inMemoryAppointments.length > 0) {
+                apps = inMemoryAppointments.filter(a => doctorIds.includes(a.doctor_id));
+            }
 
-            // Fetch upcoming follow-ups from consultation_notes or appointments
-            const { data: notes } = await supabase
-                .from("consultation_notes")
-                .select("*")
-                .eq("doctor_id", doctorId)
-                .not("follow_up_date", "is", null);
+            const todayAppsRaw = apps.filter(a => a.appointment_date === todayStr && (a.status || "").toLowerCase() === "confirmed");
+            const tomorrowAppsRaw = apps.filter(a => a.appointment_date === tomorrowStr && (a.status || "").toLowerCase() === "confirmed");
+            const pendingAppsRaw = apps.filter(a => {
+                const s = (a.status || "").toLowerCase();
+                return s === "pending" || s === "pending_consultation" || (s === "confirmed" && a.appointment_date < todayStr);
+            });
+            const completedAppsRaw = apps.filter(a => (a.status || "").toLowerCase() === "completed");
+            const confirmedAppsRaw = apps.filter(a => (a.status || "").toLowerCase() === "confirmed" && a.appointment_date >= todayStr);
 
-            const followUps = (notes || []).map(n => ({
-                id: n.id,
-                patientId: n.patient_id,
-                patientName: n.patient_name || "Patient",
-                followUpDate: n.follow_up_date,
-                notes: n.follow_up || n.advice || ""
-            }));
+            // Populate Patient Details for today/tomorrow apps
+            const formatAppListWithPatients = async (appList) => {
+                if (!appList.length) return [];
+                const patientIds = [...new Set(appList.map(a => a.patient_id).filter(Boolean))];
+                let pMap = {};
+                if (patientIds.length > 0 && db) {
+                    const formattedIds = patientIds.map(id => `"${id}"`).join(",");
+                    const { data: pData } = await db
+                        .from("patients")
+                        .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
+                        .or(`user_id.in.(${formattedIds}),id.in.(${formattedIds})`);
+                    if (pData) {
+                        pData.forEach(p => {
+                            if (p.user_id) pMap[p.user_id] = p;
+                            if (p.id) pMap[p.id] = p;
+                        });
+                    }
+                }
+                return appList.map(app => {
+                    const patient = pMap[app.patient_id] || {};
+                    let age = null;
+                    if (patient.date_of_birth) {
+                        const dob = new Date(patient.date_of_birth);
+                        const diffMs = Date.now() - dob.getTime();
+                        age = Math.abs(new Date(diffMs).getUTCFullYear() - 1970);
+                    }
+                    const name = patient.full_name || (patient.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || app.patient_name || "Unknown Patient";
+                    return {
+                        ...app,
+                        patientId: patient.user_id || patient.id || app.patient_id,
+                        patientCode: patient.patient_code || "",
+                        patientName: name,
+                        patient_name: name,
+                        patientPhoto: patient.profile_photo || null,
+                        age: age || app.age || null,
+                        gender: patient.gender || app.gender || "Unknown",
+                        bloodGroup: patient.blood_group || app.blood_group || "-",
+                    };
+                });
+            };
+
+            const todayApps = await formatAppListWithPatients(todayAppsRaw);
+            const tomorrowApps = await formatAppListWithPatients(tomorrowAppsRaw);
+
+            // Fetch upcoming follow-ups from consultation_notes
+            let followUps = [];
+            if (db && doctorIds.length > 0) {
+                const { data: notes } = await db
+                    .from("consultation_notes")
+                    .select("*")
+                    .in("doctor_id", doctorIds)
+                    .not("follow_up_date", "is", null);
+
+                followUps = (notes || []).map(n => ({
+                    id: n.id,
+                    patientId: n.patient_id,
+                    patientName: n.patient_name || "Patient",
+                    followUpDate: n.follow_up_date,
+                    notes: n.follow_up || n.advice || ""
+                }));
+            }
 
             return res.json({
                 success: true,
                 metrics: {
-                    todayCount: todayApps.length,
-                    tomorrowCount: tomorrowApps.length,
-                    pendingCount: pendingApps.length,
-                    completedCount: completedApps.length,
-                    confirmedCount: confirmedApps.length,
+                    todayCount: todayAppsRaw.length,
+                    tomorrowCount: tomorrowAppsRaw.length,
+                    pendingCount: pendingAppsRaw.length,
+                    completedCount: completedAppsRaw.length,
+                    confirmedCount: confirmedAppsRaw.length,
                     totalCount: apps.length
                 },
                 todayAppointments: todayApps,
@@ -496,3 +601,4 @@ class AppointmentController {
 }
 
 module.exports = new AppointmentController();
+

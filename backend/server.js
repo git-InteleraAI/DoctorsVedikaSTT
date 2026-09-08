@@ -14,9 +14,11 @@ const {
 
 const {
     generateMedicalReportPdf,
+    renderPdfToStream,
 } = require("./pdf/generateMedicalReportPdf");
 
-const { supabase, isSupabaseConfigured } = require("./config/supabase");
+const { supabase, supabaseAdmin, isSupabaseConfigured } = require("./config/supabase");
+const db = supabaseAdmin || supabase;
 
 const app = express();
 
@@ -188,16 +190,16 @@ app.post(
 // SAVE COMPLETE CONSULTATION + COMBINED MEDICAL PDF
 // =====================================================
 
+const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
 // Helper function to resolve valid UUIDs for patient_id, doctor_id, appointment_id and doctor_name from Supabase
 async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqDoctor = null }) {
-    const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-
     let patUuid = isUuid(patientId) ? patientId : null;
     let docUuid = isUuid(doctorId) ? doctorId : null;
     let appUuid = isUuid(appointmentId) ? appointmentId : null;
     let doctorName = null;
 
-    if (!isSupabaseConfigured || !supabase) {
+    if (!isSupabaseConfigured || !db) {
         return { patUuid, docUuid, appUuid, doctorName: doctorName || "Dr. Harshini Jakki", patientDetails: { age: null, gender: null, name: null } };
     }
 
@@ -206,13 +208,17 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
     // 1. Resolve Patient UUID & Details
     if (patientId) {
         try {
-            const query = supabase.from("patients").select("id, user_id, full_name, age, gender, date_of_birth");
             let pData = null;
             if (isUuid(patientId)) {
-                const { data } = await query.or(`user_id.eq.${patientId},id.eq.${patientId}`).maybeSingle();
+                const { data } = await db.from("patients").select("id, user_id, full_name, age, gender, date_of_birth").or(`user_id.eq.${patientId},id.eq.${patientId}`).maybeSingle();
                 pData = data;
-            } else {
-                const { data } = await query.eq("patient_code", patientId).maybeSingle();
+            }
+            if (!pData) {
+                const cleanId = String(patientId).trim();
+                const { data } = await db.from("patients").select("id, user_id, full_name, age, gender, date_of_birth")
+                    .or(`patient_code.ilike.${cleanId},full_name.ilike.%${cleanId}%`)
+                    .limit(1)
+                    .maybeSingle();
                 pData = data;
             }
             if (pData) {
@@ -235,9 +241,18 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
         }
     }
 
+    if (!patUuid && appUuid) {
+        try {
+            const { data: appRow } = await db.from("appointments").select("patient_id").eq("id", appUuid).maybeSingle();
+            if (appRow && appRow.patient_id) {
+                patUuid = appRow.patient_id;
+            }
+        } catch (err) {}
+    }
+
     if (!patUuid) {
         try {
-            const { data: pFirst } = await supabase.from("patients").select("id, user_id, full_name, age, gender, date_of_birth").limit(1).maybeSingle();
+            const { data: pFirst } = await db.from("patients").select("id, user_id, full_name, age, gender, date_of_birth").limit(1).maybeSingle();
             if (pFirst) {
                 patUuid = pFirst.user_id || pFirst.id;
                 let calcAge = pFirst.age;
@@ -259,7 +274,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
     // 2. Resolve Doctor UUID & Doctor Name
     if (docUuid) {
         try {
-            const { data: dData } = await supabase.from("doctors").select("doctor_id, user_id, doctor_name").or(`doctor_id.eq.${docUuid},user_id.eq.${docUuid}`).maybeSingle();
+            const { data: dData } = await db.from("doctors").select("doctor_id, user_id, doctor_name").or(`doctor_id.eq.${docUuid},user_id.eq.${docUuid}`).maybeSingle();
             if (dData) {
                 docUuid = dData.doctor_id || dData.user_id;
                 doctorName = dData.doctor_name;
@@ -274,7 +289,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
 
     if (!docUuid || !doctorName) {
         try {
-            const { data: dData } = await supabase
+            const { data: dData } = await db
                 .from("doctors")
                 .select("doctor_id, user_id, doctor_name")
                 .or("doctor_email.ilike.%harshini%,doctor_name.ilike.%harshini%")
@@ -285,7 +300,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
                 if (!docUuid) docUuid = dData.doctor_id || dData.user_id;
                 if (!doctorName) doctorName = dData.doctor_name;
             } else {
-                const { data: anyDoc } = await supabase.from("doctors").select("doctor_id, user_id, doctor_name").limit(1).maybeSingle();
+                const { data: anyDoc } = await db.from("doctors").select("doctor_id, user_id, doctor_name").limit(1).maybeSingle();
                 if (anyDoc) {
                     if (!docUuid) docUuid = anyDoc.doctor_id || anyDoc.user_id;
                     if (!doctorName) doctorName = anyDoc.doctor_name;
@@ -303,7 +318,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
     // 3. Resolve Appointment UUID
     if (!appUuid && patUuid && docUuid) {
         try {
-            const { data: appData } = await supabase
+            const { data: appData } = await db
                 .from("appointments")
                 .select("id")
                 .eq("patient_id", patUuid)
@@ -315,7 +330,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
             if (appData) {
                 appUuid = appData.id;
             } else {
-                const { data: anyApp } = await supabase
+                const { data: anyApp } = await db
                     .from("appointments")
                     .select("id")
                     .eq("patient_id", patUuid)
@@ -332,7 +347,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
 
     if (!appUuid && patUuid && docUuid) {
         try {
-            const { data: newApp, error: appInsErr } = await supabase
+            const { data: newApp, error: appInsErr } = await db
                 .from("appointments")
                 .insert([
                     {
@@ -438,14 +453,15 @@ app.post(
             );
             fs.mkdirSync(patientFolder, { recursive: true });
 
-            const consultationId = `consultation-${Date.now()}`;
-
+            const resolvedAppId = appUuid || appointmentId || req.body.appointmentId;
+            const consultationId = req.body.consultationId || req.body.consultation_id || req.body.id || (resolvedAppId ? `consultation-app-${resolvedAppId}` : `consultation-pat-${patientId}`);
             const isCompleted = req.body.completed === true || String(req.body.status || "").toLowerCase() === "completed";
 
             const finalAge = req.body.patientAge || req.body.age || req.body.patient?.age || patientDetails?.age || null;
             const finalGender = req.body.patientGender || req.body.gender || req.body.patient?.gender || patientDetails?.gender || null;
             const finalName = patientName || req.body.patientName || req.body.patient?.name || patientDetails?.name || "Unknown Patient";
 
+            const s = summary || {};
             const patientRecord = {
                 consultationId,
                 doctorId: docUuid || doctorId || "default-doctor",
@@ -470,146 +486,133 @@ app.post(
                 completed: isCompleted,
                 completedAt: isCompleted ? now.toISOString() : null,
                 transcript: Array.isArray(transcript) ? transcript : [],
-                summary: summary || {},
+                summary: s,
                 diagnosis: Array.isArray(diagnosis) ? diagnosis : [],
                 medications: formatMedicines(medications, prescription),
                 prescription: prescription || null,
+                pdfUrl: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
             };
 
-            const recordPath = path.join(
-                patientFolder,
-                `${consultationId}.json`
-            );
-
-            const reportPath = path.join(
-                patientFolder,
-                `${consultationId}.txt`
-            );
-
-            // 1. Generate the final professional PDF FIRST.
-            console.log("[Clinical Save] Generating combined medical PDF for Doctor:", patientRecord.doctorName);
-            const pdf = await generateMedicalReportPdf(
-                patientRecord,
-                patientFolder
-            );
-            console.log("[Clinical Save] PDF created:", pdf.filePath);
-
-            // 2. Save JSON only after PDF generation succeeds.
-            fs.writeFileSync(
-                recordPath,
-                JSON.stringify(patientRecord, null, 2),
-                "utf8"
-            );
-
-            // 3. Save a simple text backup.
-            const s = patientRecord.summary || {};
-            const text = [
-                "========================================",
-                "DOCTORS VEDIKA",
-                "CONSULTATION REPORT",
-                "========================================",
-                `Patient: ${patientRecord.patientName}`,
-                `Patient ID: ${patientRecord.patientId}`,
-                `Doctor ID: ${patientRecord.doctorId}`,
-                `Doctor Name: ${patientRecord.doctorName}`,
-                `Appointment ID: ${patientRecord.appointmentId || "N/A"}`,
-                `Date: ${savedDate}`,
-                `Time: ${savedTime}`,
-                "",
-                "CLINICAL NOTES",
-                `Chief Complaint: ${s.chiefComplaint || s.chief_complaint || ""}`,
-                `Consultation Overview: ${s.consultationOverview || s.consultation_overview || ""}`,
-                `Symptoms: ${s.presentingSymptoms || s.presenting_symptoms || s.symptoms || ""}`,
-                `History: ${s.historyOfPresentIllness || s.history_of_present_illness || ""}`,
-                `Assessment: ${s.assessment || ""}`,
-                `Diagnosis: ${Array.isArray(s.diagnosis) ? s.diagnosis.join(", ") : (s.diagnosis || "")}`,
-                `Treatment Plan: ${s.treatmentPlan || s.treatment_plan || ""}`,
-                `Advice: ${s.advice || ""}`,
-                `Follow-up: ${s.followUp || s.follow_up || ""}`,
-                `Doctor Notes: ${s.notes || s.doctorNotes || s.doctor_notes || ""}`,
-                "",
-                "TRANSCRIPT",
-                ...(Array.isArray(transcript)
-                    ? transcript.map((item) => `[${item?.timestamp || ""}] ${item?.speaker || "Conversation"}: ${item?.text || ""}`)
-                    : []),
-            ].join("\n");
-
-            fs.writeFileSync(reportPath, text, "utf8");
-
-            // 4. Sync directly to public.consultation_notes and public.prescriptions if completed or requested
-            if (isCompleted && isSupabaseConfigured && supabase && appUuid && docUuid && patUuid) {
+            // Save strictly to public.consultation_notes, public.prescriptions, and public.appointments in Supabase
+            const targetDb = db || supabase;
+            if (isSupabaseConfigured && targetDb) {
                 try {
-                    if (appUuid) {
-                        await supabase
-                            .from("appointments")
-                            .update({ status: "completed", updated_at: new Date().toISOString() })
-                            .eq("id", appUuid);
+                    let resolvedAppUuid = appUuid;
+                    let resolvedDocUuid = docUuid;
+                    let resolvedPatUuid = patUuid;
+
+                    if (!resolvedAppUuid || !resolvedDocUuid || !resolvedPatUuid) {
+                        const details = await resolveSupabaseDetails({
+                            patientId: patientId,
+                            doctorId: doctorId || req.doctor?.id,
+                            appointmentId: appointmentId || appUuid,
+                            reqDoctor: req.doctor,
+                        });
+                        resolvedAppUuid = details.appUuid;
+                        resolvedDocUuid = details.docUuid;
+                        resolvedPatUuid = details.patUuid;
                     }
 
-                    const formattedNotesText = req.body.notes || [
-                        s.consultationOverview || s.consultation_overview || "",
-                        s.chiefComplaint || s.chief_complaint || "",
-                        s.historyOfPresentIllness || s.history_of_present_illness || "",
-                        s.assessment || "",
-                        s.treatmentPlan || s.treatment_plan || "",
-                        s.doctorNotes || s.doctor_notes || s.notes || "",
-                    ].filter((val) => val && String(val).trim()).join("\n\n");
+                    if (resolvedAppUuid && resolvedDocUuid && resolvedPatUuid) {
+                        if (isCompleted) {
+                            await targetDb
+                                .from("appointments")
+                                .update({ status: "completed", updated_at: new Date().toISOString() })
+                                .eq("id", resolvedAppUuid);
+                        }
 
-                    const symptomsText = req.body.symptoms || (Array.isArray(s.symptoms)
-                        ? s.symptoms.filter(Boolean).join(", ")
-                        : String(s.symptoms || s.presentingSymptoms || s.presenting_symptoms || "No symptoms recorded"));
+                        const formattedNotesText = req.body.notes || [
+                            s.consultationOverview || s.consultation_overview || "",
+                            s.chiefComplaint || s.chief_complaint || "",
+                            s.historyOfPresentIllness || s.history_of_present_illness || "",
+                            s.assessment || "",
+                            s.treatmentPlan || s.treatment_plan || "",
+                            s.doctorNotes || s.doctor_notes || s.notes || "",
+                        ].filter((val) => val && String(val).trim()).join("\n\n");
 
-                    const diagnosisText = req.body.diagnosis || (Array.isArray(s.diagnosis)
-                        ? s.diagnosis.filter(Boolean).join(", ")
-                        : String(s.diagnosis || ""));
+                        const symptomsText = req.body.symptoms || (Array.isArray(s.symptoms)
+                            ? s.symptoms.filter(Boolean).join(", ")
+                            : String(s.symptoms || s.presentingSymptoms || s.presenting_symptoms || "No symptoms recorded"));
 
-                    const rawAudioTranscript = req.body.audio_transcript || (Array.isArray(transcript) && transcript.length > 0
-                        ? transcript.map((item) => `[${item?.timestamp || ""}] ${item?.speaker || "Conversation"}: ${item?.text || ""}`).join("\n")
-                        : null);
+                        const diagnosisText = req.body.diagnosis || (Array.isArray(s.diagnosis)
+                            ? s.diagnosis.filter(Boolean).join(", ")
+                            : String(s.diagnosis || ""));
 
-                    const noteRecord = {
-                        appointment_id: appUuid,
-                        doctor_id: docUuid,
-                        patient_id: patUuid,
-                        notes: formattedNotesText || "Consultation completed.",
-                        symptoms: symptomsText || "No symptoms recorded",
-                        diagnosis: diagnosisText || null,
-                        language: req.body.language || s.detected_language || "English",
-                        audio_transcript: rawAudioTranscript,
-                        audio_url: req.body.audio_url || req.body.audioUrl || null,
-                        visit_id: req.body.visit_id || req.body.visitId || null,
-                        updated_at: new Date().toISOString(),
-                    };
+                        const rawAudioTranscript = req.body.audio_transcript || (Array.isArray(transcript) && transcript.length > 0
+                            ? transcript.map((item) => `[${item?.timestamp || ""}] ${item?.speaker || "Conversation"}: ${item?.text || ""}`).join("\n")
+                            : null);
 
-                    const { error: noteErr } = await supabase.from("consultation_notes").upsert(noteRecord, { onConflict: "appointment_id" });
-                    if (noteErr) console.warn("[Clinical Save] consultation_notes sync warning:", noteErr.message);
-                    else console.log("[Clinical Save] Successfully synced to public.consultation_notes table.");
+                        const fullSummaryData = {
+                            chief_complaint: s.chiefComplaint || s.chief_complaint || "",
+                            consultation_overview: s.consultationOverview || s.consultation_overview || "",
+                            history_of_present_illness: s.historyOfPresentIllness || s.history_of_present_illness || "",
+                            symptoms: symptomsText,
+                            past_medical_history: s.pastMedicalHistory || s.past_medical_history || "",
+                            allergies: s.allergies || "",
+                            current_medications: s.currentMedications || s.current_medications || "",
+                            examination_findings: s.examinationFindings || s.examination_findings || "",
+                            vital_signs: s.vitalSigns || s.vital_signs || {},
+                            investigations: s.investigations || "",
+                            assessment: s.assessment || "",
+                            diagnosis: diagnosisText,
+                            differential_diagnosis: s.differentialDiagnosis || s.differential_diagnosis || "",
+                            treatment_plan: s.treatmentPlan || s.treatment_plan || "",
+                            advice: formatAdvice(prescription?.advice || s.advice),
+                            follow_up: formatFollowUpDate(prescription?.follow_up_date || prescription?.follow_up),
+                            doctor_notes: s.doctorNotes || s.doctor_notes || s.notes || "",
+                            red_flags: s.redFlags || s.red_flags || "",
+                        };
 
-                    const prescriptionRecord = {
-                        appointment_id: appUuid,
-                        doctor_id: docUuid,
-                        patient_id: patUuid,
-                        medicines: formatMedicines(medications, prescription),
-                        advice: formatAdvice(prescription?.advice || s.advice),
-                        follow_up_date: formatFollowUpDate(prescription?.follow_up_date || prescription?.follow_up),
-                        pdf_url: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
-                        visit_id: req.body.visit_id || req.body.visitId || null,
-                        updated_at: new Date().toISOString(),
-                    };
+                        const notesStorageString = JSON.stringify({
+                            text: formattedNotesText || "Consultation completed.",
+                            summary: fullSummaryData
+                        });
 
-                    const { error: rxErr } = await supabase.from("prescriptions").upsert(prescriptionRecord, { onConflict: "appointment_id" });
-                    if (rxErr) console.warn("[Clinical Save] prescriptions sync warning:", rxErr.message);
-                    else console.log("[Clinical Save] Successfully synced to public.prescriptions table.");
+                        const noteRecord = {
+                            appointment_id: resolvedAppUuid,
+                            doctor_id: resolvedDocUuid,
+                            patient_id: resolvedPatUuid,
+                            notes: notesStorageString,
+                            symptoms: symptomsText || "No symptoms recorded",
+                            diagnosis: diagnosisText || null,
+                            language: req.body.language || s.detected_language || "English",
+                            audio_transcript: rawAudioTranscript,
+                            audio_url: req.body.audio_url || req.body.audioUrl || null,
+                            visit_id: req.body.visit_id || req.body.visitId || null,
+                            updated_at: new Date().toISOString(),
+                        };
+
+                        const { error: noteErr } = await targetDb.from("consultation_notes").upsert(noteRecord, { onConflict: "appointment_id" });
+                        if (noteErr) console.warn("[Clinical Save] consultation_notes sync warning:", noteErr.message);
+                        else console.log("[Clinical Save] Successfully synced to public.consultation_notes table.");
+
+                        const prescriptionRecord = {
+                            appointment_id: resolvedAppUuid,
+                            doctor_id: resolvedDocUuid,
+                            patient_id: resolvedPatUuid,
+                            medicines: formatMedicines(medications, prescription),
+                            advice: formatAdvice(prescription?.advice || s.advice),
+                            follow_up_date: formatFollowUpDate(prescription?.follow_up_date || prescription?.follow_up),
+                            pdf_url: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
+                            visit_id: req.body.visit_id || req.body.visitId || null,
+                            updated_at: new Date().toISOString(),
+                        };
+
+                        const { error: rxErr } = await targetDb.from("prescriptions").upsert(prescriptionRecord, { onConflict: "appointment_id" });
+                        if (rxErr) console.warn("[Clinical Save] prescriptions sync warning:", rxErr.message);
+                        else console.log("[Clinical Save] Successfully synced to public.prescriptions table.");
+                    } else {
+                        console.warn("[Clinical Save] Could not resolve complete UUIDs for DB sync:", { resolvedAppUuid, resolvedDocUuid, resolvedPatUuid });
+                    }
 
                 } catch (dbErr) {
                     console.warn("[Clinical Save] Supabase sync exception:", dbErr.message);
                 }
             }
 
-            // 5. Return explicit PDF information to the frontend.
             return res.status(201).json({
                 success: true,
-                message: "Consultation saved and professional PDF generated successfully.",
+                message: "Consultation saved to Supabase successfully.",
                 consultationId,
                 patientId,
                 appointmentId: appointmentId || null,
@@ -618,11 +621,6 @@ app.post(
                 status: patientRecord.status,
                 record: patientRecord,
                 files: {
-                    json: recordPath,
-                    report: reportPath,
-                    pdf: pdf.filePath,
-                    pdfFileName: pdf.fileName,
-                    pdfSize: pdf.size,
                     pdfUrl: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
                 },
             });
@@ -630,7 +628,7 @@ app.post(
             console.error("[Clinical Save] FAILED:", error);
             return res.status(500).json({
                 success: false,
-                message: "Failed to save consultation and generate PDF.",
+                message: "Failed to save consultation.",
                 error: error.message,
             });
         }
@@ -685,52 +683,187 @@ function resolvePatientFolder(patientId) {
 // =====================================================
 // VIEW THE COMBINED PDF FOR A PATIENT CONSULTATION
 // =====================================================
+// =====================================================
+// VIEW THE COMBINED PDF FOR A PATIENT CONSULTATION (Streamed directly from Supabase DB)
+// =====================================================
 app.get(
     "/api/v1/clinical/notes/:patientId/:consultationId/pdf",
-    (req, res) => {
+    async (req, res) => {
         try {
             const { patientId, consultationId } = req.params;
-            const patientFolder = resolvePatientFolder(patientId);
+            const targetDb = db || supabase;
 
-            if (!fs.existsSync(patientFolder)) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Patient record folder not found.",
-                });
+            let note = null;
+            let rx = null;
+            let patient = null;
+            let doctor = null;
+            let appointment = null;
+
+            const rawAppId = consultationId.replace("consultation-app-", "").replace("consultation-db-", "");
+
+            if (isSupabaseConfigured && targetDb) {
+                // 1. Fetch appointment first
+                if (isUuid(rawAppId)) {
+                    const { data: appData } = await targetDb
+                        .from("appointments")
+                        .select("*")
+                        .eq("id", rawAppId)
+                        .maybeSingle();
+                    appointment = appData;
+                }
+
+                // 2. Fetch patient using patientId or appointment.patient_id safely
+                if (isUuid(patientId)) {
+                    const { data: pData } = await targetDb
+                        .from("patients")
+                        .select("*")
+                        .or(`id.eq.${patientId},user_id.eq.${patientId}`)
+                        .maybeSingle();
+                    patient = pData;
+                } else if (patientId) {
+                    const { data: pData } = await targetDb
+                        .from("patients")
+                        .select("*")
+                        .eq("patient_code", patientId)
+                        .maybeSingle();
+                    patient = pData;
+                }
+
+                if (!patient && appointment?.patient_id && isUuid(appointment.patient_id)) {
+                    const { data: pData } = await targetDb
+                        .from("patients")
+                        .select("*")
+                        .or(`id.eq.${appointment.patient_id},user_id.eq.${appointment.patient_id}`)
+                        .maybeSingle();
+                    patient = pData;
+                }
+
+                // 3. Fetch consultation note
+                if (isUuid(rawAppId)) {
+                    const { data: notesData } = await targetDb
+                        .from("consultation_notes")
+                        .select("*")
+                        .eq("appointment_id", rawAppId)
+                        .maybeSingle();
+                    note = notesData;
+                }
+
+                if (!note && patient) {
+                    const patUuid = patient.id || patient.user_id;
+                    if (patUuid && isUuid(patUuid)) {
+                        const { data: notesData } = await targetDb
+                            .from("consultation_notes")
+                            .select("*")
+                            .eq("patient_id", patUuid)
+                            .order("created_at", { ascending: false });
+                        if (notesData && notesData.length > 0) note = notesData[0];
+                    }
+                }
+
+                const targetAppId = note?.appointment_id || rawAppId;
+
+                // 4. Fetch prescription
+                if (isUuid(targetAppId)) {
+                    const { data: rxData } = await targetDb
+                        .from("prescriptions")
+                        .select("*")
+                        .eq("appointment_id", targetAppId)
+                        .maybeSingle();
+                    rx = rxData;
+                }
+
+                // 5. Fetch doctor
+                const docId = note?.doctor_id || appointment?.doctor_id;
+                if (docId && isUuid(docId)) {
+                    const { data: docData } = await targetDb
+                        .from("doctors")
+                        .select("*")
+                        .or(`doctor_id.eq.${docId},user_id.eq.${docId}`)
+                        .maybeSingle();
+                    doctor = docData;
+                }
             }
 
-            const jsonPath = path.join(patientFolder, `${consultationId}.json`);
-            if (!fs.existsSync(jsonPath)) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Consultation record not found.",
-                });
+            const patientName = patient?.full_name || `${patient?.first_name || ""} ${patient?.last_name || ""}`.trim() || "Patient";
+
+            let age = null;
+            if (patient?.date_of_birth) {
+                const dob = new Date(patient.date_of_birth);
+                const diffMs = Date.now() - dob.getTime();
+                age = Math.abs(new Date(diffMs).getUTCFullYear() - 1970);
             }
 
-            const record = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-            const safeName = String(record.patientName || "patient")
-                .replace(/[^a-zA-Z0-9_-]+/g, "-")
-                .replace(/-+/g, "-")
-                .replace(/^-|-$/g, "")
-                .toLowerCase() || "patient";
-            const pdfPath = path.join(
-                patientFolder,
-                `${consultationId}-${safeName}.pdf`
-            );
-
-            if (!fs.existsSync(pdfPath)) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Combined medical PDF not found.",
-                });
+            // Parse full summary object from JSON string or paragraphs
+            let summaryObj = {};
+            if (note?.notes) {
+                try {
+                    if (note.notes.trim().startsWith("{")) {
+                        const parsed = JSON.parse(note.notes);
+                        summaryObj = parsed.summary || parsed;
+                    }
+                } catch (e) {}
             }
 
+            if (!summaryObj || Object.keys(summaryObj).length === 0) {
+                const paragraphs = (note?.notes || "").split("\n\n").map(p => p.trim()).filter(Boolean);
+                summaryObj = {
+                    consultation_overview: paragraphs[0] || "",
+                    chief_complaint: paragraphs[1] || appointment?.reason || "",
+                    history_of_present_illness: paragraphs[2] || "",
+                    symptoms: note?.symptoms || "",
+                    assessment: paragraphs[3] || "",
+                    treatment_plan: paragraphs[4] || "",
+                    advice: rx?.advice || "",
+                    follow_up: rx?.follow_up_date || "",
+                    doctor_notes: paragraphs[5] || "",
+                };
+            }
+
+            let parsedDiagnosis = [];
+            if (note?.diagnosis) {
+                try {
+                    parsedDiagnosis = typeof note.diagnosis === 'string' && note.diagnosis.startsWith('[')
+                        ? JSON.parse(note.diagnosis)
+                        : String(note.diagnosis).split(', ').map(s => s.trim()).filter(Boolean);
+                } catch (e) {
+                    parsedDiagnosis = [String(note.diagnosis)];
+                }
+            }
+
+            const rawDocName = doctor?.doctor_name || doctor?.full_name || doctor?.name;
+            const doctorName = rawDocName ? (rawDocName.toLowerCase().startsWith('dr') ? rawDocName : `Dr. ${rawDocName}`) : "Dr. Harshini Jakki";
+
+            const clinicName = doctor?.doctor_clinic_name || doctor?.clinic_name || doctor?.clinicName || "Sri sai krishna clinic";
+            const clinicAddress = doctor?.doctor_clinic_address || doctor?.clinic_address || doctor?.clinicAddress || "Hyderabad, Telangana, India";
+
+            const patientRecord = {
+                consultationId,
+                appointmentId: rawAppId,
+                patientId: patient?.patient_code || patientId,
+                patientName: patientName,
+                patientAge: age || patient?.age || null,
+                patientGender: patient?.gender || "Unknown",
+                doctorName: doctorName,
+                clinicName: clinicName,
+                clinicAddress: clinicAddress,
+                consultationDate: appointment?.appointment_date || (note?.created_at ? note.created_at.split("T")[0] : new Date().toISOString().split("T")[0]),
+                consultationTime: appointment?.appointment_time || "N/A",
+                summary: summaryObj,
+                diagnosis: parsedDiagnosis,
+                medications: rx?.medicines || [],
+                prescription: {
+                    medicines: rx?.medicines || [],
+                    advice: rx?.advice || summaryObj.advice || "",
+                    follow_up_date: rx?.follow_up_date || summaryObj.follow_up || ""
+                }
+            };
+
+            const safeName = patientName.replace(/[^a-zA-Z0-9_-]+/g, "-").toLowerCase();
             res.setHeader("Content-Type", "application/pdf");
-            res.setHeader(
-                "Content-Disposition",
-                `inline; filename="${path.basename(pdfPath)}"`
-            );
-            return res.sendFile(pdfPath);
+            res.setHeader("Content-Disposition", `inline; filename="${consultationId}-${safeName}.pdf"`);
+
+            return renderPdfToStream(patientRecord, res);
+
         } catch (error) {
             console.error("[Clinical PDF] View failed:", error);
             return res.status(500).json({
@@ -750,133 +883,31 @@ app.patch(
     async (req, res) => {
         try {
             const { patientId, consultationId } = req.params;
-            const patientFolder = resolvePatientFolder(patientId);
+            const targetDb = db || supabase;
 
-            if (!fs.existsSync(patientFolder)) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Patient record folder not found.",
-                });
+            let rawAppId = consultationId.replace("consultation-app-", "").replace("consultation-db-", "");
+            const { patUuid, docUuid, appUuid } = await resolveSupabaseDetails({
+                patientId,
+                doctorId: req.doctor?.id,
+                appointmentId: rawAppId,
+                reqDoctor: req.doctor,
+            });
+
+            const targetAppId = appUuid || rawAppId;
+
+            if (isSupabaseConfigured && targetDb && targetAppId) {
+                await targetDb
+                    .from("appointments")
+                    .update({ status: "completed", updated_at: new Date().toISOString() })
+                    .eq("id", targetAppId);
             }
-
-            const jsonPath = path.join(patientFolder, `${consultationId}.json`);
-            if (!fs.existsSync(jsonPath)) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Consultation record not found.",
-                });
-            }
-
-            const record = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-            record.status = "Completed";
-            record.completed = true;
-            record.completedAt = new Date().toISOString();
-
-            fs.writeFileSync(jsonPath, JSON.stringify(record, null, 2), "utf8");
-
-            // Sync to consultation_notes, prescriptions, and appointments in Supabase upon completion
-            if (isSupabaseConfigured && supabase) {
-                try {
-                    const { patUuid, docUuid, appUuid, doctorName } = await resolveSupabaseDetails({
-                        patientId: record.patientId || patientId,
-                        doctorId: record.doctorId,
-                        appointmentId: record.appointmentId,
-                        reqDoctor: req.doctor,
-                    });
-
-                    if (appUuid) {
-                        await supabase
-                            .from("appointments")
-                            .update({ status: "completed", updated_at: new Date().toISOString() })
-                            .eq("id", appUuid);
-                        console.log(`[Appointment] Updated appointment ${appUuid} to completed in Supabase.`);
-                    }
-
-                    if (appUuid && docUuid && patUuid) {
-                        const s = record.summary || {};
-                        const formattedNotesText = [
-                            s.consultationOverview || s.consultation_overview || "",
-                            s.chiefComplaint || s.chief_complaint || "",
-                            s.historyOfPresentIllness || s.history_of_present_illness || "",
-                            s.assessment || "",
-                            s.treatmentPlan || s.treatment_plan || "",
-                            s.doctorNotes || s.doctor_notes || s.notes || "",
-                        ]
-                            .filter((val) => val && String(val).trim())
-                            .join("\n\n");
-
-                        const symptomsText = Array.isArray(s.symptoms)
-                            ? s.symptoms.filter(Boolean).join(", ")
-                            : String(s.symptoms || s.presentingSymptoms || s.presenting_symptoms || "No symptoms recorded");
-
-                        const diagnosisText = Array.isArray(s.diagnosis)
-                            ? s.diagnosis.filter(Boolean).join(", ")
-                            : String(s.diagnosis || "");
-
-                        const rawAudioTranscript = Array.isArray(record.transcript)
-                            ? record.transcript.map((item) => `[${item?.timestamp || ""}] ${item?.speaker || "Conversation"}: ${item?.text || ""}`).join("\n")
-                            : null;
-
-                        const noteRecord = {
-                            appointment_id: appUuid,
-                            doctor_id: docUuid,
-                            patient_id: patUuid,
-                            notes: formattedNotesText || "Consultation completed.",
-                            symptoms: symptomsText || "No symptoms recorded",
-                            diagnosis: diagnosisText || null,
-                            language: s.detected_language || record.detectedLanguage || "English",
-                            audio_transcript: rawAudioTranscript,
-                            audio_url: record.audio_url || record.audioUrl || null,
-                            visit_id: record.visit_id || record.visitId || null,
-                            updated_at: new Date().toISOString(),
-                        };
-
-                        const { error: noteErr } = await supabase
-                            .from("consultation_notes")
-                            .upsert(noteRecord, { onConflict: "appointment_id" });
-
-                        if (noteErr) {
-                            console.warn("[Clinical Complete] Supabase consultation_notes sync notice:", noteErr.message);
-                        } else {
-                            console.log("[Clinical Complete] Successfully synced to public.consultation_notes table.");
-                        }
-
-                        const prescriptionRecord = {
-                            appointment_id: appUuid,
-                            doctor_id: docUuid,
-                            patient_id: patUuid,
-                            medicines: formatMedicines(record.medications, record.prescription),
-                            advice: formatAdvice(record.prescription?.advice || s.advice),
-                            follow_up_date: formatFollowUpDate(record.prescription?.follow_up_date || record.prescription?.follow_up),
-                            pdf_url: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
-                            visit_id: record.visit_id || record.visitId || null,
-                            updated_at: new Date().toISOString(),
-                        };
-
-                        const { error: rxErr } = await supabase
-                            .from("prescriptions")
-                            .upsert(prescriptionRecord, { onConflict: "appointment_id" });
-
-                        if (rxErr) {
-                            console.warn("[Clinical Complete] Supabase prescriptions sync notice:", rxErr.message);
-                        } else {
-                            console.log("[Clinical Complete] Successfully synced to public.prescriptions table.");
-                        }
-                    }
-                } catch (dbErr) {
-                    console.warn("[Clinical Complete] Supabase sync notice:", dbErr.message);
-                }
-            }
-
-            console.log(`[Clinical Record] Marked consultation ${consultationId} as Completed.`);
 
             return res.json({
                 success: true,
-                message: "Consultation marked as completed successfully.",
+                message: "Consultation marked as completed successfully in Supabase.",
                 consultationId,
                 patientId,
                 status: "Completed",
-                record,
                 pdfUrl: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
             });
         } catch (error) {
@@ -900,54 +931,45 @@ app.get(
         try {
             const { patientId } = req.params;
             let records = [];
+            const targetDbRead = db || supabase;
 
-            const patientFolder = resolvePatientFolder(patientId);
-            if (fs.existsSync(patientFolder)) {
-                const files = fs.readdirSync(patientFolder);
-                const jsonFiles = files.filter((file) => file.endsWith(".json"));
-
-                records = jsonFiles
-                    .map((file) => {
-                        try {
-                            const filePath = path.join(patientFolder, file);
-                            const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
-                            if (!data || !data.consultationId) return null;
-                            data.pdfUrl = `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(data.consultationId)}/pdf`;
-                            return data;
-                        } catch {
-                            return null;
-                        }
-                    })
-                    .filter((r) => {
-                        if (!r) return false;
-                        const hasSummary = r.summary && Object.keys(r.summary).length > 0;
-                        const hasDiag = Array.isArray(r.diagnosis) && r.diagnosis.length > 0;
-                        const hasTranscript = Array.isArray(r.transcript) && r.transcript.length > 0;
-                        return hasSummary || hasDiag || hasTranscript;
-                    });
-            }
-
-            // Filter patient records to return only completed consultations unless explicitly requested
-            const includeDrafts = req.query.includeDrafts === "true";
-            if (!includeDrafts) {
-                records = records.filter((r) => r && (r.completed === true || String(r.status).toLowerCase() === "completed"));
-            }
-
-            // Sync with Supabase consultation_notes and prescriptions if configured
-            if (isSupabaseConfigured && supabase) {
+            if (isSupabaseConfigured && targetDbRead) {
                 try {
-                    const { patUuid } = await resolveSupabaseDetails({ patientId });
-                    const targetPatId = patUuid || patientId;
+                    let pData = null;
+                    if (isUuid(patientId)) {
+                        const { data } = await targetDbRead
+                            .from("patients")
+                            .select("id, user_id, patient_code")
+                            .or(`user_id.eq.${patientId},id.eq.${patientId}`)
+                            .maybeSingle();
+                        pData = data;
+                    } else {
+                        const { data } = await targetDbRead
+                            .from("patients")
+                            .select("id, user_id, patient_code")
+                            .eq("patient_code", patientId)
+                            .maybeSingle();
+                        pData = data;
+                    }
 
-                    const { data: dbNotes } = await supabase
-                        .from("consultation_notes")
-                        .select("*")
-                        .or(`patient_id.eq.${targetPatId},patient_id.eq.${patientId}`);
+                    const matchedUuids = [...new Set([patientId, pData?.id, pData?.user_id].filter(Boolean))].filter(isUuid);
 
-                    const { data: dbRxs } = await supabase
-                        .from("prescriptions")
-                        .select("*")
-                        .or(`patient_id.eq.${targetPatId},patient_id.eq.${patientId}`);
+                    let dbNotes = [];
+                    let dbRxs = [];
+
+                    if (matchedUuids.length > 0) {
+                        const { data: notesData } = await targetDbRead
+                            .from("consultation_notes")
+                            .select("*")
+                            .in("patient_id", matchedUuids);
+                        if (notesData) dbNotes = notesData;
+
+                        const { data: rxsData } = await targetDbRead
+                            .from("prescriptions")
+                            .select("*")
+                            .in("patient_id", matchedUuids);
+                        if (rxsData) dbRxs = rxsData;
+                    }
 
                     if (dbNotes && dbNotes.length > 0) {
                         const rxMap = {};
@@ -955,37 +977,51 @@ app.get(
 
                         dbNotes.forEach((note) => {
                             const rx = rxMap[note.appointment_id] || {};
-                            const consId = `consultation-db-${note.id || note.appointment_id}`;
-                            const exists = records.some((r) => r.appointmentId === note.appointment_id || r.consultationId === consId);
+                            const consId = `consultation-app-${note.appointment_id || note.id}`;
 
-                            if (!exists) {
-                                records.push({
-                                    consultationId: consId,
-                                    id: consId,
-                                    doctorId: note.doctor_id,
-                                    patientId: note.patient_id,
-                                    appointmentId: note.appointment_id,
-                                    status: "Completed",
-                                    completed: true,
-                                    savedAt: note.updated_at || note.created_at,
-                                    consultationDate: (note.created_at || new Date().toISOString()).split("T")[0],
-                                    consultationTime: new Date(note.created_at || Date.now()).toLocaleTimeString("en-IN"),
-                                    summary: {
-                                        notes: note.notes,
-                                        symptoms: note.symptoms,
-                                        diagnosis: note.diagnosis,
-                                        language: note.language,
-                                    },
-                                    diagnosis: note.diagnosis ? note.diagnosis.split(", ") : [],
-                                    medications: rx.medicines || [],
-                                    prescription: {
-                                        medicines: rx.medicines || [],
-                                        advice: rx.advice || "",
-                                        follow_up_date: rx.follow_up_date || "",
-                                    },
-                                    pdfUrl: rx.pdf_url || `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consId)}/pdf`,
-                                });
+                            let summaryObj = {};
+                            if (note.notes) {
+                                try {
+                                    if (note.notes.trim().startsWith("{")) {
+                                        const parsed = JSON.parse(note.notes);
+                                        summaryObj = parsed.summary || parsed;
+                                    }
+                                } catch (e) {}
                             }
+
+                            if (!summaryObj || Object.keys(summaryObj).length === 0) {
+                                summaryObj = {
+                                    consultation_overview: note.notes || "",
+                                    symptoms: note.symptoms || "",
+                                    diagnosis: note.diagnosis || "",
+                                    language: note.language || "English",
+                                    advice: rx.advice || "",
+                                    follow_up: rx.follow_up_date || ""
+                                };
+                            }
+
+                            records.push({
+                                consultationId: consId,
+                                id: consId,
+                                doctorId: note.doctor_id,
+                                patientId: note.patient_id,
+                                appointmentId: note.appointment_id,
+                                status: "Completed",
+                                completed: true,
+                                savedAt: note.updated_at || note.created_at,
+                                consultationDate: (note.created_at || new Date().toISOString()).split("T")[0],
+                                consultationTime: new Date(note.created_at || Date.now()).toLocaleTimeString("en-IN"),
+                                summary: summaryObj,
+                                diagnosis: note.diagnosis ? note.diagnosis.split(", ") : (summaryObj.diagnosis ? [summaryObj.diagnosis] : []),
+                                medications: rx.medicines || [],
+                                prescription: {
+                                    medicines: rx.medicines || [],
+                                    advice: rx.advice || summaryObj.advice || "",
+                                    follow_up_date: rx.follow_up_date || summaryObj.follow_up || "",
+                                },
+                                audio_transcript: note.audio_transcript || null,
+                                pdfUrl: rx.pdf_url || `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consId)}/pdf`,
+                            });
                         });
                     }
                 } catch (dbErr) {
@@ -993,8 +1029,15 @@ app.get(
                 }
             }
 
-            // Latest consultation first
-            records.sort((a, b) => new Date(b.savedAt || b.createdAt || 0) - new Date(a.savedAt || a.createdAt || 0));
+            const uniqueMap = new Map();
+            records.forEach((r) => {
+                const key = r.appointmentId || r.consultationId;
+                if (!uniqueMap.has(key)) {
+                    uniqueMap.set(key, r);
+                }
+            });
+            records = Array.from(uniqueMap.values());
+            records.sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
 
             return res.json({
                 success: true,

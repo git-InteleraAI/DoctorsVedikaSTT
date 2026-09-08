@@ -78,8 +78,8 @@ export default function Appointments() {
             const fetchedData = Array.isArray(response.data?.appointments)
                 ? response.data.appointments
                 : Array.isArray(response.data)
-                ? response.data
-                : [];
+                    ? response.data
+                    : [];
 
             setAppointments(fetchedData);
         } catch (err) {
@@ -477,18 +477,9 @@ export default function Appointments() {
                                                 </button>
                                             )}
 
-                                            {status !== "completed" && status !== "cancelled" && (
-                                                <button
-                                                    className="btn-action-secondary"
-                                                    style={{ color: "#10b981", borderColor: "#10b981" }}
-                                                    onClick={() => handleStatusUpdate(app.id, "completed")}
-                                                >
-                                                    <i className="fa-solid fa-square-check"></i>
-                                                    Mark Completed
-                                                </button>
-                                            )}
 
-                                            {status !== "cancelled" && status !== "completed" && (
+
+                                            {/* {status !== "cancelled" && status !== "completed" && (
                                                 <button
                                                     className="btn-action-danger"
                                                     onClick={() => handleStatusUpdate(app.id, "cancelled")}
@@ -496,10 +487,39 @@ export default function Appointments() {
                                                     <i className="fa-solid fa-ban"></i>
                                                     Cancel
                                                 </button>
-                                            )}
+                                            )} */}
                                         </div>
 
-                                        {pId ? (
+                                        {status === "completed" ? (
+                                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                                                <button
+                                                    className="btn-action-secondary"
+                                                    style={{ color: "#10b981", borderColor: "#10b981", fontWeight: 700 }}
+                                                    onClick={() => navigate(`/patients/${encodeURIComponent(pId)}`)}
+                                                >
+                                                    <i className="fa-solid fa-address-book"></i>
+                                                    Patient Record
+                                                </button>
+                                                <button
+                                                    className="btn-start-consultation"
+                                                    style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                                                    onClick={() => navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(app.id || "")}`, {
+                                                        state: {
+                                                            appointmentId: app.id,
+                                                            patient: app,
+                                                            symptoms: app.symptoms || app.reason,
+                                                            duration: app.duration,
+                                                            severity: app.severity,
+                                                            current_medications: app.current_medications || app.currentMedications,
+                                                            additional_notes: app.additional_notes || app.additionalNotes,
+                                                        }
+                                                    })}
+                                                >
+                                                    <span>View Consultation</span>
+                                                    <i className="fa-solid fa-file-medical"></i>
+                                                </button>
+                                            </div>
+                                        ) : pId ? (
                                             <button
                                                 className="btn-start-consultation"
                                                 onClick={() => navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(app.id || "")}`, {
@@ -572,27 +592,41 @@ export default function Appointments() {
                             </button>
 
                             {(selectedAppointment.patientId || selectedAppointment.patient?.id) && (
-                                <button
-                                    className="btn-start-consultation"
-                                    onClick={() => {
-                                        const pId = selectedAppointment.patientId || selectedAppointment.patient?.id;
-                                        const aptId = selectedAppointment.id;
-                                        setSelectedAppointment(null);
-                                        navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(aptId)}`, {
-                                            state: {
-                                                appointmentId: aptId,
-                                                patient: selectedAppointment,
-                                                symptoms: selectedAppointment.symptoms || selectedAppointment.reason,
-                                                duration: selectedAppointment.duration,
-                                                severity: selectedAppointment.severity,
-                                                current_medications: selectedAppointment.current_medications || selectedAppointment.currentMedications,
-                                                additional_notes: selectedAppointment.additional_notes || selectedAppointment.additionalNotes,
-                                            }
-                                        });
-                                    }}
-                                >
-                                    Start Consultation <i className="fa-solid fa-arrow-right"></i>
-                                </button>
+                                String(selectedAppointment.status || "").toLowerCase() === "completed" ? (
+                                    <button
+                                        className="btn-start-consultation"
+                                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                                        onClick={() => {
+                                            const pId = selectedAppointment.patientId || selectedAppointment.patient?.id;
+                                            setSelectedAppointment(null);
+                                            navigate(`/patients/${encodeURIComponent(pId)}`);
+                                        }}
+                                    >
+                                        View Patient Record <i className="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                ) : (
+                                    <button
+                                        className="btn-start-consultation"
+                                        onClick={() => {
+                                            const pId = selectedAppointment.patientId || selectedAppointment.patient?.id;
+                                            const aptId = selectedAppointment.id;
+                                            setSelectedAppointment(null);
+                                            navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(aptId)}`, {
+                                                state: {
+                                                    appointmentId: aptId,
+                                                    patient: selectedAppointment,
+                                                    symptoms: selectedAppointment.symptoms || selectedAppointment.reason,
+                                                    duration: selectedAppointment.duration,
+                                                    severity: selectedAppointment.severity,
+                                                    current_medications: selectedAppointment.current_medications || selectedAppointment.currentMedications,
+                                                    additional_notes: selectedAppointment.additional_notes || selectedAppointment.additionalNotes,
+                                                }
+                                            });
+                                        }}
+                                    >
+                                        Start Consultation <i className="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                )
                             )}
                         </div>
                     </div>

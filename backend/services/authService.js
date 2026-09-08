@@ -1,11 +1,23 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { supabase, isSupabaseConfigured } = require("../config/supabase");
 
-const JWT_SECRET = process.env.JWT_SECRET || "doctors-vedika-super-secret-jwt-key-2026";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const {
+    supabase,
+    supabaseAdmin,
+    isSupabaseConfigured,
+} = require("../config/supabase");
 
-// In-memory store fallback when Supabase is not yet populated with credentials
+const JWT_SECRET =
+    process.env.JWT_SECRET ||
+    "doctors-vedika-super-secret-jwt-key-2026";
+
+const JWT_EXPIRES_IN =
+    process.env.JWT_EXPIRES_IN ||
+    "7d";
+
+/*
+ * In-memory fallback.
+ */
 let inMemoryDoctors = [
     {
         id: "doc-001",
@@ -14,518 +26,1740 @@ let inMemoryDoctors = [
         mobile_number: "+91 98765 43210",
         dob: "1985-05-15",
         registration_number: "MCI-784920-AP",
-        specialization: "General Physician & AI Consultant",
-        password_hash: bcrypt.hashSync("password123", 10),
-        created_at: new Date().toISOString(),
+        specialization:
+            "General Physician & AI Consultant",
+        password_hash:
+            bcrypt.hashSync(
+                "password123",
+                10
+            ),
+        created_at:
+            new Date().toISOString(),
+        onboarding_completed: false,
     },
 ];
 
 class AuthService {
-    /**
-     * Generate JWT Token for Doctor
+    /*
+     * ============================================================
+     * JWT
+     * ============================================================
      */
+
     generateToken(doctor) {
         return jwt.sign(
             {
-                id: doctor.doctor_id || doctor.id,
-                email: doctor.doctor_email || doctor.email,
-                fullName: doctor.doctor_name || doctor.full_name || doctor.fullName,
+                id:
+                    doctor.doctor_id ||
+                    doctor.id,
+
+                email:
+                    doctor.doctor_email ||
+                    doctor.email,
+
+                fullName:
+                    doctor.doctor_name ||
+                    doctor.full_name ||
+                    doctor.fullName,
             },
             JWT_SECRET,
-            { expiresIn: JWT_EXPIRES_IN }
+            {
+                expiresIn:
+                    JWT_EXPIRES_IN,
+            }
         );
     }
 
-    /**
-     * Format Doctor profile for client response (exclude password)
+    /*
+     * ============================================================
+     * DOCTOR FORMATTER
+     * ============================================================
      */
+
     formatDoctorProfile(doctor) {
+        const rawMobile = doctor.doctor_mobile || doctor.mobile_number || doctor.mobileNumber || "";
+        const cleanMobile = rawMobile === "0000000000" ? "" : rawMobile;
+
         return {
-            id: doctor.doctor_id || doctor.id,
-            fullName: doctor.doctor_name || doctor.full_name || doctor.fullName || "Dr. Doctor",
-            email: doctor.doctor_email || doctor.email || "",
-            mobileNumber: doctor.doctor_mobile || doctor.mobile_number || doctor.mobileNumber || "",
-            dob: doctor.doctor_dob || doctor.dob || "",
-            gender: doctor.doctor_gender || doctor.gender || "",
-            nationality: doctor.doctor_nationality || doctor.nationality || "Indian",
-            userId: doctor.doctor_code || doctor.user_id || `DVKID${String(doctor.doctor_id || doctor.id || "12345").slice(0, 5).toUpperCase()}`,
-            registrationNumber: doctor.doctor_registration_number || doctor.registration_number || doctor.registrationNumber || "",
-            specialization: doctor.doctor_specialization || doctor.specialization || "Cardiologist",
-            qualification: doctor.doctor_qualification || doctor.qualification || "MBBS, MD (General Medicine), DM (Cardiology)",
-            experience: doctor.doctor_experience || doctor.experience || "",
-            clinicName: doctor.doctor_clinic_name || doctor.clinic_name || doctor.clinicName || "",
-            clinicAddress: doctor.doctor_clinic_address || doctor.clinic_address || doctor.clinicAddress || "",
-            consultationFee: doctor.doctor_consultation_fee || doctor.consultation_fee || doctor.consultationFee || "",
-            languages: doctor.doctor_languages || doctor.languages || ["English", "Hindi", "Telugu"],
-            gmapsLocation: doctor.doctor_gmaps_location || doctor.gmaps_location || "",
-            medicalLicenseUrl: doctor.doctor_medical_license_url || doctor.medical_license_url || "",
-            govIdUrl: doctor.doctor_gov_id_url || doctor.gov_id_url || "",
-            description: doctor.doctor_description || doctor.description || "",
-            quote: doctor.doctor_quote || doctor.quote || "",
-            avatarUrl: doctor.doctor_profile_photo || doctor.avatar_url || doctor.avatarUrl || null,
-            createdAt: doctor.created_at || doctor.createdAt || new Date().toISOString(),
-            isActive: doctor.doctor_is_active ?? true,
-            verificationStatus: doctor.doctor_verification_status || "Active",
-            onboardingCompleted: doctor.onboarding_completed || false,
-            preferredLanguage: doctor.preferred_language || doctor.preferredLanguage || "English",
+            id:
+                doctor.doctor_id ||
+                doctor.id,
+
+            fullName:
+                doctor.doctor_name ||
+                doctor.full_name ||
+                doctor.fullName ||
+                "",
+
+            email:
+                doctor.doctor_email ||
+                doctor.email ||
+                "",
+
+            mobileNumber: cleanMobile,
+
+            dob:
+                doctor.doctor_dob ||
+                doctor.dob ||
+                "",
+
+            gender:
+                doctor.doctor_gender ||
+                doctor.gender ||
+                "",
+
+            nationality:
+                doctor.doctor_nationality ||
+                doctor.nationality ||
+                "Indian",
+
+            userId:
+                doctor.doctor_code ||
+                doctor.user_id ||
+                `DVKID${String(
+                    doctor.doctor_id ||
+                    doctor.id ||
+                    "12345"
+                )
+                    .slice(0, 5)
+                    .toUpperCase()}`,
+
+            registrationNumber:
+                doctor.doctor_registration_number ||
+                doctor.registration_number ||
+                doctor.registrationNumber ||
+                "",
+
+            specialization:
+                doctor.doctor_specialization ||
+                doctor.specialization ||
+                "",
+
+            qualification:
+                doctor.doctor_qualification ||
+                doctor.qualification ||
+                "",
+
+            experience:
+                doctor.doctor_experience ||
+                doctor.experience ||
+                "",
+
+            clinicName:
+                doctor.doctor_clinic_name ||
+                doctor.clinic_name ||
+                doctor.clinicName ||
+                "",
+
+            clinicAddress:
+                doctor.doctor_clinic_address ||
+                doctor.clinic_address ||
+                doctor.clinicAddress ||
+                "",
+
+            consultationFee:
+                doctor.doctor_consultation_fee ||
+                doctor.consultation_fee ||
+                doctor.consultationFee ||
+                "",
+
+            languages:
+                doctor.doctor_languages ||
+                doctor.languages ||
+                [],
+
+            gmapsLocation:
+                doctor.doctor_gmaps_location ||
+                doctor.gmaps_location ||
+                "",
+
+            medicalLicenseUrl:
+                doctor.doctor_medical_license_url ||
+                doctor.medical_license_url ||
+                "",
+
+            govIdUrl:
+                doctor.doctor_gov_id_url ||
+                doctor.gov_id_url ||
+                "",
+
+            description:
+                doctor.doctor_description ||
+                doctor.description ||
+                "",
+
+            quote:
+                doctor.doctor_quote ||
+                doctor.quote ||
+                "",
+
+            avatarUrl:
+                doctor.doctor_profile_photo ||
+                doctor.avatar_url ||
+                doctor.avatarUrl ||
+                null,
+
+            createdAt:
+                doctor.created_at ||
+                doctor.createdAt ||
+                new Date().toISOString(),
+
+            isActive:
+                doctor.doctor_is_active ??
+                true,
+
+            verificationStatus:
+                doctor.doctor_verification_status ||
+                "Pending",
+
+            onboardingCompleted:
+                doctor.onboarding_completed ??
+                false,
+
+            preferredLanguage:
+                doctor.preferred_language ||
+                doctor.preferredLanguage ||
+                "English",
         };
     }
 
-    /**
-     * Register a new Doctor
+    /*
+     * ============================================================
+     * EMAIL/PASSWORD REGISTER
+     * ============================================================
      */
-    async register({ fullName, email, mobileNumber, dob, registrationNumber, password }) {
-        const normalizedEmail = email.trim().toLowerCase();
 
-        // 1. Check if email already exists
-        if (isSupabaseConfigured && supabase) {
-            const { data: existingDoctor, error: checkError } = await supabase
+    async register({
+        fullName,
+        email,
+        mobileNumber,
+        dob,
+        registrationNumber,
+        password,
+    }) {
+        const normalizedEmail =
+            email
+                .trim()
+                .toLowerCase();
+
+        if (mobileNumber && mobileNumber.trim() !== "") {
+            const digits = mobileNumber.replace(/\D/g, "");
+            if (digits.length !== 10) {
+                throw new Error("Mobile number must be exactly 10 digits.");
+            }
+            if (!/^[6-9]/.test(digits)) {
+                throw new Error("Mobile number must start with 6, 7, 8, or 9.");
+            }
+        }
+
+        if (
+            isSupabaseConfigured &&
+            supabase
+        ) {
+            // Check if doctor account already exists by email
+            const {
+                data: existingDoctor,
+            } = await supabase
                 .from("doctors")
-                .select("doctor_id, doctor_email")
+                .select("doctor_id, doctor_email, user_id")
                 .eq("doctor_email", normalizedEmail)
                 .maybeSingle();
 
-            if (checkError && checkError.code !== "PGRST116") {
-                console.error("[AuthService] Supabase check error:", checkError);
-            }
-
             if (existingDoctor) {
-                throw new Error("An account with this email address already exists.");
+                throw new Error("An account with this email address already exists. Please log in instead.");
             }
 
-            // Register with Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
+            // Check if user account already exists in users table
+            const {
+                data: existingUser,
+            } = await supabase
+                .from("users")
+                .select("id, email")
+                .eq("email", normalizedEmail)
+                .maybeSingle();
+
+            if (existingUser) {
+                throw new Error("An account with this email address already exists. Please log in instead.");
+            }
+
+            // Create Supabase Auth account
+            const {
+                data: authData,
+                error: authError,
+            } = await supabase.auth.signUp({
                 email: normalizedEmail,
-                password: password,
+                password,
                 options: {
                     data: {
                         full_name: fullName.trim(),
-                    }
-                }
+                        role: "doctor",
+                    },
+                },
             });
 
-            if (authError || !authData.user) {
-                console.error("[AuthService] Supabase signup error:", authError);
-                throw new Error(`Registration failed: ${authError?.message || "Unknown error"}`);
+            if (authError || !authData?.user) {
+                const msg = authError?.message || "";
+                if (
+                    msg.toLowerCase().includes("already registered") ||
+                    msg.toLowerCase().includes("already exists") ||
+                    msg.toLowerCase().includes("user_already_exists")
+                ) {
+                    throw new Error("An account with this email address already exists. Please log in instead.");
+                }
+                throw new Error(msg || "Unable to create authentication account. Please try again.");
             }
 
-            // Insert into Supabase doctors table
-            const { data: newDoctor, error: insertError } = await supabase
+            if (!supabaseAdmin) {
+                throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is missing.");
+            }
+
+            // Check if a doctor profile already exists for this auth user ID
+            const {
+                data: docByUserId,
+            } = await supabaseAdmin
                 .from("doctors")
-                .insert([
-                    {
+                .select("*")
+                .eq("user_id", authData.user.id)
+                .maybeSingle();
+
+            let newDoctor = docByUserId;
+
+            if (!newDoctor) {
+                const {
+                    data: insertedDoctor,
+                    error: insertError,
+                } = await supabaseAdmin
+                    .from("doctors")
+                    .insert({
                         user_id: authData.user.id,
                         doctor_name: fullName.trim(),
                         doctor_email: normalizedEmail,
                         doctor_mobile: mobileNumber?.trim() || "0000000000",
                         doctor_dob: dob || null,
                         doctor_registration_number: registrationNumber?.trim() || null,
-                        doctor_specialization: "General Physician",
+                        doctor_specialization: null,
                         doctor_verification_status: "Pending",
                         doctor_is_active: true,
-                        onboarding_completed: false
-                    },
-                ])
-                .select()
-                .single();
+                        onboarding_completed: false,
+                    })
+                    .select()
+                    .single();
 
-            if (insertError) {
-                console.error("[AuthService] Supabase insert error:", insertError);
-                throw new Error(`Database error: ${insertError.message}`);
-            }
+                if (insertError) {
+                    console.error("[AuthService] Doctor registration insert error:", insertError);
 
-            try {
-                // Ensure the user role is set to doctor if there is a shared 'users' table or auth metadata
-                await supabase.from("users").update({ role: "doctor" }).eq("id", authData.user.id);
-                await supabase.auth.admin.updateUserById(authData.user.id, { user_metadata: { role: "doctor" } });
-            } catch (e) {
-                console.error("[AuthService] Error setting user role:", e);
-            }
-
-            const token = this.generateToken(newDoctor);
-            return {
-                doctor: this.formatDoctorProfile(newDoctor),
-                token,
-            };
-        } else {
-            // Fallback to in-memory store
-            const existing = inMemoryDoctors.find((d) => d.email.toLowerCase() === normalizedEmail);
-            if (existing) {
-                throw new Error("An account with this email address already exists.");
-            }
-
-            const salt = await bcrypt.genSalt(10);
-            const passwordHash = await bcrypt.hash(password, salt);
-
-            const newDoctor = {
-                id: `doc-${Date.now()}`,
-                full_name: fullName.trim(),
-                email: normalizedEmail,
-                mobile_number: mobileNumber?.trim() || "",
-                dob: dob || "",
-                registration_number: registrationNumber?.trim() || "",
-                password_hash: passwordHash,
-                specialization: "General Physician",
-                created_at: new Date().toISOString(),
-                onboarding_completed: false,
-            };
-
-            inMemoryDoctors.push(newDoctor);
-
-            const token = this.generateToken(newDoctor);
-            return {
-                doctor: this.formatDoctorProfile(newDoctor),
-                token,
-            };
-        }
-    }
-
-    /**
-     * Login Doctor
-     */
-    async login({ email, password }) {
-        const normalizedEmail = email.trim().toLowerCase();
-
-        if (isSupabaseConfigured && supabase) {
-            // First, authenticate with Supabase Auth to verify the password
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                email: normalizedEmail,
-                password: password,
-            });
-
-            if (authError || !authData.user) {
-                console.error("[AuthService] Supabase login error:", authError);
-                throw new Error("Invalid email or password.");
-            }
-
-            // If password is correct, fetch the doctor profile
-            const { data: doctor, error: profileError } = await supabase
-                .from("doctors")
-                .select("*")
-                .eq("doctor_email", normalizedEmail)
-                .maybeSingle();
-
-            if (profileError || !doctor) {
-                throw new Error("Doctor profile not found.");
-            }
-
-            // Link user_id if it's missing (migration from old schema)
-            if (!doctor.user_id) {
-                await supabase.from("doctors").update({ user_id: authData.user.id }).eq("doctor_id", doctor.doctor_id);
-                doctor.user_id = authData.user.id;
-            }
-
-            const token = this.generateToken(doctor);
-            return {
-                doctor: this.formatDoctorProfile(doctor),
-                token,
-            };
-        } else {
-            // In-memory fallback
-            const doctor = inMemoryDoctors.find((d) => d.email.toLowerCase() === normalizedEmail);
-            if (!doctor) {
-                throw new Error("Invalid email or password.");
-            }
-
-            const isMatch = await bcrypt.compare(password, doctor.password_hash);
-            if (!isMatch) {
-                throw new Error("Invalid email or password.");
-            }
-
-            const token = this.generateToken(doctor);
-            return {
-                doctor: this.formatDoctorProfile(doctor),
-                token,
-            };
-        }
-    }
-
-    /**
-     * Find doctor by ID
-     */
-    async getDoctorById(id) {
-        if (isSupabaseConfigured && supabase) {
-            const { data: doctor, error } = await supabase
-                .from("doctors")
-                .select("*")
-                .eq("doctor_id", id)
-                .maybeSingle();
-
-            if (error || !doctor) return null;
-            return this.formatDoctorProfile(doctor);
-        } else {
-            const doctor = inMemoryDoctors.find((d) => String(d.id) === String(id));
-            if (!doctor) return null;
-            return this.formatDoctorProfile(doctor);
-        }
-    }
-
-    /**
-     * Generate Google OAuth Implicit Flow URL
-     */
-    generateGoogleOAuthUrl(frontendCallbackUrl) {
-        if (!isSupabaseConfigured || !supabase) {
-            throw new Error("Supabase is not configured. Cannot perform OAuth.");
-        }
-        
-        // Supabase implicit flow OAuth URL format
-        // We use the supabase project URL directly
-        const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-        if (!supabaseUrl) throw new Error("Supabase URL is missing.");
-
-        const authorizeUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(frontendCallbackUrl)}`;
-        return authorizeUrl;
-    }
-
-    /**
-     * Verify Google Access Token and Provision Doctor
-     */
-    async verifyGoogleToken(accessToken) {
-        if (!isSupabaseConfigured || !supabase) {
-            throw new Error("Supabase is not configured.");
-        }
-
-        // Validate the access token via Supabase
-        const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
-
-        if (userError || !user) {
-            console.error("[AuthService] Google token validation failed:", userError);
-            throw new Error("Invalid or expired Google authentication token.");
-        }
-
-        const normalizedEmail = user.email.toLowerCase();
-
-        // Check if doctor exists
-        let { data: existingDoctor, error: checkError } = await supabase
-            .from("doctors")
-            .select("*")
-            .eq("doctor_email", normalizedEmail)
-            .maybeSingle();
-
-        if (checkError && checkError.code !== "PGRST116") {
-            console.error("[AuthService] DB check error:", checkError);
-            throw new Error(`Database error: ${checkError.message}`);
-        }
-
-        let doctorRecord = existingDoctor;
-
-        // If not exists, provision the new doctor
-        if (!doctorRecord) {
-            const fullName = user.user_metadata?.full_name || "Dr. Unnamed";
-            const avatarUrl = user.user_metadata?.avatar_url || null;
-
-            const { data: newDoctor, error: insertError } = await supabase
-                .from("doctors")
-                .insert([
-                    {
-                        user_id: user.id, // Supabase Auth User ID
-                        doctor_name: fullName,
-                        doctor_email: normalizedEmail,
-                        doctor_mobile: "0000000000", // Default required value
-                        doctor_verification_status: "Pending",
-                        doctor_is_active: true,
-                        doctor_specialization: "General Physician",
-                        doctor_profile_photo: avatarUrl,
-                        onboarding_completed: false
+                    if (insertError.code === "23505" || (insertError.message && insertError.message.includes("duplicate key"))) {
+                        throw new Error("An account with this email address or registration details already exists. Please log in instead.");
                     }
-                ])
-                .select()
-                .single();
+                    throw new Error("Unable to complete registration. Please check your details and try again.");
+                }
 
-            if (insertError) {
-                console.error("[AuthService] Failed to provision doctor from Google:", insertError);
-                throw new Error("Failed to create doctor account.");
+                newDoctor = insertedDoctor;
             }
 
-            doctorRecord = newDoctor;
-        } else if (!doctorRecord.user_id) {
-            // Link existing doctor to Supabase Auth User ID if missing
-            await supabase.from("doctors").update({ user_id: user.id }).eq("doctor_id", doctorRecord.doctor_id);
-            doctorRecord.user_id = user.id;
+            /*
+             * Create application user row.
+             */
+            const {
+                error: userInsertError,
+            } = await supabaseAdmin
+                .from("users")
+                .upsert(
+                    {
+                        id: authData.user.id,
+                        email: normalizedEmail,
+                        full_name: fullName.trim(),
+                        phone: mobileNumber?.trim() || null,
+                        role: "doctor",
+                        status: "active"
+                    },
+                    { onConflict: "id" }
+                );
+
+            if (userInsertError) {
+                console.warn("[AuthService] users table warning:", userInsertError.message);
+            }
+
+            return {
+                doctor: this.formatDoctorProfile(newDoctor),
+                token: this.generateToken(newDoctor),
+            };
         }
 
-        try {
-            // Ensure the user role is set to doctor if there is a shared 'users' table or auth metadata
-            await supabase.from("users").update({ role: "doctor" }).eq("id", user.id);
-            await supabase.auth.admin.updateUserById(user.id, { user_metadata: { role: "doctor" } });
-        } catch (e) {
-            console.error("[AuthService] Error setting user role:", e);
+        /*
+         * In-memory fallback.
+         */
+        const existing =
+            inMemoryDoctors.find(
+                (doctor) =>
+                    doctor.email
+                        .toLowerCase() ===
+                    normalizedEmail
+            );
+
+        if (existing) {
+            throw new Error(
+                "An account with this email address already exists."
+            );
         }
 
-        // Issue our Custom JWT
-        const token = this.generateToken(doctorRecord);
+        const passwordHash =
+            await bcrypt.hash(
+                password,
+                10
+            );
+
+        const newDoctor = {
+            id: `doc-${Date.now()}`,
+
+            full_name:
+                fullName.trim(),
+
+            email:
+                normalizedEmail,
+
+            mobile_number:
+                mobileNumber?.trim() ||
+                "",
+
+            dob:
+                dob || "",
+
+            registration_number:
+                registrationNumber?.trim() ||
+                "",
+
+            password_hash:
+                passwordHash,
+
+            specialization:
+                "General Physician",
+
+            created_at:
+                new Date().toISOString(),
+
+            onboarding_completed:
+                false,
+        };
+
+        inMemoryDoctors.push(
+            newDoctor
+        );
 
         return {
-            doctor: this.formatDoctorProfile(doctorRecord),
+            doctor:
+                this.formatDoctorProfile(
+                    newDoctor
+                ),
+
+            token:
+                this.generateToken(
+                    newDoctor
+                ),
+        };
+    }
+
+    /*
+     * ============================================================
+     * EMAIL/PASSWORD LOGIN
+     * ============================================================
+     */
+
+    async login({
+        email,
+        password,
+    }) {
+        const normalizedEmail =
+            email
+                .trim()
+                .toLowerCase();
+
+        if (
+            isSupabaseConfigured &&
+            supabase
+        ) {
+            const {
+                data: authData,
+                error: authError,
+            } =
+                await supabase.auth.signInWithPassword(
+                    {
+                        email:
+                            normalizedEmail,
+
+                        password,
+                    }
+                );
+
+            if (
+                authError ||
+                !authData.user
+            ) {
+                throw new Error(
+                    "Invalid email or password."
+                );
+            }
+
+            const {
+                data: doctor,
+                error: profileError,
+            } =
+                await supabase
+                    .from("doctors")
+                    .select("*")
+                    .eq(
+                        "doctor_email",
+                        normalizedEmail
+                    )
+                    .maybeSingle();
+
+            if (
+                profileError ||
+                !doctor
+            ) {
+                throw new Error(
+                    "Doctor profile not found."
+                );
+            }
+
+            if (
+                !doctor.user_id
+            ) {
+                const {
+                    data: linkedDoctor,
+                    error: linkError,
+                } =
+                    await supabaseAdmin
+                        .from("doctors")
+                        .update({
+                            user_id:
+                                authData.user.id,
+                        })
+                        .eq(
+                            "doctor_id",
+                            doctor.doctor_id
+                        )
+                        .select()
+                        .single();
+
+                if (!linkError) {
+                    doctor =
+                        linkedDoctor;
+                }
+            }
+
+            return {
+                doctor:
+                    this.formatDoctorProfile(
+                        doctor
+                    ),
+
+                token:
+                    this.generateToken(
+                        doctor
+                    ),
+            };
+        }
+
+        const doctor =
+            inMemoryDoctors.find(
+                (item) =>
+                    item.email
+                        .toLowerCase() ===
+                    normalizedEmail
+            );
+
+        if (!doctor) {
+            throw new Error(
+                "Invalid email or password."
+            );
+        }
+
+        const passwordMatch =
+            await bcrypt.compare(
+                password,
+                doctor.password_hash
+            );
+
+        if (!passwordMatch) {
+            throw new Error(
+                "Invalid email or password."
+            );
+        }
+
+        return {
+            doctor:
+                this.formatDoctorProfile(
+                    doctor
+                ),
+
+            token:
+                this.generateToken(
+                    doctor
+                ),
+        };
+    }
+
+    /*
+     * ============================================================
+     * GOOGLE OAUTH URL
+     * ============================================================
+     */
+
+    generateGoogleOAuthUrl(
+        frontendCallbackUrl
+    ) {
+        if (
+            !isSupabaseConfigured ||
+            !supabase
+        ) {
+            throw new Error(
+                "Supabase is not configured."
+            );
+        }
+
+        const projectUrl =
+            process.env.SUPABASE_URL ||
+            process.env.VITE_SUPABASE_URL;
+
+        if (!projectUrl) {
+            throw new Error(
+                "Supabase URL is missing."
+            );
+        }
+
+        return (
+            `${projectUrl}/auth/v1/authorize` +
+            `?provider=google` +
+            `&redirect_to=${encodeURIComponent(
+                frontendCallbackUrl
+            )}`
+        );
+    }
+
+    /*
+     * ============================================================
+     * GOOGLE LOGIN
+     * ============================================================
+     */
+
+    async verifyGoogleToken(
+        accessToken
+    ) {
+        if (
+            !accessToken ||
+            typeof accessToken !==
+            "string"
+        ) {
+            throw new Error(
+                "Google authentication token is missing."
+            );
+        }
+
+        if (
+            !isSupabaseConfigured ||
+            !supabase
+        ) {
+            throw new Error(
+                "Supabase authentication is not configured."
+            );
+        }
+
+        /*
+         * STEP 1
+         * Verify the OAuth access token.
+         */
+        const {
+            data: userData,
+            error: userError,
+        } =
+            await supabase.auth.getUser(
+                accessToken
+            );
+
+        if (
+            userError ||
+            !userData?.user
+        ) {
+            console.error(
+                "[GoogleAuth] Token validation failed:",
+                userError
+            );
+
+            throw new Error(
+                "Invalid or expired Google authentication token."
+            );
+        }
+
+        const user =
+            userData.user;
+
+        const normalizedEmail =
+            user.email
+                ?.trim()
+                .toLowerCase();
+
+        if (!normalizedEmail) {
+            throw new Error(
+                "Google account does not contain an email address."
+            );
+        }
+
+        console.log(
+            "[GoogleAuth] Supabase user verified:",
+            {
+                id: user.id,
+                email:
+                    normalizedEmail,
+                provider:
+                    user.app_metadata
+                        ?.provider,
+            }
+        );
+
+        /*
+         * STEP 2
+         * We MUST have the admin client for
+         * server-side provisioning.
+         */
+        if (!supabaseAdmin) {
+            throw new Error(
+                "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is missing."
+            );
+        }
+
+        const db =
+            supabaseAdmin;
+
+        /*
+         * STEP 3
+         * Set Google user's role to doctor.
+         */
+        try {
+            const {
+                error: metadataError,
+            } =
+                await db.auth.admin.updateUserById(
+                    user.id,
+                    {
+                        user_metadata: {
+                            ...(user.user_metadata ||
+                                {}),
+
+                            role: "doctor",
+                        },
+                    }
+                );
+
+            if (metadataError) {
+                console.warn(
+                    "[GoogleAuth] Metadata update warning:",
+                    metadataError.message
+                );
+            }
+        } catch (error) {
+            console.warn(
+                "[GoogleAuth] Metadata update warning:",
+                error.message
+            );
+        }
+
+        /*
+         * STEP 4
+         * Ensure public.users record exists with all required fields.
+         */
+        const metadata =
+            user.user_metadata ||
+            {};
+
+        const fullName =
+            metadata.full_name ||
+            metadata.name ||
+            metadata.fullName ||
+            normalizedEmail.split(
+                "@"
+            )[0] ||
+            "Doctor";
+
+        const avatarUrl =
+            metadata.avatar_url ||
+            metadata.picture ||
+            null;
+
+        const {
+            error: usersError,
+        } =
+            await db
+                .from("users")
+                .upsert(
+                    {
+                        id: user.id,
+
+                        email:
+                            normalizedEmail,
+
+                        role: "doctor",
+
+                        full_name:
+                            fullName,
+
+                        status:
+                            "active",
+                    },
+                    {
+                        onConflict:
+                            "id",
+                    }
+                );
+
+        if (usersError) {
+            console.warn(
+                "[GoogleAuth] public.users upsert warning:",
+                usersError.message || usersError
+            );
+        }
+
+        /*
+         * STEP 5
+         * Find Doctor using Supabase user ID.
+         */
+        let doctorRecord = null;
+
+        const {
+            data: doctorByUserId,
+            error: userIdError,
+        } =
+            await db
+                .from("doctors")
+                .select("*")
+                .eq(
+                    "user_id",
+                    user.id
+                )
+                .maybeSingle();
+
+        if (
+            userIdError &&
+            userIdError.code !==
+            "PGRST116"
+        ) {
+            console.error(
+                "[GoogleAuth] user_id lookup error:",
+                userIdError
+            );
+        }
+
+        if (doctorByUserId) {
+            doctorRecord =
+                doctorByUserId;
+
+            console.log(
+                "[GoogleAuth] Existing Doctor found by user_id:",
+                doctorRecord.doctor_id
+            );
+        }
+
+        /*
+         * STEP 6
+         * If not found by user_id, find Doctor by email (case-insensitive).
+         */
+        if (!doctorRecord) {
+            const {
+                data: doctorByEmail,
+                error: emailError,
+            } =
+                await db
+                    .from("doctors")
+                    .select("*")
+                    .ilike(
+                        "doctor_email",
+                        normalizedEmail
+                    )
+                    .maybeSingle();
+
+            if (
+                emailError &&
+                emailError.code !==
+                "PGRST116"
+            ) {
+                console.error(
+                    "[GoogleAuth] Email lookup error:",
+                    emailError
+                );
+            }
+
+            if (doctorByEmail) {
+                doctorRecord =
+                    doctorByEmail;
+
+                console.log(
+                    "[GoogleAuth] Existing Doctor found by email:",
+                    doctorRecord.doctor_id
+                );
+            }
+        }
+
+        /*
+         * STEP 7
+         * Existing Doctor:
+         * link the Google/Supabase user.
+         */
+        if (doctorRecord) {
+            if (
+                doctorRecord.user_id !==
+                user.id
+            ) {
+                const {
+                    data: linkedDoctor,
+                    error: linkError,
+                } =
+                    await db
+                        .from("doctors")
+                        .update({
+                            user_id:
+                                user.id,
+                        })
+                        .eq(
+                            "doctor_id",
+                            doctorRecord.doctor_id
+                        )
+                        .select()
+                        .single();
+
+                if (linkError) {
+                    console.error(
+                        "[GoogleAuth] Doctor linking failed:",
+                        linkError
+                    );
+
+                    throw new Error(
+                        `Unable to link Google account to Doctor profile: ${linkError.message}`
+                    );
+                }
+
+                doctorRecord =
+                    linkedDoctor;
+            }
+
+            /*
+             * Existing doctor has successfully
+             * authenticated with Google.
+             */
+            const token =
+                this.generateToken(
+                    doctorRecord
+                );
+
+            return {
+                doctor:
+                    this.formatDoctorProfile(
+                        doctorRecord
+                    ),
+
+                token,
+            };
+        }
+
+        /*
+         * STEP 8
+         * No Doctor exists.
+         *
+         * Create one.
+         */
+        console.log(
+            "[GoogleAuth] Creating Doctor:",
+            {
+                user_id:
+                    user.id,
+
+                email:
+                    normalizedEmail,
+
+                name:
+                    fullName,
+            }
+        );
+
+        const {
+            data: newDoctor,
+            error: insertError,
+        } =
+            await db
+                .from("doctors")
+                .insert({
+                    user_id:
+                        user.id,
+
+                    doctor_name:
+                        fullName,
+
+                    doctor_email:
+                        normalizedEmail,
+
+                    doctor_mobile:
+                        "0000000000",
+
+                    doctor_verification_status:
+                        "Pending",
+
+                    doctor_is_active:
+                        true,
+
+                    doctor_specialization:
+                        null,
+
+                    doctor_profile_photo:
+                        avatarUrl,
+
+                    onboarding_completed:
+                        false,
+                })
+                .select()
+                .single();
+
+        if (insertError) {
+            console.error(
+                "[GoogleAuth] DOCTOR INSERT FAILED:",
+                {
+                    code:
+                        insertError.code,
+
+                    message:
+                        insertError.message,
+
+                    details:
+                        insertError.details,
+
+                    hint:
+                        insertError.hint,
+                }
+            );
+
+            /*
+             * Fail-safe fallback lookup: check if doctor was just created or exists with user_id or email
+             */
+            const {
+                data: fallbackDoctor,
+            } = await db
+                .from("doctors")
+                .select("*")
+                .or(
+                    `user_id.eq.${user.id},doctor_email.ilike.${normalizedEmail}`
+                )
+                .maybeSingle();
+
+            if (fallbackDoctor) {
+                console.log(
+                    "[GoogleAuth] Fallback doctor recovered:",
+                    fallbackDoctor.doctor_id
+                );
+
+                if (fallbackDoctor.user_id !== user.id) {
+                    await db
+                        .from("doctors")
+                        .update({ user_id: user.id })
+                        .eq("doctor_id", fallbackDoctor.doctor_id);
+                    fallbackDoctor.user_id = user.id;
+                }
+
+                doctorRecord = fallbackDoctor;
+
+                const token = this.generateToken(doctorRecord);
+
+                return {
+                    doctor: this.formatDoctorProfile(doctorRecord),
+                    token,
+                };
+            }
+
+            throw new Error(
+                `Failed to create doctor account: ${insertError.message}`
+            );
+        }
+
+        doctorRecord =
+            newDoctor;
+
+        console.log(
+            "[GoogleAuth] Doctor created successfully:",
+            doctorRecord.doctor_id
+        );
+
+        /*
+         * STEP 9
+         * Generate Doctors Vedika JWT.
+         */
+        const token =
+            this.generateToken(
+                doctorRecord
+            );
+
+        return {
+            doctor:
+                this.formatDoctorProfile(
+                    doctorRecord
+                ),
+
             token,
         };
     }
 
-    /**
-     * Complete Onboarding
+    /*
+     * ============================================================
+     * GET DOCTOR
+     * ============================================================
      */
-    async completeOnboarding(doctorId, data) {
-        if (isSupabaseConfigured && supabase) {
-            const { data: updatedDoctor, error } = await supabase
-                .from("doctors")
-                .update({
-                    doctor_name: (data.doctor_first_name && data.doctor_last_name) ? `${data.doctor_first_name} ${data.doctor_last_name}` : data.doctor_first_name || data.doctor_last_name || data.doctor_name || null,
-                    doctor_first_name: data.doctor_first_name || (data.doctor_name ? data.doctor_name.split(' ')[0] : null),
-                    doctor_last_name: data.doctor_last_name || (data.doctor_name && data.doctor_name.includes(' ') ? data.doctor_name.split(' ').slice(1).join(' ') : null),
-                    doctor_email: data.doctor_email || null,
-                    doctor_mobile: data.doctor_mobile || null,
-                    doctor_registration_number: data.doctor_registration_number || null,
-                    doctor_domain: data.doctor_domain || null,
-                    doctor_specialization: data.doctor_specialization || null,
-                    doctor_qualification: data.doctor_qualification || null,
-                    doctor_experience: data.doctor_experience || null,
-                    doctor_clinic_name: data.doctor_clinic_name || null,
-                    doctor_clinic_address: data.doctor_clinic_address || null,
-                    doctor_consultation_fee: data.doctor_consultation_fee ? Number(data.doctor_consultation_fee) : null,
-                    doctor_languages: data.doctor_languages ? (typeof data.doctor_languages === 'string' ? data.doctor_languages.split(',').map(s => s.trim()).filter(Boolean) : data.doctor_languages) : [],
-                    doctor_profile_photo: data.doctor_profile_photo || null,
-                    doctor_gender: data.doctor_gender || null,
-                    doctor_dob: data.doctor_dob || null,
-                    doctor_gmaps_location: data.doctor_gmaps_location || null,
-                    doctor_medical_license_url: data.doctor_medical_license_url || null,
-                    doctor_gov_id_url: data.doctor_gov_id_url || null,
-                    doctor_description: data.doctor_description || null,
-                    doctor_quote: data.doctor_quote || null,
-                    onboarding_completed: true,
-                })
-                .eq("doctor_id", doctorId)
-                .select()
-                .single();
 
-            if (error) {
-                console.error("[AuthService] Supabase update onboarding error:", error);
-                throw new Error(`Database error: ${error.message}`);
+    async getDoctorById(id) {
+        if (
+            isSupabaseConfigured &&
+            supabase
+        ) {
+            const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+            let query = supabase.from("doctors").select("*");
+            if (isUuid(id)) {
+                query = query.or(`doctor_id.eq.${id},user_id.eq.${id}`);
+            } else {
+                query = query.eq("doctor_id", id);
+            }
+            const { data: doctor, error } = await query.maybeSingle();
+
+            if (
+                error ||
+                !doctor
+            ) {
+                return null;
             }
 
-            return this.formatDoctorProfile(updatedDoctor);
-        } else {
-            // In-memory fallback
-            const doctorIndex = inMemoryDoctors.findIndex((d) => String(d.id) === String(doctorId));
-            if (doctorIndex === -1) throw new Error("Doctor not found");
-
-            const doctor = inMemoryDoctors[doctorIndex];
-            // Assign fields mapping
-            doctor.full_name = data.doctor_name || doctor.full_name;
-            doctor.email = data.doctor_email || doctor.email;
-            doctor.mobile_number = data.doctor_mobile || doctor.mobile_number;
-            doctor.registration_number = data.doctor_registration_number || doctor.registration_number;
-            doctor.specialization = data.doctor_specialization || doctor.specialization;
-            doctor.qualification = data.doctor_qualification;
-            doctor.experience = data.doctor_experience;
-            doctor.clinic_name = data.doctor_clinic_name;
-            doctor.clinic_address = data.doctor_clinic_address;
-            doctor.consultation_fee = data.doctor_consultation_fee;
-            doctor.languages = data.doctor_languages;
-            doctor.avatar_url = data.doctor_profile_photo;
-            doctor.gender = data.doctor_gender;
-            doctor.dob = data.doctor_dob || doctor.dob;
-            doctor.gmaps_location = data.doctor_gmaps_location;
-            doctor.medical_license_url = data.doctor_medical_license_url;
-            doctor.gov_id_url = data.doctor_gov_id_url;
-            doctor.description = data.doctor_description;
-            doctor.quote = data.doctor_quote;
-            doctor.onboarding_completed = true;
-
-            inMemoryDoctors[doctorIndex] = doctor;
-            return this.formatDoctorProfile(doctor);
+            return this.formatDoctorProfile(
+                doctor
+            );
         }
+
+        const doctor =
+            inMemoryDoctors.find(
+                (item) =>
+                    String(
+                        item.id
+                    ) ===
+                    String(id)
+            );
+
+        if (!doctor) {
+            return null;
+        }
+
+        return this.formatDoctorProfile(
+            doctor
+        );
     }
 
-    /**
-     * Update Doctor Profile
+    /*
+     * ============================================================
+     * ONBOARDING
+     * ============================================================
      */
-    async updateProfile(doctorId, data) {
-        if (isSupabaseConfigured && supabase) {
-            const updatePayload = {};
-            if (data.fullName !== undefined) {
-                updatePayload.doctor_name = data.fullName;
-            }
-            if (data.email !== undefined) {
-                updatePayload.doctor_email = data.email;
-            }
-            if (data.mobileNumber !== undefined) {
-                updatePayload.doctor_mobile = data.mobileNumber;
-            }
-            if (data.registrationNumber !== undefined) updatePayload.doctor_registration_number = data.registrationNumber;
-            if (data.specialization !== undefined) updatePayload.doctor_specialization = data.specialization;
-            if (data.qualification !== undefined) updatePayload.doctor_qualification = data.qualification;
-            if (data.experience !== undefined) updatePayload.doctor_experience = data.experience;
-            if (data.clinicName !== undefined) updatePayload.doctor_clinic_name = data.clinicName;
-            if (data.clinicAddress !== undefined) updatePayload.doctor_clinic_address = data.clinicAddress;
-            if (data.consultationFee !== undefined) updatePayload.doctor_consultation_fee = Number(data.consultationFee) || 0;
-            if (data.languages !== undefined) updatePayload.doctor_languages = typeof data.languages === 'string' ? data.languages.split(',').map(s => s.trim()).filter(Boolean) : data.languages;
-            if (data.dob !== undefined) updatePayload.doctor_dob = data.dob;
-            if (data.gender !== undefined) updatePayload.doctor_gender = data.gender;
-            if (data.nationality !== undefined) updatePayload.doctor_nationality = data.nationality;
-            if (data.avatarUrl !== undefined) {
-                updatePayload.doctor_profile_photo = data.avatarUrl;
-            }
-            if (data.description !== undefined) updatePayload.doctor_description = data.description;
-            if (data.quote !== undefined) updatePayload.doctor_quote = data.quote;
-            if (data.preferredLanguage !== undefined) updatePayload.preferred_language = data.preferredLanguage;
+    /**
+     * Complete Doctor Onboarding
+     *
+     * IMPORTANT:
+     * - Never trust doctorId blindly from the frontend.
+     * - Resolve the doctor using:
+     *      1. authenticated doctor ID
+     *      2. Supabase user_id
+     *      3. doctor email
+     * - Never use .single() on an update until we know
+     *   exactly which row is being updated.
+     */
+    async completeOnboarding(doctorId, data = {}) {
+        if (!data || typeof data !== "object") {
+            throw new Error("Invalid onboarding data.");
+        }
 
-            const { data: updatedDoctor, error } = await supabase
+        /*
+         * ==========================================
+         * SUPABASE
+         * ==========================================
+         */
+        if (isSupabaseConfigured && supabase) {
+            const db = supabaseAdmin || supabase;
+
+            let doctorRecord = null;
+
+            /*
+             * ------------------------------------------
+             * STEP 1: Try doctor_id
+             * ------------------------------------------
+             */
+            if (doctorId) {
+                const {
+                    data: doctorById,
+                    error: doctorIdError,
+                } = await db
+                    .from("doctors")
+                    .select("*")
+                    .eq("doctor_id", doctorId)
+                    .maybeSingle();
+
+                if (doctorIdError) {
+                    console.error(
+                        "[AuthService] Doctor ID lookup error:",
+                        doctorIdError
+                    );
+                }
+
+                if (doctorById) {
+                    doctorRecord = doctorById;
+                }
+            }
+
+            /*
+             * ------------------------------------------
+             * STEP 2: Try user_id
+             *
+             * This is especially important for Google
+             * authenticated doctors.
+             * ------------------------------------------
+             */
+            if (!doctorRecord) {
+                let authUser = null;
+
+                try {
+                    const {
+                        data: {
+                            user,
+                        } = {},
+                        error: authError,
+                    } = await db.auth.getUser();
+
+                    if (!authError && user) {
+                        authUser = user;
+                    }
+                } catch (error) {
+                    console.warn(
+                        "[AuthService] Unable to resolve current Supabase user:",
+                        error.message
+                    );
+                }
+
+                if (authUser?.id) {
+                    const {
+                        data: doctorByUserId,
+                        error: userIdError,
+                    } = await db
+                        .from("doctors")
+                        .select("*")
+                        .eq("user_id", authUser.id)
+                        .maybeSingle();
+
+                    if (userIdError) {
+                        console.warn(
+                            "[AuthService] Doctor user_id lookup warning:",
+                            userIdError.message
+                        );
+                    }
+
+                    if (doctorByUserId) {
+                        doctorRecord = doctorByUserId;
+                    }
+                }
+            }
+
+            /*
+             * ------------------------------------------
+             * STEP 3: Try email
+             *
+             * This provides compatibility with doctors
+             * created before user_id was linked.
+             * ------------------------------------------
+             */
+            if (!doctorRecord && data.doctor_email) {
+                const normalizedEmail =
+                    String(data.doctor_email)
+                        .trim()
+                        .toLowerCase();
+
+                const {
+                    data: doctorByEmail,
+                    error: emailError,
+                } = await db
+                    .from("doctors")
+                    .select("*")
+                    .eq(
+                        "doctor_email",
+                        normalizedEmail
+                    )
+                    .maybeSingle();
+
+                if (emailError) {
+                    console.warn(
+                        "[AuthService] Doctor email lookup warning:",
+                        emailError.message
+                    );
+                }
+
+                if (doctorByEmail) {
+                    doctorRecord = doctorByEmail;
+                }
+            }
+
+            /*
+             * ------------------------------------------
+             * STEP 4: Doctor must exist
+             * ------------------------------------------
+             */
+            if (!doctorRecord) {
+                throw new Error(
+                    "Doctor profile could not be found. Please sign in again."
+                );
+            }
+
+            /*
+             * ------------------------------------------
+             * STEP 5: Normalize languages
+             * ------------------------------------------
+             */
+            let languages = [];
+
+            if (Array.isArray(data.doctor_languages)) {
+                languages = data.doctor_languages
+                    .map((item) =>
+                        String(item).trim()
+                    )
+                    .filter(Boolean);
+            } else if (
+                typeof data.doctor_languages ===
+                "string"
+            ) {
+                languages =
+                    data.doctor_languages
+                        .split(",")
+                        .map((item) =>
+                            item.trim()
+                        )
+                        .filter(Boolean);
+            }
+
+            /*
+             * ------------------------------------------
+             * STEP 6: Normalize consultation fee
+             * ------------------------------------------
+             */
+            let consultationFee = null;
+
+            if (
+                data.doctor_consultation_fee !==
+                undefined &&
+                data.doctor_consultation_fee !==
+                null &&
+                data.doctor_consultation_fee !== ""
+            ) {
+                const numericFee = Number(
+                    data.doctor_consultation_fee
+                );
+
+                if (
+                    Number.isFinite(
+                        numericFee
+                    )
+                ) {
+                    consultationFee =
+                        numericFee;
+                }
+            }
+
+            /*
+             * ------------------------------------------
+             * STEP 7: Build update payload
+             * ------------------------------------------
+             */
+            if (data.doctor_mobile && data.doctor_mobile.trim() !== "") {
+                const digits = data.doctor_mobile.replace(/\D/g, "");
+                if (digits.length !== 10) {
+                    throw new Error("Mobile number must be exactly 10 digits.");
+                }
+                if (!/^[6-9]/.test(digits)) {
+                    throw new Error("Mobile number must start with 6, 7, 8, or 9.");
+                }
+            }
+            const updatePayload = {
+                doctor_name:
+                    (
+                        data.doctor_first_name &&
+                        data.doctor_last_name
+                    )
+                        ? `${data.doctor_first_name} ${data.doctor_last_name}`
+                        : data.doctor_first_name ||
+                        data.doctor_last_name ||
+                        data.doctor_name ||
+                        doctorRecord.doctor_name ||
+                        null,
+
+                doctor_first_name:
+                    data.doctor_first_name ||
+                    doctorRecord.doctor_first_name ||
+                    null,
+
+                doctor_last_name:
+                    data.doctor_last_name ||
+                    doctorRecord.doctor_last_name ||
+                    null,
+
+                doctor_email:
+                    data.doctor_email ||
+                    doctorRecord.doctor_email ||
+                    null,
+
+                doctor_mobile:
+                    data.doctor_mobile ||
+                    doctorRecord.doctor_mobile ||
+                    null,
+
+                doctor_registration_number:
+                    data.doctor_registration_number ||
+                    doctorRecord.doctor_registration_number ||
+                    null,
+
+                doctor_domain:
+                    data.doctor_domain ||
+                    doctorRecord.doctor_domain ||
+                    null,
+
+                doctor_specialization:
+                    data.doctor_specialization ||
+                    doctorRecord.doctor_specialization ||
+                    null,
+
+                doctor_qualification:
+                    data.doctor_qualification ||
+                    doctorRecord.doctor_qualification ||
+                    null,
+
+                doctor_experience:
+                    data.doctor_experience ||
+                    doctorRecord.doctor_experience ||
+                    null,
+
+                doctor_clinic_name:
+                    data.doctor_clinic_name ||
+                    doctorRecord.doctor_clinic_name ||
+                    null,
+
+                doctor_clinic_address:
+                    data.doctor_clinic_address ||
+                    doctorRecord.doctor_clinic_address ||
+                    null,
+
+                doctor_consultation_fee:
+                    consultationFee !== null
+                        ? consultationFee
+                        : doctorRecord.doctor_consultation_fee ||
+                        null,
+
+                doctor_languages:
+                    languages.length > 0
+                        ? languages
+                        : doctorRecord.doctor_languages ||
+                        [],
+
+                doctor_profile_photo:
+                    data.doctor_profile_photo ||
+                    doctorRecord.doctor_profile_photo ||
+                    null,
+
+                doctor_gender:
+                    data.doctor_gender ||
+                    doctorRecord.doctor_gender ||
+                    null,
+
+                doctor_dob:
+                    data.doctor_dob ||
+                    doctorRecord.doctor_dob ||
+                    null,
+
+                doctor_gmaps_location:
+                    data.doctor_gmaps_location ||
+                    doctorRecord.doctor_gmaps_location ||
+                    null,
+
+                doctor_medical_license_url:
+                    data.doctor_medical_license_url ||
+                    doctorRecord.doctor_medical_license_url ||
+                    null,
+
+                doctor_gov_id_url:
+                    data.doctor_gov_id_url ||
+                    doctorRecord.doctor_gov_id_url ||
+                    null,
+
+                doctor_description:
+                    data.doctor_description ||
+                    doctorRecord.doctor_description ||
+                    null,
+
+                doctor_quote:
+                    data.doctor_quote ||
+                    doctorRecord.doctor_quote ||
+                    null,
+
+                onboarding_completed: true,
+            };
+
+            /*
+             * ------------------------------------------
+             * STEP 8: Update using the EXACT doctor_id
+             *
+             * We already verified that this doctor exists.
+             * ------------------------------------------
+             */
+            const {
+                data: updatedRows,
+                error: updateError,
+            } = await db
                 .from("doctors")
                 .update(updatePayload)
-                .or(`doctor_id.eq.${doctorId},id.eq.${doctorId}`)
-                .select()
-                .single();
+                .eq(
+                    "doctor_id",
+                    doctorRecord.doctor_id
+                )
+                .select("*");
 
-            if (error) {
-                console.error("[AuthService] Supabase update profile error:", error);
-                throw new Error(`Database error: ${error.message}`);
+            if (updateError) {
+                console.error(
+                    "[AuthService] Supabase onboarding update error:",
+                    updateError
+                );
+
+                throw new Error(
+                    `Database error: ${updateError.message}`
+                );
             }
 
-            return this.formatDoctorProfile(updatedDoctor);
-        } else {
-            const doctorIndex = inMemoryDoctors.findIndex((d) => String(d.id) === String(doctorId) || String(d.doctor_id) === String(doctorId));
-            if (doctorIndex !== -1) {
-                const doc = inMemoryDoctors[doctorIndex];
-                Object.assign(doc, data);
-                return this.formatDoctorProfile(doc);
+            /*
+             * ------------------------------------------
+             * STEP 9: Verify update result
+             * ------------------------------------------
+             */
+            if (
+                !updatedRows ||
+                updatedRows.length === 0
+            ) {
+                throw new Error(
+                    "Doctor profile was not updated. Please try again."
+                );
             }
-            throw new Error("Doctor not found");
+
+            /*
+             * There should be exactly one doctor
+             * because doctor_id is the primary identifier.
+             *
+             * We intentionally don't call .single()
+             * because doing so was causing the current
+             * PGRST error.
+             */
+            const updatedDoctor =
+                updatedRows[0];
+
+            console.log(
+                "[AuthService] Doctor onboarding completed:",
+                updatedDoctor.doctor_id
+            );
+
+            return this.formatDoctorProfile(
+                updatedDoctor
+            );
         }
+
+        /*
+         * ==========================================
+         * IN-MEMORY FALLBACK
+         * ==========================================
+         */
+
+        const doctorIndex =
+            inMemoryDoctors.findIndex(
+                (doctor) =>
+                    String(
+                        doctor.id
+                    ) ===
+                    String(
+                        doctorId
+                    ) ||
+                    (
+                        data.doctor_email &&
+                        doctor.email
+                            ?.toLowerCase() ===
+                        String(
+                            data.doctor_email
+                        )
+                            .trim()
+                            .toLowerCase()
+                    )
+            );
+
+        if (doctorIndex === -1) {
+            throw new Error(
+                "Doctor not found."
+            );
+        }
+
+        const doctor =
+            inMemoryDoctors[
+            doctorIndex
+            ];
+
+        doctor.full_name =
+            (
+                data.doctor_first_name &&
+                data.doctor_last_name
+            )
+                ? `${data.doctor_first_name} ${data.doctor_last_name}`
+                : data.doctor_first_name ||
+                data.doctor_last_name ||
+                doctor.full_name;
+
+        doctor.email =
+            data.doctor_email ||
+            doctor.email;
+
+        doctor.mobile_number =
+            data.doctor_mobile ||
+            doctor.mobile_number;
+
+        doctor.registration_number =
+            data.doctor_registration_number ||
+            doctor.registration_number;
+
+        doctor.specialization =
+            data.doctor_specialization ||
+            doctor.specialization;
+
+        doctor.qualification =
+            data.doctor_qualification ||
+            doctor.qualification;
+
+        doctor.experience =
+            data.doctor_experience ||
+            doctor.experience;
+
+        doctor.clinic_name =
+            data.doctor_clinic_name ||
+            doctor.clinic_name;
+
+        doctor.clinic_address =
+            data.doctor_clinic_address ||
+            doctor.clinic_address;
+
+        doctor.consultation_fee =
+            data.doctor_consultation_fee ??
+            doctor.consultation_fee;
+
+        doctor.languages =
+            data.doctor_languages ||
+            doctor.languages;
+
+        doctor.avatar_url =
+            data.doctor_profile_photo ||
+            doctor.avatar_url;
+
+        doctor.gender =
+            data.doctor_gender ||
+            doctor.gender;
+
+        doctor.dob =
+            data.doctor_dob ||
+            doctor.dob;
+
+        doctor.gmaps_location =
+            data.doctor_gmaps_location ||
+            doctor.gmaps_location;
+
+        doctor.medical_license_url =
+            data.doctor_medical_license_url ||
+            doctor.medical_license_url;
+
+        doctor.gov_id_url =
+            data.doctor_gov_id_url ||
+            doctor.gov_id_url;
+
+        doctor.description =
+            data.doctor_description ||
+            doctor.description;
+
+        doctor.quote =
+            data.doctor_quote ||
+            doctor.quote;
+
+        doctor.onboarding_completed =
+            true;
+
+        inMemoryDoctors[
+            doctorIndex
+        ] = doctor;
+
+        return this.formatDoctorProfile(
+            doctor
+        );
+
+
     }
 
-    /**
-     * Upload a file to Supabase Storage
-     * @param {Buffer} fileBuffer - The file buffer from multer
-     * @param {string} mimeType - The mime type of the file
-     * @param {string} type - 'profile' or 'document' to determine the bucket
-     * @param {string} filename - The generated unique filename
-     * @returns {string} public URL of the uploaded file
+    /*
+     * ============================================================
+     * STORAGE
+     * ============================================================
      */
-    async uploadToStorage(fileBuffer, mimeType, type, filename) {
-        if (!isSupabaseConfigured) {
-            // For in-memory, we can't really upload to Supabase, just return a dummy or base64
-            console.warn("Supabase not configured, bypassing actual storage upload.");
-            return `https://dummy-url.com/storage/${type}/${filename}`;
+
+    async uploadToStorage(
+        fileBuffer,
+        mimeType,
+        type,
+        filename
+    ) {
+        if (!supabaseAdmin) {
+            throw new Error(
+                "Supabase service-role client is not configured."
+            );
         }
-        // Always use doctor-profile-photos bucket for all uploads to bypass RLS issues on doctor-documents
-        const bucketName = "doctor-profile-photos";
-        const { data, error } = await supabase.storage
-            .from(bucketName)
-            .upload(filename, fileBuffer, {
-                contentType: mimeType,
-                upsert: true,
-            });
+
+        const bucketName =
+            "doctor-profile-photos";
+
+        const {
+            error,
+        } =
+            await supabaseAdmin.storage
+                .from(bucketName)
+                .upload(
+                    filename,
+                    fileBuffer,
+                    {
+                        contentType:
+                            mimeType,
+
+                        upsert:
+                            true,
+                    }
+                );
 
         if (error) {
-            throw new Error(`Failed to upload to storage: ${error.message}`);
+            throw new Error(
+                `Failed to upload to storage: ${error.message}`
+            );
         }
 
-        const { data: publicUrlData } = supabase.storage
-            .from(bucketName)
-            .getPublicUrl(filename);
+        const {
+            data,
+        } =
+            supabaseAdmin.storage
+                .from(bucketName)
+                .getPublicUrl(
+                    filename
+                );
 
-        return publicUrlData.publicUrl;
+        return data.publicUrl;
     }
 }
 
-module.exports = new AuthService();
+module.exports =
+    new AuthService();

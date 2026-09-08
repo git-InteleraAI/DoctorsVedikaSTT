@@ -313,9 +313,19 @@ const ConsultationSummary = () => {
         patientIdFromPath ||
         "";
 
+    const calculateAgeFromDob = (dobValue) => {
+        if (!dobValue) return null;
+        const dob = new Date(dobValue);
+        if (isNaN(dob.getTime())) return null;
+        const diffMs = Date.now() - dob.getTime();
+        const ageDt = new Date(diffMs);
+        const age = Math.abs(ageDt.getUTCFullYear() - 1970);
+        return age > 0 && age < 120 ? age : null;
+    };
+
     useEffect(() => {
         if (!resolvedPatientId) return;
-        const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token");
+        const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("sb-access-token");
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         fetch(`${API}/api/patients`, { headers })
             .then((res) => (res.ok ? res.json() : null))
@@ -324,16 +334,24 @@ const ConsultationSummary = () => {
                 const list = Array.isArray(data) ? data : data?.data || data?.patients || [];
                 const matched = list.find((p) => p.user_id === resolvedPatientId || p.id === resolvedPatientId || p.patient_code === resolvedPatientId);
                 if (matched) {
+                    let ageVal = matched.age;
+                    if (!ageVal && matched.date_of_birth) {
+                        ageVal = calculateAgeFromDob(matched.date_of_birth);
+                    }
                     setFetchedPatient({
-                        name: matched.full_name || matched.first_name || matched.name || "John",
-                        displayId: matched.patient_code || "DV-P-000086",
+                        name: matched.full_name || (matched.first_name ? `${matched.first_name} ${matched.last_name || ""}`.trim() : "") || matched.name || "Patient",
+                        displayId: matched.patient_code || matched.id || "DV-P-000086",
+                        age: ageVal || null,
+                        gender: matched.gender ? (matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1)) : null,
+                        bloodGroup: matched.blood_group || null,
+                        date_of_birth: matched.date_of_birth
                     });
                 }
             })
             .catch(() => {});
     }, [resolvedPatientId]);
 
-    // Dynamic resolution of Patient Name, Clean Patient ID, and Doctor Name
+    // Dynamic resolution of Patient Name, Clean Patient ID, Age, Gender, and Doctor Name
     const displayPatientName =
         fetchedPatient?.name ||
         (patient?.name && patient?.name !== "Unknown Patient" && patient?.name !== "Patient" && patient?.name !== "Walk-in Patient" ? patient.name : null) ||
@@ -347,6 +365,31 @@ const ConsultationSummary = () => {
         (resolvedPatientId && resolvedPatientId.length > 20
             ? `DV-P-000086`
             : resolvedPatientId || "DV-P-000086");
+
+    const displayPatientAge =
+        fetchedPatient?.age ||
+        patient?.age ||
+        patient?.patientAge ||
+        state?.age ||
+        state?.patientAge ||
+        calculateAgeFromDob(
+            fetchedPatient?.date_of_birth ||
+            fetchedPatient?.dob ||
+            patient?.date_of_birth ||
+            patient?.dob ||
+            state?.patient?.date_of_birth ||
+            state?.patient?.dob ||
+            state?.dob
+        ) ||
+        "27";
+
+    const displayPatientGender =
+        fetchedPatient?.gender ||
+        patient?.gender ||
+        patient?.patientGender ||
+        state?.gender ||
+        state?.patientGender ||
+        "Female";
 
     const getCurrentDoctorInfo = () => {
         try {
@@ -958,7 +1001,7 @@ const ConsultationSummary = () => {
                         });
                         return null;
                     }
-                    return fetch(`${NODE_API_URL}/api/appointments`).then(r => r.ok ? r.json() : null);
+                    return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then(r => r.ok ? r.json() : null);
                 })
                 .then((appData) => {
                     if (!appData) return;
@@ -1110,12 +1153,14 @@ const ConsultationSummary = () => {
                 consultationPayload
             );
 
+            const saveToken = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("sb-access-token");
             const response = await fetch(
                 `${NODE_API_URL}/api/v1/clinical/notes`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
+                        ...(saveToken ? { Authorization: `Bearer ${saveToken}` } : {})
                     },
                     body: JSON.stringify(consultationPayload),
                 }
@@ -1314,12 +1359,14 @@ const ConsultationSummary = () => {
     };
 
 
-    const handleBack = () => {
+    const handleDiscard = () => {
+        navigate(-1);
+    };
 
+    const handleBack = () => {
         navigate(
             `/consultation/${resolvedPatientId}`
         );
-
     };
 
 
@@ -1340,13 +1387,6 @@ const ConsultationSummary = () => {
 
                 <div>
 
-                    <button
-                        className="back-button"
-                        onClick={handleBack}
-                    >
-                        ← Back
-                    </button>
-
                     <div className="title-row">
 
                         <div>
@@ -1357,14 +1397,8 @@ const ConsultationSummary = () => {
 
                             <p>
                                 {displayPatientName}
-
-                                {(fetchedPatient?.age || patient.age)
-                                    ? ` • ${fetchedPatient?.age || patient.age} years`
-                                    : ""}
-
-                                {(fetchedPatient?.gender || patient.gender)
-                                    ? ` • ${fetchedPatient?.gender || patient.gender}`
-                                    : ""}
+                                {displayPatientAge ? ` • ${displayPatientAge} years` : ""}
+                                {displayPatientGender ? ` • ${displayPatientGender}` : ""}
                             </p>
 
                         </div>
@@ -1379,32 +1413,62 @@ const ConsultationSummary = () => {
 
 
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    <button
-                        style={{
-                            background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
-                            color: "#ffffff",
-                            border: "none",
-                            borderRadius: "8px",
-                            padding: "10px 18px",
-                            fontWeight: 600,
-                            fontSize: "0.9rem",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            boxShadow: "0 2px 6px rgba(1, 182, 175, 0.25)",
-                        }}
-                        onClick={() => setShowPdfPreview(true)}
-                    >
-                        <i className="fa-solid fa-file-pdf"></i> Preview PDF / Prescription
-                    </button>
-
-                    <button
-                        className="print-button"
-                        onClick={handlePrint}
-                    >
-                        🖨 Print
-                    </button>
+                    {!saveSuccess ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handleDiscard}
+                                style={{
+                                    background: "rgba(239, 68, 68, 0.15)",
+                                    color: "#ef4444",
+                                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                                    borderRadius: "8px",
+                                    padding: "10px 18px",
+                                    fontWeight: 700,
+                                    fontSize: "0.9rem",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Discard
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSave(true)}
+                                disabled={isSaving}
+                                style={{
+                                    background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "8px",
+                                    padding: "10px 22px",
+                                    fontWeight: 700,
+                                    fontSize: "0.9rem",
+                                    cursor: isSaving ? "not-allowed" : "pointer",
+                                    boxShadow: "0 2px 6px rgba(1, 182, 175, 0.25)",
+                                }}
+                            >
+                                {isSaving ? "Saving..." : "✓ Save"}
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => navigate("/patients")}
+                            style={{
+                                background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
+                                color: "#ffffff",
+                                border: "none",
+                                borderRadius: "8px",
+                                padding: "10px 22px",
+                                fontWeight: 700,
+                                fontSize: "0.9rem",
+                                cursor: "pointer",
+                                boxShadow: "0 2px 6px rgba(1, 182, 175, 0.25)",
+                            }}
+                        >
+                            Go to Patients →
+                        </button>
+                    )}
                 </div>
 
             </header>
@@ -1412,26 +1476,20 @@ const ConsultationSummary = () => {
 
             {/* REVIEW NOTICE */}
 
-            <section className="review-banner">
+            <section className="review-notice">
 
                 <div className="review-icon">
                     ✓
                 </div>
 
                 <div>
-
-                    <strong>
+                    <h2>
                         Doctor Review Required
-                    </strong>
+                    </h2>
 
                     <p>
-                        Review and edit the
-                        AI-generated consultation
-                        report before saving it
-                        to the patient's medical
-                        record.
+                        Review and edit the AI-generated consultation report before saving it to the patient's medical record.
                     </p>
-
                 </div>
 
             </section>
@@ -1476,13 +1534,7 @@ const ConsultationSummary = () => {
 
                 <MetaCard
                     label="Status"
-                    value={
-                        consultationCompleted
-                            ? "Completed"
-                            : saveSuccess
-                                ? "Saved — Mark as Completed"
-                                : "Review Required"
-                    }
+                    value={saveSuccess ? "Completed" : "Review Required"}
                 />
 
             </section>
@@ -1492,16 +1544,27 @@ const ConsultationSummary = () => {
 
             {error && (
 
-                <div className="error-banner">
-
-                    <strong>
-                        Save failed
-                    </strong>
-
-                    <span>
-                        {error}
-                    </span>
-
+                <div
+                    className="error-banner"
+                    style={{
+                        margin: "16px 0",
+                        padding: "14px 20px",
+                        borderRadius: "12px",
+                        background: "#fef2f2",
+                        border: "1px solid #fecaca",
+                        color: "#dc2626",
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        boxShadow: "0 2px 6px rgba(220, 38, 38, 0.08)"
+                    }}
+                >
+                    <i className="fa-solid fa-circle-exclamation" style={{ fontSize: "1.2rem", color: "#dc2626" }}></i>
+                    <div>
+                        <strong style={{ display: "block", fontSize: "0.92rem", marginBottom: "2px" }}>Save Failed</strong>
+                        <span style={{ fontSize: "0.85rem", opacity: 0.9 }}>{error}</span>
+                    </div>
                 </div>
 
             )}
@@ -1513,52 +1576,26 @@ const ConsultationSummary = () => {
                 <div className="save-modal-backdrop" role="dialog" aria-modal="true">
                     <div className="save-modal">
                         <div className="save-modal-icon">✓</div>
-                        <h2>{consultationCompleted ? "Consultation Completed" : "Consultation Saved"}</h2>
+                        <h2>Consultation Completed & Saved</h2>
                         <p>
-                            The reviewed consultation report, transcript, prescription and combined PDF have been saved to {patient?.name || "the patient's"} medical record.
+                            The reviewed consultation report, transcript, prescription, and medical PDF have been saved to {patient?.name || "the patient's"} medical record.
                         </p>
-                        <div className="save-modal-actions">
-                            {!consultationCompleted && (
-                                <button
-                                    type="button"
-                                    className="modal-primary-button"
-                                    onClick={handleMarkCompleted}
-                                    disabled={isCompleting}
-                                >
-                                    {isCompleting ? "Completing..." : "✓ Mark Consultation Completed"}
-                                </button>
-                            )}
-                            {savedPdfUrl && (
-                                <button
-                                    type="button"
-                                    className="modal-secondary-button"
-                                    onClick={() => window.open(`${NODE_API_URL}${savedPdfUrl}`, "_blank", "noopener,noreferrer")}
-                                >
-                                    View Combined PDF
-                                </button>
-                            )}
+                        <div className="save-modal-actions" style={{ justifyContent: "center", marginTop: "20px" }}>
                             <button
                                 type="button"
-                                className="modal-secondary-button"
-                                onClick={() => navigate(`/patients/${resolvedPatientId}`)}
+                                className="modal-primary-button"
+                                onClick={() => navigate("/patients")}
+                                style={{
+                                    background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
+                                    color: "#ffffff",
+                                    padding: "12px 24px",
+                                    borderRadius: "10px",
+                                    fontWeight: 800,
+                                    border: "none",
+                                    cursor: "pointer"
+                                }}
                             >
-                                View Patient Record →
-                            </button>
-                            {consultationCompleted && (
-                                <button
-                                    type="button"
-                                    className="modal-primary-button"
-                                    onClick={() => navigate("/dashboard?tab=completed")}
-                                >
-                                    Go to Dashboard →
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                className="modal-secondary-button"
-                                onClick={() => setShowSaveModal(false)}
-                            >
-                                Stay Here
+                                Go to Patients →
                             </button>
                         </div>
                     </div>
@@ -2487,7 +2524,7 @@ const ConsultationSummary = () => {
                     </section>
 
 
-                    {/* SAVE */}
+                    {/* SAVE & ACTION SECTION */}
 
                     <div
                         style={{
@@ -2515,9 +2552,9 @@ const ConsultationSummary = () => {
                                 flex: "1 1 250px",
                             }}
                         >
-                            Doctor confirmation is required
-                            before saving this consultation
-                            to the patient's permanent record.
+                            {!saveSuccess
+                                ? "Doctor confirmation is required before saving this consultation to the patient's permanent record."
+                                : "✓ Consultation completed and saved successfully."}
                         </div>
 
 
@@ -2528,76 +2565,61 @@ const ConsultationSummary = () => {
                                 flexWrap: "wrap",
                             }}
                         >
+                            {!saveSuccess ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleDiscard}
+                                        style={{
+                                            background: "rgba(239, 68, 68, 0.15)",
+                                            color: "#ef4444",
+                                            border: "1px solid rgba(239, 68, 68, 0.4)",
+                                            borderRadius: "10px",
+                                            padding: "12px 20px",
+                                            cursor: "pointer",
+                                            fontWeight: 700,
+                                        }}
+                                    >
+                                        Discard
+                                    </button>
 
-                            <button
-                                onClick={
-                                    handleBack
-                                }
-                                style={{
-                                    background:
-                                        "rgba(255,255,255,0.06)",
-                                    color:
-                                        "#ffffff",
-                                    border:
-                                        "1px solid rgba(255,255,255,0.15)",
-                                    borderRadius:
-                                        "10px",
-                                    padding:
-                                        "12px 20px",
-                                    cursor:
-                                        "pointer",
-                                    fontWeight:
-                                        700,
-                                }}
-                            >
-                                Return
-                            </button>
-
-
-                            <button
-                                type="button"
-                                onClick={() => handleSave(true)}
-                                disabled={isSaving || saveSuccess}
-                                style={{
-                                    background: isSaving ? "#55777d" : "#08AEB8",
-                                    color: "#ffffff",
-                                    border: "none",
-                                    borderRadius: "10px",
-                                    padding: "12px 18px",
-                                    cursor: isSaving ? "not-allowed" : "pointer",
-                                    fontWeight: 800,
-                                    fontSize: "13px",
-                                }}
-                            >
-                                {isSaving
-                                    ? "Saving..."
-                                    : saveSuccess
-                                        ? "✓ Saved with Transcript"
-                                        : "✓ Save with Full Transcript"}
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => handleSave(false)}
-                                disabled={isSaving || saveSuccess}
-                                style={{
-                                    background: "#ffffff",
-                                    color: "#08265F",
-                                    border: "1px solid #08AEB8",
-                                    borderRadius: "10px",
-                                    padding: "12px 18px",
-                                    cursor: isSaving ? "not-allowed" : "pointer",
-                                    fontWeight: 800,
-                                    fontSize: "13px",
-                                }}
-                            >
-                                {isSaving
-                                    ? "Saving..."
-                                    : saveSuccess
-                                        ? "✓ Saved without Transcript"
-                                        : "📄 Save without Full Transcript"}
-                            </button>
-
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSave(true)}
+                                        disabled={isSaving}
+                                        style={{
+                                            background: isSaving ? "#55777d" : "#08AEB8",
+                                            color: "#ffffff",
+                                            border: "none",
+                                            borderRadius: "10px",
+                                            padding: "12px 22px",
+                                            cursor: isSaving ? "not-allowed" : "pointer",
+                                            fontWeight: 800,
+                                            fontSize: "14px",
+                                        }}
+                                    >
+                                        {isSaving ? "Saving..." : "✓ Save"}
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate("/patients")}
+                                    style={{
+                                        background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "10px",
+                                        padding: "12px 24px",
+                                        cursor: "pointer",
+                                        fontWeight: 800,
+                                        fontSize: "14px",
+                                        boxShadow: "0 4px 15px rgba(1, 182, 175, 0.25)",
+                                    }}
+                                >
+                                    Go to Patients →
+                                </button>
+                            )}
                         </div>
 
                     </div>
@@ -2622,72 +2644,6 @@ const ConsultationSummary = () => {
                             }}
                         >
                             {saveMessage}
-                        </div>
-                    )}
-
-                    {(saveSuccess || savedPdfUrl) && (
-                        <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const pdfTarget = savedPdfUrl || `/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(savedConsultationId || state.consultationId)}/pdf`;
-                                    window.open(`${NODE_API_URL}${pdfTarget}`, "_blank", "noopener,noreferrer");
-                                }}
-                                style={{
-                                    background: "linear-gradient(135deg, #00d2ff, #0099cc)",
-                                    color: "#031019",
-                                    border: "none",
-                                    borderRadius: "10px",
-                                    padding: "12px 20px",
-                                    cursor: "pointer",
-                                    fontWeight: 800,
-                                    fontSize: "14px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    gap: "8px",
-                                    boxShadow: "0 4px 15px rgba(0,210,255,0.25)",
-                                }}
-                            >
-                                📄 View / Download Medical PDF
-                            </button>
-
-                            {!consultationCompleted ? (
-                                <button
-                                    type="button"
-                                    onClick={handleMarkCompleted}
-                                    disabled={isCompleting}
-                                    style={{
-                                        background: isCompleting ? "#55777d" : "#22c55e",
-                                        color: "#031019",
-                                        border: "none",
-                                        borderRadius: "10px",
-                                        padding: "12px 20px",
-                                        cursor: isCompleting ? "not-allowed" : "pointer",
-                                        fontWeight: 800,
-                                        fontSize: "14px",
-                                    }}
-                                >
-                                    {isCompleting ? "Completing..." : "✓ Mark Consultation Completed"}
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => navigate("/dashboard")}
-                                    style={{
-                                        background: "rgba(34,197,94,0.15)",
-                                        color: "#4ade80",
-                                        border: "1px solid rgba(34,197,94,0.4)",
-                                        borderRadius: "10px",
-                                        padding: "12px 20px",
-                                        cursor: "pointer",
-                                        fontWeight: 800,
-                                        fontSize: "14px",
-                                    }}
-                                >
-                                    Go to Dashboard →
-                                </button>
-                            )}
                         </div>
                     )}
 

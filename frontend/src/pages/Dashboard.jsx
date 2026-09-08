@@ -301,7 +301,7 @@ const Dashboard = () => {
                     </div>
                 ) : (
                     <div style={{ display: "grid", gap: "16px" }}>
-                        {appointments.map((app) => (
+                        {appointments.slice(0, 3).map((app) => (
                             <div key={app.id} className="classic-card" style={{ 
                                 display: "flex", 
                                 flexDirection: "column",
@@ -348,7 +348,7 @@ const Dashboard = () => {
                                         </div>
                                         
                                         {/* Action Buttons */}
-                                        {activeTab !== "completed" ? (
+                                        {activeTab !== "completed" && String(app.status || "").toLowerCase() !== "completed" ? (
                                             <button 
                                                 onClick={() => openConsultation(app)}
                                                 style={{
@@ -397,6 +397,30 @@ const Dashboard = () => {
                                 </div>
                             </div>
                         ))}
+
+                        {appointments.length > 3 && (
+                            <div style={{ textAlign: "center", marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #e2e8f0" }}>
+                                <button
+                                    onClick={() => navigate("/appointments")}
+                                    style={{
+                                        background: "linear-gradient(135deg, #082b68 0%, #01b6af 100%)",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "10px",
+                                        padding: "10px 22px",
+                                        fontWeight: 700,
+                                        fontSize: "0.9rem",
+                                        cursor: "pointer",
+                                        boxShadow: "0 4px 12px rgba(1, 182, 175, 0.2)",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "8px"
+                                    }}
+                                >
+                                    View All Appointments ({appointments.length}) <i className="fa-solid fa-arrow-right"></i>
+                                </button>
+                            </div>
+                        )}
 
                         {!appointments.length && (
                             <div style={{ textAlign: "center", padding: "50px 20px", background: "#f8fafc", borderRadius: "14px", border: "1px dashed #cbd5e1" }}>

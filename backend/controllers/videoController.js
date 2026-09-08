@@ -308,7 +308,22 @@ class VideoController {
                 const { data, error } = await query;
 
                 if (!error && data && data.length > 0) {
-                    videos = data;
+                    videos = data.map(v => {
+                        let videoUrl = v.video_url;
+                        if (v.platform === "youtube" && v.external_id) {
+                            videoUrl = `https://www.youtube.com/embed/${v.external_id}`;
+                        } else if (videoUrl && videoUrl.includes("/shorts/")) {
+                            videoUrl = videoUrl.replace("/shorts/", "/embed/");
+                        }
+                        return {
+                            ...v,
+                            doctor_name: v.doctor_name || "Dr. D.V.L. Narayana Rao",
+                            category: v.category || "Surgery",
+                            is_verified: v.is_verified ?? true,
+                            video_url: videoUrl,
+                            thumbnail_url: v.thumbnail_url || (v.external_id ? `https://img.youtube.com/vi/${v.external_id}/hqdefault.jpg` : "")
+                        };
+                    });
                 } else {
                     videos = SAMPLE_VIDEOS;
                 }
@@ -335,10 +350,15 @@ class VideoController {
                 );
             }
 
-            // Group videos into categories for easy frontend rendering
-            const youtubeVideos = videos.filter(v => v.platform === "youtube" && v.content_type === "video");
-            const youtubeShorts = videos.filter(v => v.platform === "youtube" && v.content_type === "short");
-            const instagramShorts = videos.filter(v => v.platform === "instagram");
+            // Group videos into categories for frontend rendering
+            const dbYtVideos = videos.filter(v => v.platform === "youtube" && v.content_type === "video");
+            const dbYtShorts = videos.filter(v => v.platform === "youtube" && v.content_type === "short");
+            const dbIgShorts = videos.filter(v => v.platform === "instagram");
+
+            // Fill missing sections with sample seed data if DB table has 0 of that type yet
+            const youtubeVideos = dbYtVideos.length > 0 ? dbYtVideos : SAMPLE_VIDEOS.filter(v => v.platform === "youtube" && v.content_type === "video");
+            const youtubeShorts = dbYtShorts.length > 0 ? dbYtShorts : SAMPLE_VIDEOS.filter(v => v.platform === "youtube" && v.content_type === "short");
+            const instagramShorts = dbIgShorts.length > 0 ? dbIgShorts : SAMPLE_VIDEOS.filter(v => v.platform === "instagram");
 
             return res.json({
                 success: true,

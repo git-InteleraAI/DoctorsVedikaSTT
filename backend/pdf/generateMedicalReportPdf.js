@@ -90,18 +90,7 @@ function resolveLogoPath() {
     return null;
 }
 
-async function generateMedicalReportPdf(patientRecord, patientFolder) {
-    if (!patientRecord || !patientRecord.patientId) {
-        throw new Error('patientRecord.patientId is required to generate the PDF.');
-    }
-
-    fs.mkdirSync(patientFolder, { recursive: true });
-
-    const safeName = safeFilePart(patientRecord.patientName);
-    const consultationId = patientRecord.consultationId || `consultation-${Date.now()}`;
-    const fileName = `${consultationId}-${safeName}.pdf`;
-    const filePath = path.join(patientFolder, fileName);
-
+function renderPdfToStream(patientRecord, stream) {
     const doc = new PDFDocument({
         size: 'A4',
         margin: 0,
@@ -109,10 +98,9 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         autoFirstPage: false,
     });
 
-    const stream = fs.createWriteStream(filePath);
     doc.pipe(stream);
 
-    // Register Universal Indic & Latin Unicode TrueType font (Nirmala UI supports Telugu, Hindi/Devanagari, Tamil, etc.)
+    // Register Universal Indic & Latin Unicode TrueType font
     const bundledNirmala = path.join(__dirname, '..', 'fonts', 'Nirmala.ttc');
     const systemNirmala = 'C:\\Windows\\Fonts\\Nirmala.ttc';
     const nirmalaPath = fs.existsSync(bundledNirmala) ? bundledNirmala : (fs.existsSync(systemNirmala) ? systemNirmala : null);
@@ -131,10 +119,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
             doc.registerFont('AppBold', nirmalaPath, 'NirmalaUI-Bold');
             fontRegular = 'AppRegular';
             fontBold = 'AppBold';
-            console.log('[PDF] Registered bundled Nirmala font successfully for Telugu & Hindi support.');
-        } catch (fontErr) {
-            console.warn('[PDF] Nirmala font registration warning:', fontErr.message);
-        }
+        } catch (fontErr) {}
     } else if (fs.existsSync(segoeRegular)) {
         try {
             doc.registerFont('AppRegular', segoeRegular);
@@ -154,9 +139,8 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     const logoPath = resolveLogoPath();
     const s = patientRecord.summary || {};
 
-    // Normalize data fields
     const chiefComplaint = getFirst(s.chief_complaint, s.chiefComplaint, s.chief_complaints, s.chiefComplaints);
-    const overview = getFirst(s.consultation_overview, s.consultationOverview, s.overview);
+    const overview = getFirst(s.consultation_overview, s.consultationOverview, s.overview, s.notes, patientRecord.notes);
     const historyOfIllness = getFirst(s.history_of_present_illness, s.historyOfPresentIllness, s.history);
     const symptoms = getFirst(s.symptoms, s.presenting_symptoms, s.presentingSymptoms);
     const pastHistory = getFirst(s.past_medical_history, s.pastMedicalHistory);
@@ -169,20 +153,22 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     const diagnosis = getFirst(patientRecord.diagnosis, s.diagnosis, s.possible_diagnosis, s.possibleDiagnosis);
     const diffDiagnosis = getFirst(s.differential_diagnosis, s.differentialDiagnosis);
     const treatmentPlan = getFirst(s.treatment_plan, s.treatmentPlan);
-    const advice = getFirst(s.advice, s.general_advice, s.generalAdvice);
-    const followUp = getFirst(s.follow_up, s.followUp);
+    const advice = getFirst(patientRecord.prescription?.advice, s.advice, s.general_advice, s.generalAdvice);
+    const followUp = getFirst(patientRecord.prescription?.follow_up_date, s.follow_up, s.followUp);
     const doctorNotes = getFirst(s.doctor_notes, s.doctorNotes, s.notes, s.clinical_notes, s.clinicalNotes);
     const redFlags = getFirst(s.red_flags, s.redFlags);
 
-    const prescriptionMeds = Array.isArray(patientRecord.prescription?.medications)
-        ? patientRecord.prescription.medications
-        : Array.isArray(patientRecord.medications) && patientRecord.medications.length
-            ? patientRecord.medications
-            : Array.isArray(s.medicines)
-                ? s.medicines
-                : Array.isArray(s.medications_discussed)
-                    ? s.medications_discussed
-                    : [];
+    const prescriptionMeds = Array.isArray(patientRecord.prescription?.medicines)
+        ? patientRecord.prescription.medicines
+        : Array.isArray(patientRecord.prescription?.medications)
+            ? patientRecord.prescription.medications
+            : Array.isArray(patientRecord.medications) && patientRecord.medications.length
+                ? patientRecord.medications
+                : Array.isArray(s.medicines)
+                    ? s.medicines
+                    : Array.isArray(s.medications_discussed)
+                        ? s.medications_discussed
+                        : [];
 
     const transcriptItems = Array.isArray(patientRecord.transcript)
         ? patientRecord.transcript.filter((t) => hasValue(t?.text))
@@ -223,7 +209,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         return str;
     }
 
-    // Helper functions for page management
     function startNewPage(isFirstPage = false) {
         doc.addPage({ size: 'A4', margin: 0 });
         drawHeader(isFirstPage);
@@ -241,23 +226,18 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         const topY = 20;
         const leftX = PAGE.marginX;
 
-        // Logo
         if (logoPath) {
             try {
                 doc.image(logoPath, leftX, topY, { fit: [36, 36] });
-            } catch {
-                // fallback
-            }
+            } catch {}
         }
 
-        // Branding
         const brandX = logoPath ? leftX + 42 : leftX;
         doc.fillColor(COLORS.navy).font(fontBold).fontSize(13)
             .text('DOCTORS VEDIKA', brandX, topY + 2);
         doc.fillColor(COLORS.teal).font(fontBold).fontSize(8)
             .text('AI Powered Care', brandX, topY + 17);
 
-        // Page 1 Title on Right
         if (isFirstPage) {
             const titleWidth = 240;
             const titleX = PAGE.width - PAGE.marginX - titleWidth;
@@ -267,7 +247,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
                 .text('& PRESCRIPTION', titleX, topY + 16, { width: titleWidth, align: 'right' });
         }
 
-        // Horizontal teal separator line
         doc.strokeColor(COLORS.teal).lineWidth(1)
             .moveTo(PAGE.marginX, 60).lineTo(PAGE.width - PAGE.marginX, 60).stroke();
 
@@ -275,25 +254,19 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.x = PAGE.marginX;
     }
 
-    // Start First Page
     startNewPage(true);
 
-    // =========================================================================
-    // SECTION: PATIENT & CONSULTATION DETAILS CARD
-    // =========================================================================
     function drawPatientDetailsCard() {
         const cardX = PAGE.marginX;
         const cardY = doc.y;
         const cardW = PAGE.contentWidth;
         const cardH = 82;
 
-        // Outer border
         doc.roundedRect(cardX, cardY, cardW, cardH, 6)
             .strokeColor(COLORS.border)
             .lineWidth(0.8)
             .stroke();
 
-        // Card header icon & title
         doc.circle(cardX + 15, cardY + 14, 5.5).fillColor(COLORS.cyanLight).fill();
         doc.fillColor(COLORS.tealDark).font(fontBold).fontSize(7.5)
             .text('P', cardX + 12.5, cardY + 10.5);
@@ -301,7 +274,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.fillColor(COLORS.navy).font(fontBold).fontSize(8)
             .text('PATIENT & CONSULTATION DETAILS', cardX + 26, cardY + 10.5);
 
-        // Header divider
         doc.strokeColor(COLORS.borderLight).lineWidth(0.5)
             .moveTo(cardX + 10, cardY + 24).lineTo(cardX + cardW - 10, cardY + 24).stroke();
 
@@ -317,17 +289,18 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
 
         const patientName = cleanString(patientRecord.patientName || patientRecord.patient?.name, 'Patient');
         const patientId = cleanString(patientRecord.patientId || patientRecord.patient?.id, '-');
-        const appointmentId = cleanString(patientRecord.appointmentId, '1');
+        const rawAppCode = patientRecord.appointmentId || patientRecord.appointment_id || (patientRecord.consultationId ? String(patientRecord.consultationId).replace('consultation-app-', '').replace('consultation-db-', '') : '');
+        const appointmentId = cleanString(rawAppCode, '-');
 
         let rawDocName = patientRecord.doctorName || patientRecord.doctor_name || patientRecord.doctor?.name || patientRecord.doctor?.full_name || patientRecord.doctor?.fullName;
         if (rawDocName && !rawDocName.toLowerCase().startsWith('dr')) {
             rawDocName = `Dr. ${rawDocName}`;
         }
         const doctorName = cleanString(rawDocName, 'Dr. Harshini Jakki');
-        const doctorId = cleanString(patientRecord.doctorId, 'default-doctor');
         const dateStr = cleanString(patientRecord.consultationDate, new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
         const timeStr = cleanString(patientRecord.consultationTime, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
-        const consultType = patientRecord.type || 'General Consultation';
+        const rawClinic = patientRecord.clinicName || patientRecord.clinic_name || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name || patientRecord.doctor?.doctor_clinic_name || patientRecord.doctor?.clinic_name;
+        const clinicName = cleanString(rawClinic, 'Doctors Vedika Clinic');
 
         const rowY1 = cardY + 30;
         const rowY2 = cardY + 42;
@@ -347,16 +320,13 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         printPair('Doctor Name', doctorName, col2X, col2ValX, col2ValW, rowY1);
         printPair('Date', dateStr, col2X, col2ValX, col2ValW, rowY2);
         printPair('Time', timeStr, col2X, col2ValX, col2ValW, rowY3);
-        printPair('Consultation Type', consultType, col2X, col2ValX, col2ValW, rowY4);
+        printPair('Clinic Name', clinicName, col2X, col2ValX, col2ValW, rowY4);
 
         doc.y = cardY + cardH + 8;
     }
 
     drawPatientDetailsCard();
 
-    // =========================================================================
-    // SECTION BUILDERS (Page-Safe Modular Design)
-    // =========================================================================
     function drawSectionHeader(title, iconText) {
         checkPageBreak(36);
         const cardX = PAGE.marginX;
@@ -410,9 +380,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 2;
     }
 
-    // =========================================================================
-    // 1. CONSULTATION OVERVIEW (Only if filled)
-    // =========================================================================
+    // 1. CONSULTATION OVERVIEW
     const hasOverview = hasValue(chiefComplaint) || hasValue(overview) || hasValue(historyOfIllness);
     if (hasOverview) {
         drawSectionHeader('1. Consultation Overview', '1');
@@ -428,9 +396,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 4;
     }
 
-    // =========================================================================
-    // 2. PATIENT HISTORY & OBSERVATIONS (Only if filled)
-    // =========================================================================
+    // 2. PATIENT HISTORY & SYMPTOMS
     const hasHistory = hasValue(symptoms) || hasValue(pastHistory) || hasValue(allergies) || hasValue(currentMeds);
     if (hasHistory) {
         drawSectionHeader('2. Patient History & Symptoms', '2');
@@ -461,9 +427,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 4;
     }
 
-    // =========================================================================
-    // 3. CLINICAL EXAMINATION & VITALS (Only if filled)
-    // =========================================================================
+    // 3. CLINICAL EXAMINATION & VITALS
     const vitalsList = [
         ['Blood Pressure', vitalsData.blood_pressure || vitalsData.bloodPressure || vitalsData.bp],
         ['Heart Rate', vitalsData.heart_rate || vitalsData.heartRate || vitalsData.pulse],
@@ -483,7 +447,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
             drawBulletsBlock(Array.isArray(examination) ? examination : [examination]);
         }
 
-        // Vitals Grid
         if (vitalsList.length > 0) {
             checkPageBreak(40);
             doc.fillColor(COLORS.blueTitle).font(fontBold).fontSize(7.5).text('Recorded Vital Signs', PAGE.marginX + 6, doc.y);
@@ -528,9 +491,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 4;
     }
 
-    // =========================================================================
-    // 4. CLINICAL ASSESSMENT & PLAN (Only if filled)
-    // =========================================================================
+    // 4. CLINICAL ASSESSMENT & PLAN
     const planItems = [
         ['Assessment', assessment],
         ['Diagnosis', Array.isArray(diagnosis) ? diagnosis.join(', ') : diagnosis],
@@ -574,9 +535,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 4;
     }
 
-    // =========================================================================
-    // 5. ADVICE & FOLLOW-UP (Only if filled)
-    // =========================================================================
+    // 5. ADVICE & FOLLOW-UP
     const hasAdvice = hasValue(advice) || hasValue(followUp) || hasValue(doctorNotes) || hasValue(redFlags);
     if (hasAdvice) {
         drawSectionHeader('5. Medical Advice & Follow-Up', '5');
@@ -597,9 +556,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 4;
     }
 
-    // =========================================================================
-    // 6. PRESCRIPTION TABLE (Page-Safe Row by Row)
-    // =========================================================================
+    // 6. PRESCRIPTION TABLE
     if (prescriptionMeds.length > 0) {
         drawSectionHeader('6. Prescription', 'Rx');
         const contentW = PAGE.contentWidth;
@@ -627,9 +584,9 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         prescriptionMeds.forEach((med, mIdx) => {
             const values = [
                 `${mIdx + 1}`,
-                cleanString(med.name, 'Medicine'),
-                cleanString(med.dosage, '-'),
-                cleanString(med.frequency, '-'),
+                cleanString(med.name || med.medicineName || med.medicine_name, 'Medicine'),
+                cleanString(med.dosage || med.dose, '-'),
+                cleanString(med.frequency || med.timing, '-'),
                 cleanString(med.duration, '-'),
                 cleanString(med.instructions, '-'),
             ];
@@ -660,7 +617,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
 
         doc.y += 6;
 
-        // Important Note Callout Box
         checkPageBreak(26);
         const calloutY = doc.y;
         doc.roundedRect(tableX, calloutY, contentW, 20, 3)
@@ -679,15 +635,12 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y = calloutY + 26;
     }
 
-    // =========================================================================
-    // 7. CONSULTATION TRANSCRIPT (Clean 2-Column Dialogue Layout)
-    // =========================================================================
+    // 7. CONSULTATION TRANSCRIPT
     if (transcriptItems.length > 0) {
         checkPageBreak(45);
         const cardX = PAGE.marginX;
         const cardW = PAGE.contentWidth;
 
-        // Card header banner
         drawSectionHeader('7. Consultation Transcript', '7');
 
         const colSpeakerW = 76;
@@ -699,7 +652,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
             const text = cleanString(t.text);
             if (!text) return;
 
-            // Accurately measure required height for the dialogue text
             const textH = doc.heightOfString(text, {
                 width: colTextW,
                 font: fontRegular,
@@ -709,13 +661,11 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
 
             const rowHeight = Math.max(18, textH + 8);
 
-            // Trigger clean page break BEFORE drawing this dialogue entry
             checkPageBreak(rowHeight + 4);
 
             const curY = doc.y;
             const curX = cardX + 10;
 
-            // Speaker & Timestamp on Left Column
             const isDoctor = speaker.toLowerCase().includes('doctor');
             doc.fillColor(isDoctor ? COLORS.navy : COLORS.tealDark)
                 .font(fontBold)
@@ -729,7 +679,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
                     .text(timestamp, curX, curY + 9, { width: colSpeakerW - 6 });
             }
 
-            // Dialogue Text on Right Column (Full Width)
             doc.fillColor(COLORS.textDark)
                 .font(fontRegular)
                 .fontSize(7.5)
@@ -738,10 +687,8 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
                     lineGap: 1.5,
                 });
 
-            // Advance Y by exact measured height
             doc.y = curY + rowHeight;
 
-            // Subtle divider between dialogue entries
             if (tIdx < transcriptItems.length - 1) {
                 doc.strokeColor(COLORS.borderLight)
                     .lineWidth(0.4)
@@ -754,13 +701,10 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         doc.y += 8;
     }
 
-    // =========================================================================
     // 8. DOCTOR CONFIRMATION CARD
-    // =========================================================================
     checkPageBreak(70);
     const confCardX = PAGE.marginX;
     const confCardW = PAGE.contentWidth;
-    const confStartY = doc.y;
 
     drawSectionHeader('8. Doctor Confirmation', '8');
 
@@ -771,7 +715,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     const confirmY = doc.y;
     const leftW = confCardW - 130;
 
-    // Left: Signature & Date lines
     doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.5)
         .text('Doctor Signature  :', confCardX + 12, confirmY + 8);
     doc.strokeColor(COLORS.border).lineWidth(0.7)
@@ -782,7 +725,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
         .text('Date', confCardX + 12, confirmY + 24, { continued: true });
     doc.font(fontRegular).text(`                       :  ${dateFormatted}`);
 
-    // Right: Dashed stamp box
     const stampW = 110;
     const stampH = 40;
     const stampX = confCardX + confCardW - stampW - 12;
@@ -799,7 +741,6 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
 
     doc.y = confirmY + stampH + 8;
 
-    // Disclaimer box
     const discY = doc.y;
     doc.roundedRect(confCardX + 12, discY, confCardW - 24, 22, 3)
         .fillColor(COLORS.softBlue)
@@ -815,9 +756,7 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
 
     doc.y = discY + 28;
 
-    // =========================================================================
-    // TWO-PASS FOOTER RENDERING (Page X of Y on all pages)
-    // =========================================================================
+    // TWO-PASS FOOTER RENDERING
     const range = doc.bufferedPageRange();
     const totalPages = range.count;
 
@@ -826,29 +765,26 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
 
         const footerLineY = PAGE.height - 44;
 
-        // Separator line
         doc.strokeColor(COLORS.teal).lineWidth(0.8)
             .moveTo(PAGE.marginX, footerLineY).lineTo(PAGE.width - PAGE.marginX, footerLineY).stroke();
 
-        // Footer 3 Columns
         const footTextY = footerLineY + 5;
         const colW = PAGE.contentWidth / 3;
 
-        // Col 1: Clinic location
-        doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
-            .text('Doctors Vedika Clinic', PAGE.marginX, footTextY, { width: colW })
-            .text('Hyderabad, Telangana, India', PAGE.marginX, footTextY + 7.5, { width: colW });
+        const footClinic = cleanString(patientRecord.clinicName || patientRecord.clinic_name || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name, 'Doctors Vedika Clinic');
+        const footAddr = cleanString(patientRecord.clinicAddress || patientRecord.clinic_address || patientRecord.doctorClinicAddress || patientRecord.doctor_clinic_address, 'Hyderabad, Telangana, India');
 
-        // Col 2: Web & Email
+        doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
+            .text(footClinic, PAGE.marginX, footTextY, { width: colW, lineBreak: false })
+            .text(footAddr, PAGE.marginX, footTextY + 7.5, { width: colW, lineBreak: false });
+
         doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
             .text('www.doctorsvedika.com', PAGE.marginX + colW, footTextY, { width: colW, align: 'center' })
             .text('care@doctorsvedika.com', PAGE.marginX + colW, footTextY + 7.5, { width: colW, align: 'center' });
 
-        // Col 3: Phone
         doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
             .text('+91 91234 56789', PAGE.marginX + colW * 2, footTextY + 3.5, { width: colW, align: 'right' });
 
-        // Page Number Pill at very bottom center
         const pillW = 56;
         const pillH = 13;
         const pillX = (PAGE.width - pillW) / 2;
@@ -863,17 +799,32 @@ async function generateMedicalReportPdf(patientRecord, patientFolder) {
     }
 
     doc.end();
+}
+
+async function generateMedicalReportPdf(patientRecord, outputFolder) {
+    if (!patientRecord || !patientRecord.patientId) {
+        throw new Error('patientRecord.patientId is required to generate the PDF.');
+    }
+
+    fs.mkdirSync(outputFolder, { recursive: true });
+
+    const safeName = safeFilePart(patientRecord.patientName);
+    const consultationId = patientRecord.consultationId || `consultation-${Date.now()}`;
+    const fileName = `${consultationId}-${safeName}.pdf`;
+    const filePath = path.join(outputFolder, fileName);
+
+    const stream = fs.createWriteStream(filePath);
+    renderPdfToStream(patientRecord, stream);
 
     await new Promise((resolve, reject) => {
         stream.on('finish', resolve);
         stream.on('error', reject);
-        doc.on('error', reject);
     });
 
     const stat = fs.statSync(filePath);
     if (!stat.size) throw new Error('Generated PDF is empty.');
 
-    return { filePath, fileName, size: stat.size, totalPages };
+    return { filePath, fileName, size: stat.size };
 }
 
-module.exports = { generateMedicalReportPdf };
+module.exports = { generateMedicalReportPdf, renderPdfToStream };
