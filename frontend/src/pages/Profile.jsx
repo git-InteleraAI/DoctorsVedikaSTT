@@ -13,6 +13,44 @@ export default function Profile() {
     const [saveMessage, setSaveMessage] = useState(null);
     const [showPublicPreview, setShowPublicPreview] = useState(false);
 
+    // Password Change Modal State
+    const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+    const [pwdData, setPwdData] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    const [pwdLoading, setPwdLoading] = useState(false);
+    const [pwdError, setPwdError] = useState("");
+    const [pwdSuccess, setPwdSuccess] = useState("");
+
+    const handleChangePasswordSubmit = async (e) => {
+        e.preventDefault();
+        setPwdError("");
+        setPwdSuccess("");
+
+        if (pwdData.newPassword.length < 6) {
+            setPwdError("New password must be at least 6 characters long.");
+            return;
+        }
+
+        if (pwdData.newPassword !== pwdData.confirmPassword) {
+            setPwdError("New password and confirm password do not match.");
+            return;
+        }
+
+        setPwdLoading(true);
+        try {
+            const res = await authService.changePassword(pwdData.currentPassword, pwdData.newPassword);
+            setPwdSuccess(res?.message || "Password updated successfully!");
+            setPwdData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+            setTimeout(() => {
+                setShowChangePasswordModal(false);
+                setPwdSuccess("");
+            }, 1800);
+        } catch (err) {
+            setPwdError(err.message || "Failed to update password.");
+        } finally {
+            setPwdLoading(false);
+        }
+    };
+
     const fileInputRef = useRef(null);
 
     // Form state initialized from doctor context with safe fallbacks
@@ -595,7 +633,7 @@ export default function Profile() {
                                             <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "#0f172a" }}>Password</div>
                                             <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Last updated 30 days ago</div>
                                         </div>
-                                        <button onClick={() => setIsEditing(true)} style={{ padding: "6px 14px", background: "#f0fdfa", border: "1px solid #ccfbf1", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", color: "#08AEB8" }}>Change Password</button>
+                                        <button onClick={() => setShowChangePasswordModal(true)} style={{ padding: "6px 14px", background: "#f0fdfa", border: "1px solid #ccfbf1", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", color: "#08AEB8" }}>Change Password</button>
                                     </div>
                                 </div>
                             )}
@@ -607,6 +645,98 @@ export default function Profile() {
                 </div>
 
             </div>
+
+            {/* ═════════════════════════════════════════════════════════
+               CHANGE PASSWORD MODAL
+            ═════════════════════════════════════════════════════════ */}
+            {showChangePasswordModal && (
+                <div style={{
+                    position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                    zIndex: 2500, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)",
+                    display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+                }}>
+                    <div style={{
+                        background: "#fff", borderRadius: 20, width: "100%", maxWidth: 460,
+                        boxShadow: "0 20px 40px rgba(0,0,0,0.18)", overflow: "hidden"
+                    }}>
+                        <div style={{ padding: "16px 20px", background: "linear-gradient(135deg,#082B68,#08AEB8)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <i className="fa-solid fa-key" />
+                                <span style={{ fontWeight: 800, fontSize: "1.05rem" }}>Change Password</span>
+                            </div>
+                            <button onClick={() => setShowChangePasswordModal(false)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: 28, height: 28, borderRadius: "50%", cursor: "pointer" }}>
+                                <i className="fa-solid fa-xmark" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleChangePasswordSubmit} style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+                            {pwdError && (
+                                <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", fontSize: "0.82rem", fontWeight: 600 }}>
+                                    {pwdError}
+                                </div>
+                            )}
+
+                            {pwdSuccess && (
+                                <div style={{ padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, color: "#16a34a", fontSize: "0.82rem", fontWeight: 600 }}>
+                                    {pwdSuccess}
+                                </div>
+                            )}
+
+                            <div>
+                                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: 5 }}>Current Password (optional)</label>
+                                <input
+                                    type="password"
+                                    placeholder="Enter current password"
+                                    value={pwdData.currentPassword}
+                                    onChange={(e) => setPwdData({ ...pwdData, currentPassword: e.target.value })}
+                                    style={{ width: "100%", padding: "9px 12px", border: "1px solid #cbd5e1", borderRadius: 9, fontSize: "0.86rem", outline: "none", boxSizing: "border-box" }}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: 5 }}>New Password</label>
+                                <input
+                                    type="password"
+                                    required
+                                    placeholder="At least 6 characters"
+                                    value={pwdData.newPassword}
+                                    onChange={(e) => setPwdData({ ...pwdData, newPassword: e.target.value })}
+                                    style={{ width: "100%", padding: "9px 12px", border: "1px solid #cbd5e1", borderRadius: 9, fontSize: "0.86rem", outline: "none", boxSizing: "border-box" }}
+                                />
+                            </div>
+
+                            <div>
+                                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: 5 }}>Confirm New Password</label>
+                                <input
+                                    type="password"
+                                    required
+                                    placeholder="Re-enter new password"
+                                    value={pwdData.confirmPassword}
+                                    onChange={(e) => setPwdData({ ...pwdData, confirmPassword: e.target.value })}
+                                    style={{ width: "100%", padding: "9px 12px", border: "1px solid #cbd5e1", borderRadius: 9, fontSize: "0.86rem", outline: "none", boxSizing: "border-box" }}
+                                />
+                            </div>
+
+                            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowChangePasswordModal(false)}
+                                    style={{ padding: "8px 16px", background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: "0.84rem" }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={pwdLoading}
+                                    style={{ padding: "8px 20px", background: "linear-gradient(135deg,#082B68,#08AEB8)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: pwdLoading ? "not-allowed" : "pointer", fontSize: "0.84rem" }}
+                                >
+                                    {pwdLoading ? "Updating..." : "Update Password"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* ═════════════════════════════════════════════════════════
                EDIT PROFILE MODAL

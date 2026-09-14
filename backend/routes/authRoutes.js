@@ -49,6 +49,15 @@ router.post(
         )
 );
 
+router.post(
+    "/reset-password",
+    (req, res) =>
+        authController.resetPassword(
+            req,
+            res
+        )
+);
+
 /*
  * Google OAuth
  */
@@ -109,6 +118,16 @@ router.post(
     upload.single("file"),
     (req, res) =>
         authController.uploadFile(
+            req,
+            res
+        )
+);
+
+router.put(
+    "/change-password",
+    protect,
+    (req, res) =>
+        authController.changePassword(
             req,
             res
         )

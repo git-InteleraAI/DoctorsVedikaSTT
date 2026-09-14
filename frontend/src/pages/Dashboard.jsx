@@ -127,8 +127,6 @@ const Dashboard = () => {
         if (!authLoading) {
             if (!doctor) {
                 navigate("/login");
-            } else if (!doctor.onboardingCompleted) {
-                navigate("/onboarding");
             }
         }
     }, [doctor, authLoading, navigate]);

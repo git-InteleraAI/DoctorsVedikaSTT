@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
@@ -8,8 +8,8 @@ import ConsultationSummary from "./pages/ConsultationSummary";
 import PatientRecord from "./pages/PatientRecord";
 import Patients from "./pages/Patients";
 import DoctorLogin from "./pages/DoctorLogin";
-import DoctorSignup from "./pages/DoctorSignup";
 import DoctorOnboarding from "./pages/DoctorOnboarding";
+import ResetPassword from "./pages/ResetPassword";
 import Availability from "./pages/Availability";
 import VideosAndShorts from "./pages/VideosAndShorts";
 import QnA from "./pages/QnA";
@@ -17,6 +17,8 @@ import AuthCallback from "./pages/AuthCallback";
 import { AuthProvider } from "./context/AuthContext";
 
 import Profile from "./pages/Profile";
+
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
@@ -36,69 +38,115 @@ function App() {
 
         <Route
           path="/signup"
-          element={<DoctorSignup />}
+          element={<Navigate to="/login" replace />}
         />
 
         <Route
           path="/onboarding"
-          element={<DoctorOnboarding />}
+          element={<Navigate to="/dashboard" replace />}
+        />
+
+        <Route
+          path="/reset-password"
+          element={<ResetPassword />}
         />
 
 
-        {/* DO NOT TOUCH */}
+        {/* Landing Page */}
         <Route
           path="/"
           element={<LandingPage />}
         />
 
+        {/* Protected App Routes */}
         <Route
           path="/dashboard"
-          element={<Dashboard />}
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/appointments"
-          element={<Appointments />}
+          element={
+            <ProtectedRoute>
+              <Appointments />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/availability"
-          element={<Availability />}
+          element={
+            <ProtectedRoute>
+              <Availability />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/consultation/:patientId"
-          element={<Consultation />}
+          element={
+            <ProtectedRoute>
+              <Consultation />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/consultation/:patientId/summary"
-          element={<ConsultationSummary />}
+          element={
+            <ProtectedRoute>
+              <ConsultationSummary />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/patients"
-          element={<Patients />}
+          element={
+            <ProtectedRoute>
+              <Patients />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/patients/:patientId"
-          element={<PatientRecord />}
+          element={
+            <ProtectedRoute>
+              <PatientRecord />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/videos"
-          element={<VideosAndShorts />}
+          element={
+            <ProtectedRoute>
+              <VideosAndShorts />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/qna"
-          element={<QnA />}
+          element={
+            <ProtectedRoute>
+              <QnA />
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/profile"
-          element={<Profile />}
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
         />
 
       </Routes>

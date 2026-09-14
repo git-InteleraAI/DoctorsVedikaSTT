@@ -1,432 +1,546 @@
 /* ==========================================================================
-   CONSULTATION SUMMARY - DARK THEME (PHASE 3)
+   DOCTORS VEDIKA - CONSULTATION SUMMARY (MINIMALIST LIGHT EHR DESIGN)
    ========================================================================== */
+
+:root {
+    --ehr-bg: #f8fafc;
+    --ehr-surface: #ffffff;
+    --ehr-border: #e2e8f0;
+    --ehr-border-hover: #cbd5e1;
+    --ehr-text-main: #0f172a;
+    --ehr-text-muted: #64748b;
+    --ehr-primary: #0d9488;
+    --ehr-primary-hover: #0f766e;
+    --ehr-primary-light: #ccfbf1;
+    --ehr-primary-glow: rgba(13, 148, 136, 0.15);
+    --ehr-accent-blue: #0284c7;
+    --ehr-accent-blue-bg: #f0f9ff;
+    --ehr-danger: #dc2626;
+    --ehr-danger-bg: #fef2f2;
+    --ehr-danger-border: #fca5a5;
+}
 
 .consultation-summary-page {
     min-height: 100vh;
-    background-color: #0f172a;
-    color: #ffffff;
+    background-color: var(--ehr-bg);
+    color: var(--ehr-text-main);
     font-family: 'Outfit', Inter, -apple-system, sans-serif;
-    display: flex;
-    flex-direction: column;
+    padding: 24px 32px 60px;
+    box-sizing: border-box;
 }
 
-/* --- HEADER NAVBAR --- */
-.cs-navbar {
-    height: 70px;
-    background: #0f172a;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+/* --- TOP HEADER NAVBAR --- */
+.summary-header, .cs-navbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 32px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    background: var(--ehr-surface);
+    border: 1px solid var(--ehr-border);
+    border-radius: 16px;
+    padding: 16px 28px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
-.cs-nav-left {
+.title-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 
-.cs-logo {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.title-row h1 {
+    font-size: 1.45rem;
     font-weight: 700;
-    font-size: 1.25rem;
-    color: #ffffff;
-}
-
-.cs-logo-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #01b6af, #0ea5e9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-}
-
-.cs-nav-center {
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: #cbd5e1;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.cs-nav-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.cs-nav-profile {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.cs-nav-profile-info {
-    text-align: right;
-}
-
-.cs-nav-profile-name {
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: #ffffff;
-}
-
-.cs-nav-profile-role {
-    font-size: 0.8rem;
-    color: #94a3b8;
-}
-
-.cs-nav-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.1);
-    object-fit: cover;
-}
-
-/* --- TWO COLUMN LAYOUT --- */
-.cs-main-layout {
-    display: grid;
-    grid-template-columns: 1fr 450px;
-    gap: 32px;
-    width: 100%;
-    max-width: 100%;
     margin: 0;
-    padding: 32px;
-    align-items: start;
-    flex: 1;
+    color: var(--ehr-text-main);
+    letter-spacing: -0.01em;
 }
 
-/* --- LEFT COLUMN --- */
-.cs-left-column {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
+.title-row p {
+    margin: 4px 0 0;
+    font-size: 0.88rem;
+    color: var(--ehr-text-muted);
 }
 
-.cs-editable-sections-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-    gap: 20px;
+.ai-badge {
+    background: var(--ehr-primary-light);
+    border: 1px solid #99f6e4;
+    color: var(--ehr-primary-hover);
+    padding: 5px 12px;
+    border-radius: 50px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.cs-transcript-section {
-    grid-column: 1 / -1; 
-    margin-top: 10px;
-}
-
-/* --- RIGHT COLUMN --- */
-.cs-right-column {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    position: sticky;
-    top: 94px; /* navbar height + padding */
-    height: calc(100vh - 110px);
-    overflow-y: auto;
-    padding-right: 8px;
-    padding-bottom: 24px;
-}
-
-/* --- CARDS --- */
-.cs-card {
-    background: rgba(255,255,255,0.02);
-    border-radius: 20px;
-    border: 1px solid rgba(255,255,255,0.1);
-    padding: 28px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-    margin-bottom: 24px;
-}
-
-.cs-card-header {
+/* --- REVIEW NOTICE BANNER --- */
+.review-notice, .review-banner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-}
-
-.cs-card-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-    color: #ffffff;
-    font-size: 1.05rem;
-}
-
-.cs-card-icon {
-    color: #01b6af;
-    font-size: 1.1rem;
-}
-
-/* --- NEXT STEP TRACKER --- */
-.cs-step-tracker {
-    display: flex;
-    flex-direction: column;
-    position: relative;
-}
-
-.cs-step-tracker::before {
-    content: '';
-    position: absolute;
-    top: 20px;
-    bottom: 20px;
-    left: 17px;
-    width: 2px;
-    background: rgba(255,255,255,0.1);
-    z-index: 1;
-}
-
-.cs-step {
-    display: flex;
     gap: 16px;
-    position: relative;
-    z-index: 2;
+    background: var(--ehr-accent-blue-bg);
+    border: 1px solid #bae6fd;
+    border-radius: 14px;
+    padding: 14px 20px;
     margin-bottom: 24px;
 }
-.cs-step:last-child {
-    margin-bottom: 0;
-}
 
-.cs-step-icon {
+.review-icon {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: rgba(255,255,255,0.05);
-    border: 2px solid rgba(255,255,255,0.1);
+    background: #e0f2fe;
+    color: var(--ehr-accent-blue);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
-    font-size: 0.9rem;
+    font-weight: bold;
+    font-size: 1.1rem;
     flex-shrink: 0;
-    transition: all 0.2s;
 }
 
-.cs-step.completed .cs-step-icon {
-    border-color: #01b6af;
-    color: #01b6af;
+.review-notice h2, .review-banner h2 {
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin: 0 0 2px;
+    color: #0369a1;
 }
 
-.cs-step.active .cs-step-icon {
-    border-color: #01b6af;
-    background: #01b6af;
-    color: #ffffff;
-    box-shadow: 0 0 0 4px rgba(1, 182, 175, 0.15);
+.review-notice p, .review-banner p {
+    font-size: 0.86rem;
+    margin: 0;
+    color: #334155;
 }
 
-.cs-step-content {
-    padding-top: 6px;
+/* --- METADATA GRID --- */
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
 }
 
-.cs-step-title {
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: #cbd5e1;
-    margin-bottom: 4px;
+.meta-card {
+    background: var(--ehr-surface);
+    border: 1px solid var(--ehr-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    transition: border-color 0.2s ease;
 }
-.cs-step.active .cs-step-title {
-    color: #01b6af;
-}
-
-.cs-step-desc {
-    font-size: 0.85rem;
-    color: #94a3b8;
+.meta-card:hover {
+    border-color: var(--ehr-border-hover);
 }
 
-/* --- PATIENT DETAILS CARD --- */
-.cs-detail-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 12px 0;
-    border-bottom: 1px dashed rgba(255,255,255,0.1);
-}
-.cs-detail-row:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
+.meta-label {
+    font-size: 0.72rem;
+    color: var(--ehr-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
 }
 
-.cs-detail-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #94a3b8;
-    font-size: 0.9rem;
-}
-
-.cs-detail-value {
-    font-weight: 500;
-    color: #ffffff;
-    font-size: 0.9rem;
-}
-
-/* --- BUTTONS --- */
-.cs-button {
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: none;
-    transition: all 0.2s;
-}
-
-.cs-button-outline {
-    background: transparent;
-    border: 1px solid #01b6af;
-    color: #01b6af;
-}
-.cs-button-outline:hover {
-    background: rgba(1, 182, 175, 0.05);
-}
-
-.cs-button-primary {
-    background: #01b6af;
-    color: white;
-    width: 100%;
-    justify-content: center;
-    padding: 12px;
-}
-.cs-button-primary:hover {
-    background: #008f89;
-}
-
-.cs-button-secondary {
-    background: rgba(255,255,255,0.05);
-    color: #cbd5e1;
-    border: 1px solid rgba(255,255,255,0.2);
-    width: 100%;
-    justify-content: center;
-    padding: 12px;
-}
-.cs-button-secondary:hover {
-    background: rgba(255,255,255,0.1);
-}
-
-.cs-actions-row {
-    display: flex;
-    gap: 12px;
-    margin-top: 20px;
-}
-
-/* --- EDITABLE FIELDS --- */
-.cs-textarea {
-    width: 100%;
-    min-height: 80px;
-    border: 1px solid rgba(255,255,255,0.2);
-    background: rgba(255,255,255,0.05);
-    border-radius: 8px;
-    padding: 12px;
-    font-family: inherit;
-    font-size: 0.95rem;
-    color: #ffffff;
-    resize: vertical;
-    transition: all 0.2s;
-}
-.cs-textarea:hover, .cs-textarea:focus {
-    border-color: #01b6af;
-    background: rgba(255,255,255,0.1);
-    outline: none;
-}
-
-.cs-list-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-.cs-list-row:last-child {
-    margin-bottom: 0;
-}
-
-.cs-btn-remove {
-    padding: 0 12px;
-    background: transparent;
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #ef4444;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-}
-.cs-btn-remove:hover {
-    background: rgba(239, 68, 68, 0.1);
-}
-
-.cs-btn-add {
-    padding: 6px 12px;
-    background: transparent;
-    border: 1px solid #01b6af;
-    color: #01b6af;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 0.85rem;
+.meta-value {
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: var(--ehr-text-main);
     margin-top: 4px;
 }
-.cs-btn-add:hover {
-    background: rgba(1, 182, 175, 0.05);
+
+/* --- TWO COLUMN MAIN LAYOUT --- */
+.summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 24px;
+    align-items: start;
 }
 
-/* --- TRANSCRIPT --- */
-.cs-transcript-box {
-    max-height: 400px;
-    overflow-y: auto;
-    padding-right: 8px;
+@media (max-width: 1100px) {
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
-.cs-transcript-line {
+.report-column, .cs-left-column {
     display: flex;
-    gap: 16px;
-    padding: 12px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-}
-.cs-transcript-line:last-child {
-    border-bottom: none;
+    flex-direction: column;
+    gap: 20px;
 }
 
-.cs-speaker-badge {
-    min-width: 70px;
-    font-weight: 600;
+.side-column, .cs-right-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+}
+
+/* --- CARDS & EDITABLE SECTIONS --- */
+.editable-section, .report-card, .side-card, .card-box, .cs-card {
+    background: var(--ehr-surface);
+    border: 1px solid var(--ehr-border);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.section-heading, .section-heading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.section-heading h2, .section-heading-row h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--ehr-text-main);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-icon {
+    font-size: 1.15rem;
+    color: var(--ehr-primary);
+}
+
+.section-description {
     font-size: 0.85rem;
-    color: #01b6af;
-}
-.cs-speaker-badge.patient {
-    color: #0ea5e9;
+    color: var(--ehr-text-muted);
+    margin-bottom: 16px;
+    line-height: 1.4;
 }
 
-.cs-transcript-content {
-    color: #cbd5e1;
-    font-size: 0.95rem;
+/* --- TEXTAREAS & INPUTS --- */
+.editable-section textarea,
+.input-field textarea,
+.input-group textarea,
+.cs-textarea {
+    width: 100%;
+    min-height: 75px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: var(--ehr-text-main);
+    padding: 12px 14px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+.editable-section textarea:focus,
+.input-field textarea:focus,
+.cs-textarea:focus {
+    outline: none;
+    border-color: var(--ehr-primary);
+    box-shadow: 0 0 0 3px var(--ehr-primary-glow);
+}
+
+.input-field input,
+.medicine-select,
+.cs-input {
+    width: 100%;
+    height: 38px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    color: var(--ehr-text-main);
+    padding: 0 10px;
+    font-size: 0.88rem;
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+.input-field input:focus,
+.medicine-select:focus {
+    outline: none;
+    border-color: var(--ehr-primary);
+    box-shadow: 0 0 0 3px var(--ehr-primary-glow);
+}
+
+.medicine-select option {
+    background: #ffffff;
+    color: #0f172a;
+    padding: 6px;
+}
+
+.input-field label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--ehr-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 5px;
+}
+
+/* --- LIST EDITING --- */
+.editable-list-row, .cs-list-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.list-remove, .cs-btn-remove {
+    background: var(--ehr-danger-bg);
+    border: 1px solid var(--ehr-danger-border);
+    color: var(--ehr-danger);
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+.list-remove:hover, .cs-btn-remove:hover {
+    background: #fee2e2;
+}
+
+.list-add, .add-button, .cs-btn-add {
+    background: var(--ehr-primary-light);
+    border: 1px solid #99f6e4;
+    color: var(--ehr-primary-hover);
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.84rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+.list-add:hover, .add-button:hover, .cs-btn-add:hover {
+    background: #5eead4;
+    color: #042f2e;
+}
+
+/* --- VITALS GRID --- */
+.vitals-edit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+}
+
+/* --- PRESCRIPTION TABLE & MEDICINE ROWS --- */
+.medicine-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.medicine-row {
+    display: grid;
+    grid-template-columns: 28px minmax(160px, 2fr) minmax(100px, 1fr) minmax(120px, 1.2fr) minmax(100px, 1fr) minmax(140px, 1.5fr) auto;
+    gap: 10px;
+    align-items: end;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px;
+}
+
+@media (max-width: 960px) {
+    .medicine-row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.medicine-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--ehr-primary-light);
+    border: 1px solid #99f6e4;
+    color: var(--ehr-primary-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    margin-bottom: 5px;
+}
+
+.delete-medicine {
+    background: var(--ehr-danger-bg);
+    border: 1px solid var(--ehr-danger-border);
+    color: var(--ehr-danger);
+    border-radius: 8px;
+    padding: 0 12px;
+    height: 38px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.delete-medicine:hover {
+    background: #fee2e2;
+}
+
+.empty-medicine {
+    text-align: center;
+    padding: 24px;
+    background: #f8fafc;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 10px;
+    color: var(--ehr-text-muted);
+    font-size: 0.88rem;
     line-height: 1.5;
 }
 
-.cs-info-banner {
+/* --- DETAIL ROW --- */
+.cs-detail-row, .detail-row {
     display: flex;
-    gap: 12px;
-    padding: 16px;
-    background: rgba(1, 182, 175, 0.05);
-    border: 1px solid rgba(1, 182, 175, 0.2);
-    border-radius: 12px;
-    color: #ffffff;
-    font-size: 0.9rem;
-    margin-bottom: 20px;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px dashed #e2e8f0;
 }
-.cs-info-banner i {
-    color: #01b6af;
-    font-size: 1.2rem;
+.cs-detail-row:last-child, .detail-row:last-child {
+    border-bottom: none;
 }
 
+.detail-label {
+    color: var(--ehr-text-muted);
+    font-size: 0.84rem;
+}
+.detail-value {
+    font-weight: 600;
+    color: var(--ehr-text-main);
+    font-size: 0.86rem;
+}
+
+/* --- TRANSCRIPT --- */
+.transcript-container {
+    max-height: 480px;
+    overflow-y: auto;
+    padding-right: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.transcript-line {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+
+.transcript-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.speaker-badge, .transcript-meta strong {
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 50px;
+    display: inline-block;
+}
+.speaker-badge.doctor, .transcript-meta strong {
+    background: var(--ehr-primary-light);
+    color: var(--ehr-primary-hover);
+    border: 1px solid #99f6e4;
+}
+.speaker-badge.patient {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.transcript-meta span {
+    font-size: 0.74rem;
+    color: var(--ehr-text-muted);
+    font-family: monospace;
+}
+
+.transcript-text {
+    font-size: 0.88rem;
+    color: #334155;
+    line-height: 1.45;
+}
+
+.small-outline-button {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: var(--ehr-text-main);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.small-outline-button:hover {
+    border-color: var(--ehr-primary);
+    color: var(--ehr-primary);
+}
+
+/* --- SAVE MODAL --- */
+.save-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.save-modal {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 32px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.15);
+}
+
+.save-modal-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: #ccfbf1;
+    color: #0d9488;
+    font-size: 1.6rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+}
+
+.save-modal h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: #0f172a;
+}
+
+.save-modal p {
+    font-size: 0.88rem;
+    color: #64748b;
+    line-height: 1.5;
+    margin: 0 0 20px;
+}

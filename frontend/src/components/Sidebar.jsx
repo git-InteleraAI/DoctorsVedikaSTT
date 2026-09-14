@@ -1,9 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const SIDEBAR_WIDTH = 236;
-const HEADER_HEIGHT = 64;
 
 export default function Sidebar({
     activePage = "dashboard",
@@ -17,98 +14,235 @@ export default function Sidebar({
     const location = useLocation();
     const { logout } = useAuth();
 
-    const [isAppointmentsOpen, setIsAppointmentsOpen] =
-        useState(activePage === "dashboard" || activePage === "appointments" || location.pathname === "/appointments");
+    /*
+     * ============================================================
+     * CURRENT SECTION
+     *
+     * The URL is the primary source of truth.
+     * activePage is used only for routes where the URL itself
+     * does not explicitly identify the section.
+     * ============================================================
+     */
+    const currentSection = useMemo(() => {
+        const path = location.pathname;
 
-    const [isPatientsOpen, setIsPatientsOpen] =
-        useState(activePage === "patients");
+        if (path === "/appointments" || path.startsWith("/appointments/")) {
+            return "appointments";
+        }
+
+        if (path === "/patients" || path.startsWith("/patients/")) {
+            return "patients";
+        }
+
+        if (path === "/availability" || path.startsWith("/availability/")) {
+            return "availability";
+        }
+
+        if (path === "/videos" || path.startsWith("/videos/")) {
+            return "videos";
+        }
+
+        if (path === "/qna" || path.startsWith("/qna/")) {
+            return "qna";
+        }
+
+        if (path === "/profile" || path.startsWith("/profile/")) {
+            return "profile";
+        }
+
+        if (path === "/settings" || path.startsWith("/settings/")) {
+            return "settings";
+        }
+
+        if (path === "/dashboard" || path.startsWith("/dashboard/")) {
+            return "dashboard";
+        }
+
+        /*
+         * For consultation or other nested pages where the sidebar
+         * receives activePage from the parent, preserve that value.
+         */
+        return activePage || "dashboard";
+    }, [location.pathname, activePage]);
+
+    /*
+     * ============================================================
+     * DROPDOWN STATE
+     *
+     * Only ONE section can be open at a time.
+     *
+     * This replaces the old:
+     *   isAppointmentsOpen
+     *   isPatientsOpen
+     *
+     * This prevents conflicting state updates during navigation.
+     * ============================================================
+     */
+    const [openSection, setOpenSection] = useState(() => {
+        if (
+            location.pathname === "/appointments" ||
+            location.pathname.startsWith("/appointments/")
+        ) {
+            return "appointments";
+        }
+
+        if (
+            location.pathname === "/patients" ||
+            location.pathname.startsWith("/patients/")
+        ) {
+            return "patients";
+        }
+
+        if (activePage === "appointments") {
+            return "appointments";
+        }
+
+        if (activePage === "patients") {
+            return "patients";
+        }
+
+        return null;
+    });
 
     const [hoveredItem, setHoveredItem] = useState(null);
 
     /*
-     * Keep dropdowns synchronized with the page.
+     * ============================================================
+     * SYNCHRONIZE DROPDOWN ONLY AFTER ROUTE/SECTION CHANGES
+     *
+     * IMPORTANT:
+     * Navigation click handlers do NOT close the dropdown first.
+     *
+     * The route changes first, then this effect updates the
+     * appropriate open section.
+     * ============================================================
      */
     useEffect(() => {
-        if (activePage === "dashboard" || activePage === "appointments" || location.pathname === "/appointments") {
-            setIsAppointmentsOpen(true);
+        if (currentSection === "appointments") {
+            setOpenSection("appointments");
+            return;
         }
 
-        if (activePage === "patients") {
-            setIsPatientsOpen(true);
+        if (currentSection === "patients") {
+            setOpenSection("patients");
+            return;
         }
-    }, [activePage, location.pathname]);
+
+        /*
+         * For all other primary pages, close dropdowns after the
+         * new route has become active.
+         */
+        setOpenSection(null);
+    }, [currentSection]);
 
     /*
-     * Current page detection.
+     * ============================================================
+     * ACTIVE PAGE DETECTION
+     * ============================================================
      */
+
     const isDashboard =
-        activePage === "dashboard" ||
-        (location.pathname === "/dashboard" && activePage !== "appointments");
+        currentSection === "dashboard" ||
+        activePage === "dashboard";
 
     const isAppointments =
-        activePage === "appointments" ||
-        location.pathname === "/appointments";
+        currentSection === "appointments" ||
+        activePage === "appointments";
 
     const isPatients =
-        activePage === "patients" ||
-        location.pathname === "/patients";
+        currentSection === "patients" ||
+        activePage === "patients";
 
     const isAvailability =
-        activePage === "availability" ||
-        location.pathname === "/availability";
+        currentSection === "availability" ||
+        activePage === "availability";
 
     const isVideos =
-        activePage === "videos" ||
-        location.pathname === "/videos";
+        currentSection === "videos" ||
+        activePage === "videos";
 
     const isQna =
-        activePage === "qna" ||
-        location.pathname === "/qna";
+        currentSection === "qna" ||
+        activePage === "qna";
 
     const isProfile =
-        activePage === "profile" ||
-        location.pathname === "/profile";
+        currentSection === "profile" ||
+        activePage === "profile";
 
     const isSettings =
-        activePage === "settings" ||
-        location.pathname === "/settings";
+        currentSection === "settings" ||
+        activePage === "settings";
+
+    const isAppointmentsOpen = openSection === "appointments";
+    const isPatientsOpen = openSection === "patients";
 
     /*
-     * Appointment navigation.
+     * ============================================================
+     * APPOINTMENT NAVIGATION
+     * ============================================================
      */
     const goTab = (tab) => {
-        if (activePage === "appointments") {
+        /*
+         * If already on Appointments, only update the query.
+         */
+        if (currentSection === "appointments") {
             navigate(`/appointments?tab=${tab}`);
             return;
         }
 
-        if (activePage === "dashboard" && onDashboardTab) {
+        /*
+         * If dashboard owns appointment tabs, preserve that behavior.
+         */
+        if (
+            currentSection === "dashboard" &&
+            onDashboardTab
+        ) {
             onDashboardTab(tab);
             return;
         }
 
+        /*
+         * Otherwise navigate to Appointments.
+         */
         navigate(`/appointments?tab=${tab}`);
     };
 
     /*
-     * Patient navigation.
+     * ============================================================
+     * PATIENT NAVIGATION
+     * ============================================================
      */
     const goPatientView = (view) => {
-        if (activePage === "patients" && onPatientView) {
+        /*
+         * If already on Patients, use the parent's existing
+         * patient-view handler.
+         */
+        if (
+            currentSection === "patients" &&
+            onPatientView
+        ) {
             onPatientView(view);
 
-            if (view === "search" && fetchPatients) {
+            if (
+                view === "search" &&
+                fetchPatients
+            ) {
                 fetchPatients("");
             }
 
             return;
         }
 
+        /*
+         * Navigate to the existing Patients page.
+         */
         navigate("/patients");
     };
 
     /*
-     * Logout.
+     * ============================================================
+     * LOGOUT
+     * ============================================================
      */
     const handleLogout = () => {
         if (logout) {
@@ -119,7 +253,9 @@ export default function Sidebar({
     };
 
     /*
-     * Colors.
+     * ============================================================
+     * COLORS
+     * ============================================================
      */
     const COLORS = {
         navy: "#0f172a",
@@ -134,7 +270,9 @@ export default function Sidebar({
     };
 
     /*
-     * Primary navigation style.
+     * ============================================================
+     * PRIMARY NAVIGATION STYLE
+     * ============================================================
      */
     const primaryStyle = (active, itemKey) => {
         const hovered = hoveredItem === itemKey;
@@ -160,7 +298,9 @@ export default function Sidebar({
                     ? "rgba(255, 255, 255, 0.05)"
                     : "transparent",
 
-            color: active ? "#FFFFFF" : COLORS.text,
+            color: active
+                ? "#FFFFFF"
+                : COLORS.text,
 
             cursor: "pointer",
 
@@ -178,7 +318,9 @@ export default function Sidebar({
     };
 
     /*
-     * Submenu style.
+     * ============================================================
+     * SUBMENU STYLE
+     * ============================================================
      */
     const submenuStyle = (active, theme, itemKey) => {
         const hovered = hoveredItem === itemKey;
@@ -200,7 +342,8 @@ export default function Sidebar({
             },
         };
 
-        const selected = themes[theme] || themes.cyan;
+        const selected =
+            themes[theme] || themes.cyan;
 
         return {
             width: "100%",
@@ -244,7 +387,9 @@ export default function Sidebar({
     };
 
     /*
-     * Primary navigation button.
+     * ============================================================
+     * PRIMARY BUTTON
+     * ============================================================
      */
     const PrimaryButton = ({
         itemKey,
@@ -253,6 +398,7 @@ export default function Sidebar({
         children,
         onClick,
         rightIcon,
+        rightIconStyle = {},
     }) => {
         return (
             <button
@@ -274,7 +420,6 @@ export default function Sidebar({
                         display: "flex",
                         alignItems: "center",
                         gap: 11,
-
                         minWidth: 0,
                     }}
                 >
@@ -318,6 +463,7 @@ export default function Sidebar({
                                 ? 0.95
                                 : 0.55,
                             flexShrink: 0,
+                            ...rightIconStyle,
                         }}
                     />
                 )}
@@ -326,7 +472,9 @@ export default function Sidebar({
     };
 
     /*
-     * Submenu button.
+     * ============================================================
+     * SUBMENU BUTTON
+     * ============================================================
      */
     const SubmenuButton = ({
         itemKey,
@@ -390,6 +538,11 @@ export default function Sidebar({
         );
     };
 
+    /*
+     * ============================================================
+     * RENDER
+     * ============================================================
+     */
     return (
         <>
             <style>
@@ -444,10 +597,14 @@ export default function Sidebar({
                     width: "100%",
                     height: "100%",
                     boxSizing: "border-box",
+
                     background: "transparent",
+
                     display: "flex",
                     flexDirection: "column",
+
                     padding: "16px 14px 14px",
+
                     overflow: "hidden",
                 }}
             >
@@ -479,121 +636,185 @@ export default function Sidebar({
                             gap: 4,
                         }}
                     >
-                        {/* Dashboard */}
+                        {/* =================================================
+                            DASHBOARD
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
                                 itemKey="dashboard"
-                                active={
-                                    isDashboard
-                                }
+                                active={isDashboard}
                                 iconClass="fa-solid fa-house"
                                 onClick={() => {
-                                    navigate(
+                                    /*
+                                     * Do not manually close dropdowns here.
+                                     * Navigation happens first.
+                                     */
+                                    if (
+                                        location.pathname ===
                                         "/dashboard"
-                                    );
+                                    ) {
+                                        return;
+                                    }
+
+                                    navigate("/dashboard");
                                 }}
                             >
                                 Dashboard
                             </PrimaryButton>
                         </li>
 
-                        {/* Appointments */}
+                        {/* =================================================
+                            APPOINTMENTS
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
                                 itemKey="appointments"
-                                active={
-                                    isAppointments
-                                }
+                                active={isAppointments}
                                 iconClass="fa-solid fa-calendar-days"
-                                rightIcon={
-                                    `fa-solid fa-chevron-${isAppointmentsOpen
-                                        ? "up"
-                                        : "down"
-                                    }`
-                                }
+                                rightIcon="fa-solid fa-chevron-down"
+                                rightIconStyle={{
+                                    transform:
+                                        isAppointmentsOpen
+                                            ? "rotate(180deg)"
+                                            : "rotate(0deg)",
+
+                                    transition:
+                                        "transform 0.25s ease-in-out",
+                                }}
                                 onClick={() => {
-                                    if (!isAppointments) {
+                                    /*
+                                     * If we are not on Appointments,
+                                     * navigate first and let the effect
+                                     * open the submenu after navigation.
+                                     */
+                                    if (
+                                        currentSection !==
+                                        "appointments"
+                                    ) {
                                         navigate(
                                             "/appointments"
                                         );
-
-                                        setIsAppointmentsOpen(
-                                            true
-                                        );
-
                                         return;
                                     }
 
-                                    setIsAppointmentsOpen(
-                                        (value) =>
-                                            !value
+                                    /*
+                                     * Already on Appointments:
+                                     * allow intentional toggle.
+                                     */
+                                    setOpenSection(
+                                        (current) =>
+                                            current ===
+                                                "appointments"
+                                                ? null
+                                                : "appointments"
                                     );
                                 }}
                             >
                                 Appointments
                             </PrimaryButton>
 
-                            {isAppointmentsOpen && (
+                            <div
+                                style={{
+                                    maxHeight:
+                                        isAppointmentsOpen
+                                            ? "140px"
+                                            : "0px",
+
+                                    opacity:
+                                        isAppointmentsOpen
+                                            ? 1
+                                            : 0,
+
+                                    overflow: "hidden",
+
+                                    transition:
+                                        "max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease-in-out, margin 0.28s ease-in-out",
+
+                                    margin:
+                                        isAppointmentsOpen
+                                            ? "3px 0 5px 21px"
+                                            : "0 0 0 21px",
+
+                                    paddingLeft: 12,
+
+                                    borderLeft:
+                                        `1px solid ${COLORS.submenuBorder}`,
+
+                                    pointerEvents:
+                                        isAppointmentsOpen
+                                            ? "auto"
+                                            : "none",
+
+                                    visibility:
+                                        isAppointmentsOpen
+                                            ? "visible"
+                                            : "hidden",
+                                }}
+                            >
                                 <div
                                     style={{
-                                        margin:
-                                            "3px 0 5px 21px",
-
-                                        paddingLeft: 12,
-
-                                        borderLeft:
-                                            `1px solid ${COLORS.submenuBorder}`,
+                                        display: "flex",
+                                        flexDirection:
+                                            "column",
+                                        gap: 2,
                                     }}
                                 >
-                                    <div
-                                        style={{
-                                            display: "flex",
-                                            flexDirection:
-                                                "column",
-                                            gap: 2,
-                                        }}
+                                    <SubmenuButton
+                                        itemKey="confirmed"
+                                        theme="cyan"
+                                        active={
+                                            (isAppointments ||
+                                                isDashboard) &&
+                                            (
+                                                dashboardTab ===
+                                                "confirmed" ||
+                                                location.search.includes(
+                                                    "tab=confirmed"
+                                                )
+                                            )
+                                        }
+                                        iconClass="fa-solid fa-calendar-check"
+                                        onClick={() =>
+                                            goTab(
+                                                "confirmed"
+                                            )
+                                        }
                                     >
-                                        <SubmenuButton
-                                            itemKey="confirmed"
-                                            theme="cyan"
-                                            active={
-                                                (isAppointments || isDashboard) &&
-                                                (dashboardTab === "confirmed" || location.search.includes("tab=confirmed"))
-                                            }
-                                            iconClass="fa-solid fa-calendar-check"
-                                            onClick={() =>
-                                                goTab(
-                                                    "confirmed"
-                                                )
-                                            }
-                                        >
-                                            Upcoming / Confirmed
-                                        </SubmenuButton>
+                                        Upcoming / Confirmed
+                                    </SubmenuButton>
 
-                                        <SubmenuButton
-                                            itemKey="completed"
-                                            theme="green"
-                                            active={
-                                                (isAppointments || isDashboard) &&
-                                                (dashboardTab === "completed" || location.search.includes("tab=completed"))
-                                            }
-                                            iconClass="fa-solid fa-circle-check"
-                                            onClick={() =>
-                                                goTab(
-                                                    "completed"
+                                    <SubmenuButton
+                                        itemKey="completed"
+                                        theme="green"
+                                        active={
+                                            (isAppointments ||
+                                                isDashboard) &&
+                                            (
+                                                dashboardTab ===
+                                                "completed" ||
+                                                location.search.includes(
+                                                    "tab=completed"
                                                 )
-                                            }
-                                        >
-                                            Completed
-                                        </SubmenuButton>
-                                    </div>
+                                            )
+                                        }
+                                        iconClass="fa-solid fa-circle-check"
+                                        onClick={() =>
+                                            goTab(
+                                                "completed"
+                                            )
+                                        }
+                                    >
+                                        Completed
+                                    </SubmenuButton>
                                 </div>
-                            )}
+                            </div>
                         </li>
 
-                        {/* Patients */}
+                        {/* =================================================
+                            PATIENTS
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
@@ -603,161 +824,227 @@ export default function Sidebar({
                                     isPatientsOpen
                                 }
                                 iconClass="fa-solid fa-user-group"
-                                rightIcon={
-                                    `fa-solid fa-chevron-${isPatientsOpen
-                                        ? "up"
-                                        : "down"
-                                    }`
-                                }
+                                rightIcon="fa-solid fa-chevron-down"
+                                rightIconStyle={{
+                                    transform:
+                                        isPatientsOpen
+                                            ? "rotate(180deg)"
+                                            : "rotate(0deg)",
+
+                                    transition:
+                                        "transform 0.25s ease-in-out",
+                                }}
                                 onClick={() => {
-                                    if (!isPatients) {
-                                        navigate(
-                                            "/patients"
-                                        );
-
-                                        setIsPatientsOpen(
-                                            true
-                                        );
-
+                                    /*
+                                     * If we are not on Patients,
+                                     * navigate first.
+                                     */
+                                    if (
+                                        currentSection !==
+                                        "patients"
+                                    ) {
+                                        navigate("/patients");
                                         return;
                                     }
 
-                                    setIsPatientsOpen(
-                                        (value) =>
-                                            !value
+                                    /*
+                                     * Already on Patients:
+                                     * allow intentional toggle.
+                                     */
+                                    setOpenSection(
+                                        (current) =>
+                                            current ===
+                                                "patients"
+                                                ? null
+                                                : "patients"
                                     );
                                 }}
                             >
                                 Patients
                             </PrimaryButton>
 
-                            {isPatientsOpen && (
+                            <div
+                                style={{
+                                    maxHeight:
+                                        isPatientsOpen
+                                            ? "140px"
+                                            : "0px",
+
+                                    opacity:
+                                        isPatientsOpen
+                                            ? 1
+                                            : 0,
+
+                                    overflow: "hidden",
+
+                                    transition:
+                                        "max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease-in-out, margin 0.28s ease-in-out",
+
+                                    margin:
+                                        isPatientsOpen
+                                            ? "3px 0 5px 21px"
+                                            : "0 0 0 21px",
+
+                                    paddingLeft: 12,
+
+                                    borderLeft:
+                                        `1px solid ${COLORS.submenuBorder}`,
+
+                                    pointerEvents:
+                                        isPatientsOpen
+                                            ? "auto"
+                                            : "none",
+
+                                    visibility:
+                                        isPatientsOpen
+                                            ? "visible"
+                                            : "hidden",
+                                }}
+                            >
                                 <div
                                     style={{
-                                        margin:
-                                            "3px 0 5px 21px",
-
-                                        paddingLeft: 12,
-
-                                        borderLeft:
-                                            `1px solid ${COLORS.submenuBorder}`,
+                                        display: "flex",
+                                        flexDirection:
+                                            "column",
+                                        gap: 2,
                                     }}
                                 >
-                                    <div
-                                        style={{
-                                            display: "flex",
-                                            flexDirection:
-                                                "column",
-                                            gap: 2,
-                                        }}
-                                    >
-                                        <SubmenuButton
-                                            itemKey="directory"
-                                            theme="cyan"
-                                            active={
-                                                isPatients &&
-                                                (
-                                                    patientView ===
-                                                    "search" ||
-                                                    patientView ===
-                                                    "profile"
-                                                )
-                                            }
-                                            iconClass="fa-solid fa-magnifying-glass"
-                                            onClick={() =>
-                                                goPatientView(
-                                                    "search"
-                                                )
-                                            }
-                                        >
-                                            Directory
-                                        </SubmenuButton>
-
-                                        <SubmenuButton
-                                            itemKey="walkin"
-                                            theme="orange"
-                                            active={
-                                                isPatients &&
+                                    <SubmenuButton
+                                        itemKey="directory"
+                                        theme="cyan"
+                                        active={
+                                            isPatients &&
+                                            (
                                                 patientView ===
+                                                "search" ||
+                                                patientView ===
+                                                "profile"
+                                            )
+                                        }
+                                        iconClass="fa-solid fa-magnifying-glass"
+                                        onClick={() =>
+                                            goPatientView(
+                                                "search"
+                                            )
+                                        }
+                                    >
+                                        Directory
+                                    </SubmenuButton>
+
+                                    <SubmenuButton
+                                        itemKey="walkin"
+                                        theme="orange"
+                                        active={
+                                            isPatients &&
+                                            patientView ===
+                                            "walkin"
+                                        }
+                                        iconClass="fa-solid fa-user-plus"
+                                        onClick={() =>
+                                            goPatientView(
                                                 "walkin"
-                                            }
-                                            iconClass="fa-solid fa-user-plus"
-                                            onClick={() =>
-                                                goPatientView(
-                                                    "walkin"
-                                                )
-                                            }
-                                        >
-                                            Add Walk-in
-                                        </SubmenuButton>
-                                    </div>
+                                            )
+                                        }
+                                    >
+                                        Add Walk-in
+                                    </SubmenuButton>
                                 </div>
-                            )}
+                            </div>
                         </li>
 
-                        {/* Availability */}
+                        {/* =================================================
+                            AVAILABILITY
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
                                 itemKey="availability"
-                                active={
-                                    isAvailability
-                                }
+                                active={isAvailability}
                                 iconClass="fa-solid fa-clock"
-                                onClick={() =>
+                                onClick={() => {
+                                    if (
+                                        location.pathname ===
+                                        "/availability"
+                                    ) {
+                                        return;
+                                    }
+
                                     navigate(
                                         "/availability"
-                                    )
-                                }
+                                    );
+                                }}
                             >
                                 Availability
                             </PrimaryButton>
                         </li>
 
-                        {/* Videos */}
+                        {/* =================================================
+                            VIDEOS
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
                                 itemKey="videos"
                                 active={isVideos}
                                 iconClass="fa-solid fa-circle-play"
-                                onClick={() =>
-                                    navigate(
+                                onClick={() => {
+                                    if (
+                                        location.pathname ===
                                         "/videos"
-                                    )
-                                }
+                                    ) {
+                                        return;
+                                    }
+
+                                    navigate("/videos");
+                                }}
                             >
                                 Videos & Shorts
                             </PrimaryButton>
                         </li>
 
-                        {/* Q&A */}
+                        {/* =================================================
+                            Q&A
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
                                 itemKey="qna"
                                 active={isQna}
                                 iconClass="fa-solid fa-circle-question"
-                                onClick={() =>
-                                    navigate("/qna")
-                                }
+                                onClick={() => {
+                                    if (
+                                        location.pathname ===
+                                        "/qna"
+                                    ) {
+                                        return;
+                                    }
+
+                                    navigate("/qna");
+                                }}
                             >
                                 Q&A
                             </PrimaryButton>
                         </li>
 
-                        {/* Profile */}
+                        {/* =================================================
+                            PROFILE
+                        ================================================= */}
 
                         <li>
                             <PrimaryButton
                                 itemKey="profile"
                                 active={isProfile}
                                 iconClass="fa-solid fa-user"
-                                onClick={() =>
-                                    navigate(
+                                onClick={() => {
+                                    if (
+                                        location.pathname ===
                                         "/profile"
-                                    )
-                                }
+                                    ) {
+                                        return;
+                                    }
+
+                                    navigate("/profile");
+                                }}
                             >
                                 Profile
                             </PrimaryButton>
@@ -765,12 +1052,9 @@ export default function Sidebar({
                     </ul>
                 </nav>
 
-                {/* =====================================================
+                {/* =========================================================
                     FIXED BOTTOM NAVIGATION
-
-                    Settings + Logout NEVER participate in
-                    the navigation scroll.
-                ===================================================== */}
+                ========================================================= */}
 
                 <div
                     style={{
@@ -788,29 +1072,36 @@ export default function Sidebar({
                         }}
                     />
 
-                    {/* Settings */}
+                    {/* =================================================
+                        SETTINGS
+                    ================================================= */}
 
                     <PrimaryButton
                         itemKey="settings"
                         active={isSettings}
                         iconClass="fa-solid fa-gear"
-                        onClick={() =>
-                            navigate(
+                        onClick={() => {
+                            if (
+                                location.pathname ===
                                 "/settings"
-                            )
-                        }
+                            ) {
+                                return;
+                            }
+
+                            navigate("/settings");
+                        }}
                     >
                         Settings
                     </PrimaryButton>
 
-                    {/* Logout */}
+                    {/* =================================================
+                        LOGOUT
+                    ================================================= */}
 
                     <button
                         type="button"
                         className="dv-logout"
-                        onClick={
-                            handleLogout
-                        }
+                        onClick={handleLogout}
                         style={{
                             display: "flex",
                             alignItems: "center",
@@ -834,6 +1125,7 @@ export default function Sidebar({
 
                             fontFamily:
                                 "inherit",
+
                             fontSize: 14,
                             fontWeight: 600,
 
@@ -872,11 +1164,9 @@ export default function Sidebar({
                     </button>
                 </div>
 
-                {/* =====================================================
+                {/* =========================================================
                     UPGRADE CARD
-
-                    Completely outside the scrollable nav.
-                ===================================================== */}
+                ========================================================= */}
 
                 <div
                     className="dv-upgrade-card"
@@ -970,8 +1260,7 @@ export default function Sidebar({
                     <button
                         type="button"
                         onClick={() => {
-                            // Add your subscription
-                            // route here later.
+                            // Add subscription route here later.
                         }}
                         style={{
                             width: "100%",
@@ -991,6 +1280,7 @@ export default function Sidebar({
 
                             fontFamily:
                                 "inherit",
+
                             fontSize: 12,
                             fontWeight: 800,
 

@@ -90,6 +90,49 @@ function resolveLogoPath() {
     return null;
 }
 
+function formatISTDate(rawDate) {
+    if (!hasValue(rawDate)) {
+        return new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+    }
+    const str = String(rawDate).trim();
+    if (/^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}$/.test(str)) {
+        return str;
+    }
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+    }
+    return str;
+}
+
+function formatISTTime(rawTime, fallbackTimestamp) {
+    const isZeroOrPlaceholder = (val) => {
+        if (!val) return true;
+        const s = String(val).trim().toLowerCase();
+        return s === '05:30:00' || s === '05:30 am' || s === '05:30' || s === '00:00:00' || s === '00:00' || s === 'n/a';
+    };
+
+    if (hasValue(rawTime) && !isZeroOrPlaceholder(rawTime)) {
+        const str = String(rawTime).trim();
+        if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(str)) {
+            return str;
+        }
+        const dTime = new Date(str);
+        if (!isNaN(dTime.getTime())) {
+            return dTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+        }
+    }
+
+    if (hasValue(fallbackTimestamp)) {
+        const dFallback = new Date(fallbackTimestamp);
+        if (!isNaN(dFallback.getTime())) {
+            return dFallback.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+        }
+    }
+
+    return new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+}
+
 function renderPdfToStream(patientRecord, stream) {
     const doc = new PDFDocument({
         size: 'A4',
@@ -297,8 +340,8 @@ function renderPdfToStream(patientRecord, stream) {
             rawDocName = `Dr. ${rawDocName}`;
         }
         const doctorName = cleanString(rawDocName, 'Dr. Harshini Jakki');
-        const dateStr = cleanString(patientRecord.consultationDate, new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
-        const timeStr = cleanString(patientRecord.consultationTime, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+        const dateStr = formatISTDate(patientRecord.consultationDate);
+        const timeStr = formatISTTime(patientRecord.consultationTime, patientRecord.created_at || patientRecord.consultationDate);
         const rawClinic = patientRecord.clinicName || patientRecord.clinic_name || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name || patientRecord.doctor?.doctor_clinic_name || patientRecord.doctor?.clinic_name;
         const clinicName = cleanString(rawClinic, 'Doctors Vedika Clinic');
 
@@ -720,7 +763,7 @@ function renderPdfToStream(patientRecord, stream) {
     doc.strokeColor(COLORS.border).lineWidth(0.7)
         .moveTo(confCardX + 90, confirmY + 15).lineTo(confCardX + leftW - 15, confirmY + 15).stroke();
 
-    const dateFormatted = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dateFormatted = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
     doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.5)
         .text('Date', confCardX + 12, confirmY + 24, { continued: true });
     doc.font(fontRegular).text(`                       :  ${dateFormatted}`);

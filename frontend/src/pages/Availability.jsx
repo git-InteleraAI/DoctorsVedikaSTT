@@ -324,23 +324,23 @@ const Availability = () => {
                     ) : (
                         <div className="availability-grid">
                             {/* LEFT COLUMN: WEEKLY WORKING HOURS */}
-                            <div className="theme-section-dark" style={{ borderRadius: "20px", border: "1px solid rgba(255,255,255,0.1)", padding: "28px" }}>
-                                <div className="responsive-flex-between" style={{ marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                            <div style={{ background: "#ffffff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "28px", boxShadow: "0 4px 16px rgba(8, 43, 104, 0.04)" }}>
+                                <div className="responsive-flex-between" style={{ marginBottom: "24px", paddingBottom: "16px", borderBottom: "1px solid #e2e8f0" }}>
                                     <div>
-                                        <h2 style={{ margin: 0, color: "#ffffff", fontSize: "1.3rem", fontWeight: 700 }}>Weekly Schedule</h2>
-                                        <span style={{ color: "#94a3b8", fontSize: "0.9rem" }}>Enable consulting days and choose 12-hour AM/PM shifts</span>
+                                        <h2 style={{ margin: 0, color: "#082B68", fontSize: "1.3rem", fontWeight: 800 }}>Weekly Schedule</h2>
+                                        <span style={{ color: "#475569", fontSize: "0.9rem", fontWeight: 500 }}>Enable consulting days and choose 12-hour AM/PM shifts</span>
                                     </div>
                                     <div className="responsive-flex-wrap" style={{ alignItems: "center" }}>
-                                        <label style={{ fontSize: "0.9rem", fontWeight: 600, color: "#cbd5e1" }}>Slot Duration:</label>
+                                        <label style={{ fontSize: "0.9rem", fontWeight: 700, color: "#1E293B" }}>Slot Duration:</label>
                                         <select
                                             value={slotDuration}
                                             onChange={e => setSlotDuration(Number(e.target.value))}
-                                            style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.2)", fontSize: "0.9rem", fontWeight: 600, color: "#ffffff", background: "rgba(255,255,255,0.1)" }}
+                                            style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "0.9rem", fontWeight: 700, color: "#0F172A", background: "#F8FAFC", outline: "none", cursor: "pointer" }}
                                         >
-                                            <option value={15} style={{color:"#000"}}>15 mins</option>
-                                            <option value={30} style={{color:"#000"}}>30 mins</option>
-                                            <option value={45} style={{color:"#000"}}>45 mins</option>
-                                            <option value={60} style={{color:"#000"}}>60 mins</option>
+                                            <option value={15} style={{color:"#0F172A"}}>15 mins</option>
+                                            <option value={30} style={{color:"#0F172A"}}>30 mins</option>
+                                            <option value={45} style={{color:"#0F172A"}}>45 mins</option>
+                                            <option value={60} style={{color:"#0F172A"}}>60 mins</option>
                                         </select>
                                     </div>
                                 </div>
@@ -361,7 +361,7 @@ const Availability = () => {
                                                 : [{ start_time: dayData.start_time || "09:00 AM", end_time: dayData.end_time || "05:00 PM" }];
 
                                             return (
-                                                <div key={d.key} style={{ background: dayData.is_available ? "rgba(1, 182, 175, 0.05)" : "rgba(255,255,255,0.02)", border: `1px solid ${dayData.is_available ? "rgba(1, 182, 175, 0.2)" : "rgba(255,255,255,0.05)"}`, borderRadius: "14px", padding: "16px 20px", transition: "all 0.2s" }}>
+                                                <div key={d.key} style={{ background: dayData.is_available ? "rgba(8, 174, 184, 0.04)" : "#F8FAFC", border: `1px solid ${dayData.is_available ? "rgba(8, 174, 184, 0.3)" : "#E2E8F0"}`, borderRadius: "14px", padding: "16px 20px", transition: "all 0.2s" }}>
                                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: dayData.is_available ? "12px" : "0" }}>
                                                         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                                                             <input
@@ -369,12 +369,12 @@ const Availability = () => {
                                                                 id={`toggle-${d.key}`}
                                                                 checked={dayData.is_available}
                                                                 onChange={() => handleToggleDay(d.key)}
-                                                                style={{ width: "20px", height: "20px", accentColor: "#01b6af", cursor: "pointer" }}
+                                                                style={{ width: "20px", height: "20px", accentColor: "#08AEB8", cursor: "pointer" }}
                                                             />
-                                                            <label htmlFor={`toggle-${d.key}`} style={{ fontWeight: 700, color: dayData.is_available ? "#ffffff" : "#64748b", fontSize: "1.05rem", cursor: "pointer", width: "110px" }}>
+                                                            <label htmlFor={`toggle-${d.key}`} style={{ fontWeight: 800, color: dayData.is_available ? "#082B68" : "#64748B", fontSize: "1.05rem", cursor: "pointer", width: "110px" }}>
                                                                 {d.label}
                                                             </label>
-                                                            <span style={{ background: dayData.is_available ? "rgba(16, 185, 129, 0.15)" : "rgba(255,255,255,0.05)", color: dayData.is_available ? "#10b981" : "#64748b", padding: "3px 10px", borderRadius: "12px", fontSize: "0.8rem", fontWeight: 700 }}>
+                                                            <span style={{ background: dayData.is_available ? "rgba(16, 185, 129, 0.12)" : "#F1F5F9", color: dayData.is_available ? "#059669" : "#64748B", padding: "4px 12px", borderRadius: "12px", fontSize: "0.8rem", fontWeight: 700 }}>
                                                                 {dayData.is_available ? "Available" : "Unavailable"}
                                                             </span>
                                                         </div>
@@ -383,7 +383,7 @@ const Availability = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleAddWindow(d.key)}
-                                                                style={{ background: "transparent", border: "none", color: "#01b6af", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}
+                                                                style={{ background: "transparent", border: "none", color: "#08AEB8", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}
                                                             >
                                                                 <i className="fa-solid fa-plus-circle"></i> Add Shift Window
                                                             </button>
@@ -394,29 +394,29 @@ const Availability = () => {
                                                         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "10px", paddingLeft: "34px" }}>
                                                             {windows.map((win, wIdx) => (
                                                                 <div key={wIdx} style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                                                                    <span style={{ fontSize: "0.85rem", color: "#64748b", width: "70px", fontWeight: 600 }}>Shift {wIdx + 1}:</span>
+                                                                    <span style={{ fontSize: "0.85rem", color: "#334155", width: "70px", fontWeight: 700 }}>Shift {wIdx + 1}:</span>
                                                                     
                                                                     {/* START TIME 12-HOUR SELECTOR */}
                                                                     <select
                                                                         value={win.start_time || dayData.start_time || "09:00 AM"}
                                                                         onChange={e => handleTimeChange(d.key, wIdx, "start_time", e.target.value)}
-                                                                        style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.05)", fontSize: "0.95rem", fontWeight: 600, color: "#ffffff" }}
+                                                                        style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#FFFFFF", fontSize: "0.95rem", fontWeight: 700, color: "#0F172A", cursor: "pointer" }}
                                                                     >
                                                                         {TIME_OPTIONS.map(t => (
-                                                                            <option key={t} value={t} style={{color:"#000"}}>{t}</option>
+                                                                            <option key={t} value={t} style={{color:"#0F172A"}}>{t}</option>
                                                                         ))}
                                                                     </select>
 
-                                                                    <span style={{ color: "#94a3b8", fontWeight: 600 }}>to</span>
+                                                                    <span style={{ color: "#475569", fontWeight: 700 }}>to</span>
 
                                                                     {/* END TIME 12-HOUR SELECTOR */}
                                                                     <select
                                                                         value={win.end_time || dayData.end_time || "05:00 PM"}
                                                                         onChange={e => handleTimeChange(d.key, wIdx, "end_time", e.target.value)}
-                                                                        style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.05)", fontSize: "0.95rem", fontWeight: 600, color: "#ffffff" }}
+                                                                        style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#FFFFFF", fontSize: "0.95rem", fontWeight: 700, color: "#0F172A", cursor: "pointer" }}
                                                                     >
                                                                         {TIME_OPTIONS.map(t => (
-                                                                            <option key={t} value={t} style={{color:"#000"}}>{t}</option>
+                                                                            <option key={t} value={t} style={{color:"#0F172A"}}>{t}</option>
                                                                         ))}
                                                                     </select>
 
@@ -443,7 +443,7 @@ const Availability = () => {
                                         <button
                                             type="submit"
                                             disabled={saving}
-                                            style={{ background: "#01b6af", color: "#fff", border: "none", padding: "14px 36px", borderRadius: "12px", fontWeight: 700, fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px", boxShadow: "0 4px 14px rgba(1,182,175,0.3)" }}
+                                            style={{ background: "linear-gradient(135deg, #08AEB8 0%, #082B68 100%)", color: "#fff", border: "none", padding: "14px 36px", borderRadius: "12px", fontWeight: 700, fontSize: "1rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "10px", boxShadow: "0 4px 14px rgba(8,174,184,0.3)" }}
                                         >
                                             {saving ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-floppy-disk" />}
                                             Save Weekly Schedule
@@ -455,38 +455,38 @@ const Availability = () => {
                             {/* RIGHT COLUMN: BLOCK DATES */}
                             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                                 {/* BLOCK DATE CARD */}
-                                <div className="theme-section-dark" style={{ borderRadius: "20px", border: "1px solid rgba(255,255,255,0.1)", padding: "24px" }}>
-                                    <h2 style={{ margin: "0 0 8px 0", color: "#ffffff", fontSize: "1.2rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                                <div style={{ background: "#ffffff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "24px", boxShadow: "0 4px 16px rgba(8, 43, 104, 0.04)" }}>
+                                    <h2 style={{ margin: "0 0 8px 0", color: "#082B68", fontSize: "1.2rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
                                         <i className="fa-solid fa-ban" style={{ color: "#ef4444" }}></i> Block Specific Date
                                     </h2>
-                                    <p style={{ color: "#94a3b8", fontSize: "0.85rem", margin: "0 0 16px 0" }}>Block a date for leaves, holidays, or emergency absence</p>
+                                    <p style={{ color: "#475569", fontSize: "0.85rem", margin: "0 0 16px 0", fontWeight: 500 }}>Block a date for leaves, holidays, or emergency absence</p>
 
                                     <form onSubmit={handleAddBlockedDate} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                                         <div>
-                                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "6px" }}>Select Date *</label>
+                                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#1E293B", marginBottom: "6px" }}>Select Date *</label>
                                             <input
                                                 type="date"
                                                 value={blockForm.date}
                                                 onChange={e => setBlockForm({ ...blockForm, date: e.target.value })}
                                                 required
                                                 min={new Date().toISOString().split("T")[0]}
-                                                style={{ width: "100%", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.2)", fontSize: "0.95rem", color: "#ffffff", background: "rgba(255,255,255,0.05)" }}
+                                                style={{ width: "100%", padding: "10px 14px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "0.95rem", fontWeight: 600, color: "#0F172A", background: "#F8FAFC", outline: "none" }}
                                             />
                                         </div>
                                         <div>
-                                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, color: "#cbd5e1", marginBottom: "6px" }}>Reason (Optional)</label>
+                                            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#1E293B", marginBottom: "6px" }}>Reason (Optional)</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. Medical Conference"
                                                 value={blockForm.reason}
                                                 onChange={e => setBlockForm({ ...blockForm, reason: e.target.value })}
-                                                style={{ width: "100%", padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.2)", fontSize: "0.95rem", color: "#ffffff", background: "rgba(255,255,255,0.05)" }}
+                                                style={{ width: "100%", padding: "10px 14px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "0.95rem", fontWeight: 600, color: "#0F172A", background: "#F8FAFC", outline: "none" }}
                                             />
                                         </div>
                                         <button
                                             type="submit"
                                             disabled={blocking}
-                                            style={{ background: "#ef4444", color: "#fff", border: "none", padding: "12px", borderRadius: "10px", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "4px" }}
+                                            style={{ background: "#ef4444", color: "#fff", border: "none", padding: "12px", borderRadius: "10px", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "4px", boxShadow: "0 4px 12px rgba(239, 68, 68, 0.25)" }}
                                         >
                                             {blocking ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-lock" />} Block Date
                                         </button>
@@ -494,28 +494,28 @@ const Availability = () => {
                                 </div>
 
                                 {/* LIST OF BLOCKED DATES */}
-                                <div className="theme-section-dark" style={{ borderRadius: "20px", border: "1px solid rgba(255,255,255,0.1)", padding: "24px", flex: 1 }}>
-                                    <h3 style={{ margin: "0 0 16px 0", color: "#ffffff", fontSize: "1.1rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                                        <i className="fa-solid fa-calendar-xmark" style={{ color: "#f59e0b" }}></i> Blocked Dates ({blockedDates.length})
+                                <div style={{ background: "#ffffff", borderRadius: "20px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, boxShadow: "0 4px 16px rgba(8, 43, 104, 0.04)" }}>
+                                    <h3 style={{ margin: "0 0 16px 0", color: "#082B68", fontSize: "1.1rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                                        <i className="fa-solid fa-calendar-xmark" style={{ color: "#d97706" }}></i> Blocked Dates ({blockedDates.length})
                                     </h3>
 
                                     {blockedDates.length === 0 ? (
-                                        <div style={{ textAlign: "center", padding: "30px", background: "rgba(255,255,255,0.05)", borderRadius: "12px", border: "1px dashed rgba(255,255,255,0.1)", color: "#94a3b8", fontSize: "0.9rem" }}>
+                                        <div style={{ textAlign: "center", padding: "30px", background: "#F8FAFC", borderRadius: "12px", border: "1px dashed #CBD5E1", color: "#475569", fontSize: "0.9rem", fontWeight: 600 }}>
                                             No dates blocked yet.
                                         </div>
                                     ) : (
                                         <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "350px", overflowY: "auto" }}>
                                             {blockedDates.map(b => (
-                                                <div key={b.id || b.blocked_date} style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "12px", padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                <div key={b.id || b.blocked_date} style={{ background: "rgba(239, 68, 68, 0.06)", border: "1px solid rgba(239, 68, 68, 0.2)", borderRadius: "12px", padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                                     <div>
-                                                        <div style={{ fontWeight: 700, color: "#fca5a5", fontSize: "0.95rem" }}>
+                                                        <div style={{ fontWeight: 800, color: "#991B1B", fontSize: "0.95rem" }}>
                                                             {new Date(b.blocked_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                         </div>
-                                                        <div style={{ fontSize: "0.8rem", color: "#f87171", marginTop: "2px" }}>{b.reason || "Blocked"}</div>
+                                                        <div style={{ fontSize: "0.8rem", color: "#B91C1C", marginTop: "2px", fontWeight: 600 }}>{b.reason || "Blocked"}</div>
                                                     </div>
                                                     <button
                                                         onClick={() => handleDeleteBlockedDate(b.id || b.blocked_date)}
-                                                        style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fca5a5", padding: "6px 12px", borderRadius: "8px", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer" }}
+                                                        style={{ background: "#FFFFFF", border: "1px solid #FCA5A5", color: "#DC2626", padding: "6px 12px", borderRadius: "8px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer" }}
                                                     >
                                                         Unblock
                                                     </button>

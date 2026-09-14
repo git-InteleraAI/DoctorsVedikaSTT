@@ -44,20 +44,19 @@ export default function DashboardLayout({
     const navigate = useNavigate();
     const { doctor, logout } = useAuth();
 
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024);
     const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
             const mobile = window.innerWidth < 1024;
             setIsMobile(mobile);
-            if (!mobile) setIsSidebarOpen(true);
-            else setIsSidebarOpen(false);
+            if (mobile) {
+                setIsSidebarOpen(false);
+            }
         };
         window.addEventListener('resize', handleResize);
-        // Set initial state
-        handleResize();
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 

@@ -1,4 +1,5 @@
-const { supabase, isSupabaseConfigured } = require("../config/supabase");
+const { supabase, supabaseAdmin, isSupabaseConfigured } = require("../config/supabase");
+const db = supabaseAdmin || supabase;
 
 // Fallback in-memory store
 const inMemoryAvailability = {};
@@ -54,16 +55,38 @@ const getDefaultWeeklySchedule = () => {
     }));
 };
 
+async function resolveDoctorId(doctorObj) {
+    if (!doctorObj) return null;
+    const inputId = doctorObj.doctor_id || doctorObj.id || doctorObj.user_id;
+    if (!inputId) return null;
+    if (!isSupabaseConfigured || !db) return inputId;
+
+    try {
+        const { data: doc } = await db
+            .from("doctors")
+            .select("doctor_id, user_id")
+            .or(`doctor_id.eq.${inputId},user_id.eq.${inputId}`)
+            .maybeSingle();
+
+        if (doc) {
+            return doc.doctor_id || doc.user_id || inputId;
+        }
+    } catch (e) {
+        console.warn("[AvailabilityController] Doctor ID resolution warning:", e.message);
+    }
+    return inputId;
+}
+
 class AvailabilityController {
     /**
      * Get doctor's weekly availability schedule
      */
     async getAvailability(req, res) {
         try {
-            const doctorId = req.doctor?.id || req.doctor?.doctor_id;
+            const doctorId = await resolveDoctorId(req.doctor);
 
-            if (isSupabaseConfigured) {
-                const { data, error } = await supabase
+            if (isSupabaseConfigured && db) {
+                const { data, error } = await db
                     .from("availability")
                     .select("*")
                     .eq("doctor_id", doctorId);
@@ -134,27 +157,27 @@ class AvailabilityController {
      */
     async updateAvailability(req, res) {
         try {
-            const doctorId = req.doctor?.id || req.doctor?.doctor_id;
+            const doctorId = await resolveDoctorId(req.doctor);
             const { schedule, slotDuration = 30 } = req.body;
 
             if (!Array.isArray(schedule)) {
                 return res.status(400).json({ success: false, message: "Invalid schedule array" });
             }
 
-            if (isSupabaseConfigured) {
+            if (isSupabaseConfigured && db) {
                 // Ensure doctor entry exists in doctors table if foreign key constraint exists
                 try {
-                    const { data: docExists } = await supabase
+                    const { data: docExists } = await db
                         .from("doctors")
-                        .select("id")
-                        .eq("id", doctorId)
+                        .select("doctor_id, user_id")
+                        .or(`doctor_id.eq.${doctorId},user_id.eq.${doctorId}`)
                         .maybeSingle();
 
                     if (!docExists) {
-                        await supabase.from("doctors").insert([{
-                            id: doctorId,
-                            full_name: req.doctor?.fullName || "Doctor",
-                            email: req.doctor?.email || `doctor-${Date.now()}@vedika.com`
+                        await db.from("doctors").insert([{
+                            user_id: req.doctor?.user_id || doctorId,
+                            doctor_name: req.doctor?.fullName || req.doctor?.doctor_name || "Doctor",
+                            doctor_email: req.doctor?.email || req.doctor?.doctor_email || `doctor-${Date.now()}@vedika.com`
                         }]);
                     }
                 } catch (e) {
@@ -184,7 +207,7 @@ class AvailabilityController {
 
                 console.log("[AvailabilityController] Upserting without ID to Supabase for doctor:", doctorId);
 
-                const { data, error } = await supabase
+                const { data, error } = await db
                     .from("availability")
                     .upsert(upsertData, { onConflict: "doctor_id,day_of_week" })
                     .select();
@@ -233,10 +256,10 @@ class AvailabilityController {
      */
     async getBlockedDates(req, res) {
         try {
-            const doctorId = req.doctor?.id || req.doctor?.doctor_id;
+            const doctorId = await resolveDoctorId(req.doctor);
 
-            if (isSupabaseConfigured) {
-                const { data, error } = await supabase
+            if (isSupabaseConfigured && db) {
+                const { data, error } = await db
                     .from("blocked_dates")
                     .select("*")
                     .eq("doctor_id", doctorId)
@@ -262,15 +285,34 @@ class AvailabilityController {
      */
     async addBlockedDate(req, res) {
         try {
-            const doctorId = req.doctor?.id || req.doctor?.doctor_id;
+            const doctorId = await resolveDoctorId(req.doctor);
             const { date, reason = "Blocked / Leave" } = req.body;
 
             if (!date) {
                 return res.status(400).json({ success: false, message: "Date is required (YYYY-MM-DD)" });
             }
 
-            if (isSupabaseConfigured) {
-                const { data, error } = await supabase
+            if (isSupabaseConfigured && db) {
+                // Ensure doctor exists in doctors table first
+                try {
+                    const { data: docExists } = await db
+                        .from("doctors")
+                        .select("doctor_id, user_id")
+                        .or(`doctor_id.eq.${doctorId},user_id.eq.${doctorId}`)
+                        .maybeSingle();
+
+                    if (!docExists) {
+                        await db.from("doctors").insert([{
+                            user_id: req.doctor?.user_id || doctorId,
+                            doctor_name: req.doctor?.fullName || req.doctor?.doctor_name || "Doctor",
+                            doctor_email: req.doctor?.email || req.doctor?.doctor_email || `doctor-${Date.now()}@vedika.com`
+                        }]);
+                    }
+                } catch (e) {
+                    console.warn("[AvailabilityController] Doctor check warning:", e.message);
+                }
+
+                const { data, error } = await db
                     .from("blocked_dates")
                     .upsert([{
                         doctor_id: doctorId,
@@ -280,8 +322,10 @@ class AvailabilityController {
                     .select()
                     .single();
 
-                if (!error) {
+                if (!error && data) {
                     return res.status(201).json({ success: true, blockedDate: data });
+                } else {
+                    console.error("[AvailabilityController] Add blocked date DB error:", error);
                 }
             }
 
@@ -309,23 +353,28 @@ class AvailabilityController {
      */
     async deleteBlockedDate(req, res) {
         try {
-            const doctorId = req.doctor?.id || req.doctor?.doctor_id;
+            const doctorId = await resolveDoctorId(req.doctor);
             const { id } = req.params;
 
-            if (isSupabaseConfigured) {
-                const { error } = await supabase
-                    .from("blocked_dates")
-                    .delete()
-                    .eq("id", id)
-                    .eq("doctor_id", doctorId);
+            if (isSupabaseConfigured && db) {
+                let query = db.from("blocked_dates").delete().eq("doctor_id", doctorId);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(id)) {
+                    query = query.eq("blocked_date", id);
+                } else {
+                    query = query.eq("id", id);
+                }
+
+                const { error } = await query;
 
                 if (!error) {
                     return res.json({ success: true, message: "Blocked date removed" });
+                } else {
+                    console.error("[AvailabilityController] Delete blocked date DB error:", error);
                 }
             }
 
             if (inMemoryBlockedDates[doctorId]) {
-                inMemoryBlockedDates[doctorId] = inMemoryBlockedDates[doctorId].filter(b => b.id !== id);
+                inMemoryBlockedDates[doctorId] = inMemoryBlockedDates[doctorId].filter(b => b.id !== id && b.blocked_date !== id);
             }
 
             return res.json({ success: true, message: "Blocked date removed" });
@@ -340,7 +389,8 @@ class AvailabilityController {
      */
     async getAvailableSlots(req, res) {
         try {
-            const doctorId = req.query.doctorId || req.doctor?.id || req.doctor?.doctor_id;
+            const rawDoctorId = req.query.doctorId || req.doctor?.id || req.doctor?.doctor_id;
+            const doctorId = await resolveDoctorId({ doctor_id: rawDoctorId });
             const dateStr = req.query.date; // YYYY-MM-DD
 
             if (!doctorId || !dateStr) {
@@ -356,8 +406,8 @@ class AvailabilityController {
             let isBlocked = false;
             let blockReason = "";
 
-            if (isSupabaseConfigured) {
-                const { data: blockData } = await supabase
+            if (isSupabaseConfigured && db) {
+                const { data: blockData } = await db
                     .from("blocked_dates")
                     .select("*")
                     .eq("doctor_id", doctorId)

@@ -8,7 +8,7 @@ import vedikaLogo from "../assets/vedika_logo.png";
 import doctorCutout from "../assets/doctor_bg.png";
 import iconSecure from "../assets/secure.png";
 import iconNeedHelp from "../assets/need_help.png";
-import iconDoctor from "../assets/doctor.png";
+import iconDoctor from "../assets/doctor_bg.png";
 import iconEmail from "../assets/email.png";
 import iconPhone from "../assets/phone.png";
 import iconCalender from "../assets/calender.png";

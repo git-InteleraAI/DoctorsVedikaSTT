@@ -133,24 +133,12 @@ const AuthCallback = () => {
         );
 
         setTimeout(() => {
-          if (
-            result.doctor
-              .onboardingCompleted
-          ) {
-            navigate(
-              "/dashboard",
-              {
-                replace: true,
-              }
-            );
-          } else {
-            navigate(
-              "/onboarding",
-              {
-                replace: true,
-              }
-            );
-          }
+          navigate(
+            "/dashboard",
+            {
+              replace: true,
+            }
+          );
         }, 500);
 
       } catch (error) {

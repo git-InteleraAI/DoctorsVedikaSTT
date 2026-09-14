@@ -788,3 +788,69 @@
     width: 100%;
   }
 }
+
+/* ==========================================================================
+   SMOOTH 3D OPEN BOOK ANIMATION TRANSITION FOR SIGN-IN PAGE
+   ========================================================================== */
+
+.doctor-auth-wrapper {
+  perspective: 1500px;
+  perspective-origin: 50% 50%;
+}
+
+.doctor-auth-container.animated-entry {
+  transform-style: preserve-3d;
+  animation: bookOpenMaster 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animated-entry .auth-showcase-panel {
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  animation: bookLeftCoverUnfold 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animated-entry .auth-form-card {
+  transform-style: preserve-3d;
+  transform-origin: right center;
+  animation: bookRightPageUnfold 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: -15px 20px 40px rgba(4, 22, 53, 0.12), 0 0 0 1px rgba(8, 174, 184, 0.15);
+}
+
+@keyframes bookOpenMaster {
+  0% {
+    opacity: 0;
+    transform: perspective(1400px) rotateY(-22deg) scale(0.9) translateZ(-80px);
+    filter: blur(6px);
+  }
+  40% {
+    opacity: 0.85;
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1400px) rotateY(0deg) scale(1) translateZ(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes bookLeftCoverUnfold {
+  0% {
+    opacity: 0;
+    transform: perspective(1200px) rotateY(-38deg) translateX(-30px);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1200px) rotateY(0deg) translateX(0);
+  }
+}
+
+@keyframes bookRightPageUnfold {
+  0% {
+    opacity: 0;
+    transform: perspective(1200px) rotateY(30deg) translateX(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1200px) rotateY(0deg) translateX(0);
+  }
+}

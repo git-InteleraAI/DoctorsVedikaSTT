@@ -445,7 +445,7 @@ app.post(
 
             const now = new Date();
             const savedDate = consultationDate || now.toISOString().split("T")[0];
-            const savedTime = consultationTime || now.toLocaleTimeString("en-IN");
+            const savedTime = consultationTime || now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
 
             const patientFolder = path.join(
                 patientRecordsDir,
@@ -846,8 +846,8 @@ app.get(
                 doctorName: doctorName,
                 clinicName: clinicName,
                 clinicAddress: clinicAddress,
-                consultationDate: appointment?.appointment_date || (note?.created_at ? note.created_at.split("T")[0] : new Date().toISOString().split("T")[0]),
-                consultationTime: appointment?.appointment_time || "N/A",
+                consultationDate: appointment?.appointment_date || (note?.created_at ? new Date(note.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) : new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })),
+                consultationTime: note?.created_at ? new Date(note.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : (rx?.created_at ? new Date(rx.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : ((appointment?.appointment_time && !String(appointment.appointment_time).startsWith('05:30') && !String(appointment.appointment_time).startsWith('00:00')) ? appointment.appointment_time : new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }))),
                 summary: summaryObj,
                 diagnosis: parsedDiagnosis,
                 medications: rx?.medicines || [],
@@ -1009,8 +1009,8 @@ app.get(
                                 status: "Completed",
                                 completed: true,
                                 savedAt: note.updated_at || note.created_at,
-                                consultationDate: (note.created_at || new Date().toISOString()).split("T")[0],
-                                consultationTime: new Date(note.created_at || Date.now()).toLocaleTimeString("en-IN"),
+                                consultationDate: (note.created_at ? new Date(note.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) : new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })),
+                                consultationTime: new Date(note.created_at || Date.now()).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }),
                                 summary: summaryObj,
                                 diagnosis: note.diagnosis ? note.diagnosis.split(", ") : (summaryObj.diagnosis ? [summaryObj.diagnosis] : []),
                                 medications: rx.medicines || [],

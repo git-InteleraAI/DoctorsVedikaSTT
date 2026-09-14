@@ -165,27 +165,55 @@ class AuthController {
         }
     }
 
-    async forgotPassword(
-        req,
-        res
-    ) {
-        const {
-            email,
-        } = req.body || {};
+    async forgotPassword(req, res) {
+        try {
+            const { email } = req.body || {};
 
-        if (!email) {
+            if (!email) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Please provide your registered email address.",
+                });
+            }
+
+            const result = await authService.requestPasswordReset({ email });
+            return res.status(200).json(result);
+        } catch (error) {
+            console.error("[AuthController] Forgot password error:", error);
             return res.status(400).json({
                 success: false,
-                message:
-                    "Please provide your registered email address.",
+                message: error.message || "Failed to process password reset request.",
             });
         }
+    }
 
-        return res.status(200).json({
-            success: true,
-            message:
-                `Password reset instructions have been sent to ${email}`,
-        });
+    async resetPassword(req, res) {
+        try {
+            const { accessToken, newPassword } = req.body || {};
+
+            if (!accessToken || !newPassword) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Reset token and new password are required.",
+                });
+            }
+
+            if (newPassword.length < 6) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Password must be at least 6 characters long.",
+                });
+            }
+
+            const result = await authService.resetPasswordWithToken({ accessToken, newPassword });
+            return res.status(200).json(result);
+        } catch (error) {
+            console.error("[AuthController] Reset password error:", error);
+            return res.status(400).json({
+                success: false,
+                message: error.message || "Failed to reset password.",
+            });
+        }
     }
 
     /*
@@ -411,6 +439,35 @@ class AuthController {
                 message:
                     error.message ||
                     "Failed to upload file.",
+            });
+        }
+    }
+
+    async changePassword(req, res) {
+        try {
+            const { currentPassword, newPassword } = req.body || {};
+            if (!newPassword || newPassword.length < 6) {
+                return res.status(400).json({
+                    success: false,
+                    message: "New password must be at least 6 characters long.",
+                });
+            }
+
+            const result = await authService.changePassword({
+                doctorId: req.doctor.id,
+                currentPassword,
+                newPassword,
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: result.message || "Password changed successfully.",
+            });
+        } catch (error) {
+            console.error("[AuthController] Change password error:", error);
+            return res.status(400).json({
+                success: false,
+                message: error.message || "Failed to change password.",
             });
         }
     }

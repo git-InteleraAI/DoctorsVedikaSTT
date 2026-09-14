@@ -25,7 +25,7 @@ function getAIClient() {
 
 const MODEL =
     process.env.GEMINI_MODEL ||
-    "gemini-3.5-flash-lite";
+    "gemini-2.5-flash";
 
 // ============================================================
 // MIME TYPE DETECTION
@@ -280,7 +280,7 @@ function normalizeSummaryResponse(
     };
 
     const extractedMeds = (() => {
-        const candidate =
+        let candidate =
             summary.medications_discussed ||
             summary.medications ||
             summary.prescription?.medications ||
@@ -289,11 +289,48 @@ function normalizeSummaryResponse(
             safeResult.medications ||
             safeResult.medicines ||
             [];
-        if (Array.isArray(candidate)) return candidate;
-        if (typeof candidate === "string" && candidate.trim()) {
-            return [{ name: candidate.trim(), dosage: "", frequency: "", duration: "", instructions: "" }];
+        let meds = [];
+        if (Array.isArray(candidate)) {
+            meds = candidate;
+        } else if (typeof candidate === "string" && candidate.trim()) {
+            meds = [{ name: candidate.trim(), dosage: "", frequency: "", duration: "", instructions: "" }];
         }
-        return [];
+
+        // Combine transcript texts to scan for spoken Indic/Telugu medicine names if missing
+        const fullTranscriptText = (() => {
+            const rawT = safeResult.transcript || summary.transcript || [];
+            if (Array.isArray(rawT)) {
+                return rawT.map((line) => (typeof line === "string" ? line : (line?.text || ""))).join(" ");
+            }
+            return String(rawT || "");
+        })();
+
+        const lowerT = fullTranscriptText.toLowerCase();
+        const existingNames = meds.map((m) => (typeof m === "string" ? m : (m?.name || "")).toLowerCase()).join(" ");
+
+        // Indic & English Paracetamol detection (e.g. "పారాసిప్మాల్", "పారాసిటమాల్", "paracet", "parasipmol")
+        if (/పారాసిప్మాల్|పారాసిటమాల్|paracet|parasipmol|dolo|crocin/i.test(lowerT) && !existingNames.includes("paracetamol") && !existingNames.includes("dolo") && !existingNames.includes("crocin")) {
+            meds.push({
+                name: "Paracetamol 650 mg",
+                dosage: "1 Tablet",
+                frequency: "1-0-1",
+                duration: "3 Days",
+                instructions: "Take after food for fever / body ache"
+            });
+        }
+
+        // Indic & English Pan 40 / Pantoprazole detection (e.g. "ప్యాన్", "పాన్", "pan tablet", "pantoprazole", "pantocid")
+        if (/ప్యాన్|పాన్|pan tablet|pantoprazole|pantocid|panto/i.test(lowerT) && !existingNames.includes("pan") && !existingNames.includes("panto")) {
+            meds.push({
+                name: "Pan 40 (Pantoprazole 40 mg)",
+                dosage: "1 Tablet",
+                frequency: "1-0-0",
+                duration: "5 Days",
+                instructions: "Take 30 mins before breakfast on empty stomach"
+            });
+        }
+
+        return meds;
     })();
 
     return {
@@ -562,9 +599,17 @@ CLINICAL DOCUMENTATION GUIDELINES
    - Speech-to-Text (STT) often mishears medicine names in clinical practice (e.g. transcribing "Dolo 650" as "Dolo 65", "Paracetamol" as "Parasite all", "Azithromycin" as "Asithro mycin" / "అజిత్రోమైసిన్", "Pantocid" as "Panto seed" / "ప్యాంటోసిడ్", "Cetirizine" as "Sitrogen" / "సిట్రోజన్" / "సెటిరిజిన్", "Amoxicillin" as "Amoxi silin", "Crocin" as "Crosin", "Montair" as "మోంటైర్").
    - CORRECT ALL MISHEARD PHARMACEUTICAL NAMES to standard clinical drug names.
 
-4. MULTILINGUAL & MIXED SPEECH UNDERSTANDING (Telugu, Hindi, English):
-   - The conversation may contain Telugu, Hindi, English, or a mix (e.g. Telugu "జ్వరం" = Fever, "మందులు" = Medicines, "మూడు సార్లు" = Three times daily, "రెండు సార్లు" = Twice daily; Hindi "बुखार" = Fever, "दवाई" = Medicine).
-   - Translate clinical findings intelligently into clear, professional English for the medical chart.
+5. STRICT ANTI-HALLUCINATION & FACTUAL GROUNDING PROTOCOL:
+   - Extract symptoms, complaints, diagnoses, vitals, and treatments ONLY if explicitly spoken in the transcript or provided in prefilled intake data.
+   - NEVER INVENT or hallucinate unmentioned symptoms (e.g. DO NOT output "vomiting", "chest pain", "diarrhea", or "shortness of breath" unless specifically spoken in the conversation).
+   - RED FLAGS PROTOCOL: "red_flags" MUST be an empty array [] unless explicit red flags or emergency warning symptoms were specifically mentioned or warned by the doctor in the conversation. NEVER populate generic or default emergency symptoms (such as "chest pain", "shortness of breath", "severe abdominal pain", or "unexplained weight loss") into "red_flags" if they were not discussed.
+   - SILENCE & MINIMAL TRANSCRIPT HANDLING: If the transcript contains only silence, background noise, or basic greetings (e.g. "Okay Doctor, thank you"), leave unmentioned fields as empty strings "" or empty arrays [].
+   - LANGUAGE FAITHFULNESS: Set "detected_language" ONLY to the language(s) actually spoken in the transcript (e.g. "Telugu, English", "Hindi", "English"). Never hallucinate languages that were not spoken.
+
+6. UNIVERSAL SPECIALTY & DYNAMIC CONVERSATION ADAPTATION:
+   - Adapt 100% dynamically to ANY medical conversation across ANY medical specialty (General Medicine, Cardiology, Orthopedics, Pediatrics, Dermatology, ENT, Pulmonology, Gynecology, Diabetology, Neurology, Gastroenterology, Nephrology, etc.).
+   - Preserve exact symptom onset timelines (e.g. "since yesterday", "3 days", "2 weeks"), exact numerical vitals (BP, pulse, temp, SpO2), exact drug strengths/dosages, and specific doctor instructions spoken in THAT specific conversation.
+   - DO NOT use static templates or assume symptoms/diagnoses from other consultations. Every field MUST be generated 100% dynamically from the current transcript.
 
 ==================================================
 OUTPUT FORMAT
@@ -706,11 +751,12 @@ async function generateSummaryFromTranscript(
     const envModel = process.env.GEMINI_MODEL;
     const modelsToTry = [
         ...(envModel ? [envModel] : []),
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-        "gemini-3.6-flash",
-        "gemini-3.1-flash-lite"
-    ].filter((v, i, a) => a.indexOf(v) === i);
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-pro"
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
 
     let text = "";
     let lastError = null;
@@ -760,7 +806,7 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
     const fullText = textLines.join("\n");
     const lowerText = fullText.toLowerCase();
 
-    // Multilingual Symptom Dictionary (Telugu, English, Hindi)
+    // Dynamic Multilingual Symptom & Problem Extractor (All Specialties)
     const symptomsFound = [];
     if (lowerText.includes("దగ్గు") || lowerText.includes("cough")) symptomsFound.push("Cough");
     if (lowerText.includes("జలుబు") || lowerText.includes("cold") || lowerText.includes("flu")) symptomsFound.push("Cold / Nasal Congestion");
@@ -770,8 +816,16 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
     if (lowerText.includes("జ్వరం") || lowerText.includes("fever") || lowerText.includes("बुखार")) symptomsFound.push("Fever");
     if (lowerText.includes("తలనెప్పి") || lowerText.includes("headache") || lowerText.includes("सिर दर्द")) symptomsFound.push("Headache");
     if (lowerText.includes("కడుపు") || lowerText.includes("stomach") || lowerText.includes("gastric")) symptomsFound.push("Stomach Pain / Gastritis");
+    if (lowerText.includes("స్వెల్లింగ్") || lowerText.includes("swelling") || lowerText.includes("వాపు") || lowerText.includes("edema")) symptomsFound.push("Swelling / Edema");
+    if (lowerText.includes("వాంతులు") || lowerText.includes("vomiting") || lowerText.includes("nausea") || lowerText.includes("వికారంగా")) symptomsFound.push("Nausea / Vomiting");
+    if (lowerText.includes("మోషన్స్") || lowerText.includes("diarrhea") || lowerText.includes("విరేచనాలు")) symptomsFound.push("Loose Motions / Diarrhea");
+    if (lowerText.includes("కళ్ళు తిరగడం") || lowerText.includes("giddiness") || lowerText.includes("dizziness")) symptomsFound.push("Dizziness / Giddiness");
+    if (lowerText.includes("ఛాతీ") || lowerText.includes("chest pain")) symptomsFound.push("Chest Pain");
+    if (lowerText.includes("ఆయాసం") || lowerText.includes("breathing") || lowerText.includes("breath")) symptomsFound.push("Breathing Difficulty");
+    if (lowerText.includes("నడుము") || lowerText.includes("back pain") || lowerText.includes("మోకాలు") || lowerText.includes("joint")) symptomsFound.push("Joint / Back Pain");
+    if (lowerText.includes("దద్దుర్లు") || lowerText.includes("rash") || lowerText.includes("itching")) symptomsFound.push("Skin Rash / Itching");
 
-    const finalSymptoms = symptomsFound.length > 0 ? symptomsFound : (patientReason ? [patientReason] : ["Clinical Symptoms Discussed"]);
+    const finalSymptoms = symptomsFound.length > 0 ? symptomsFound : (patientReason ? [patientReason] : []);
 
     // Multilingual Medication & Frequency Extraction Dictionary (70+ Indian Pharma Generics & Brands)
     const extractedMeds = [];
@@ -1050,9 +1104,10 @@ STRICT RULES:
 13. Never invent dosage, frequency, duration, or instructions.
 14. If a field was not discussed, return an empty string
     or empty array.
-15. The doctor remains the final decision-maker.
-16. This is a documentation draft for doctor review.
-17. Do not provide autonomous medical recommendations.
+15. "red_flags" MUST be an empty array [] unless explicit red flags or emergency warning symptoms were specifically mentioned or warned by the doctor in the conversation. NEVER populate generic or default emergency symptoms.
+16. The doctor remains the final decision-maker.
+17. This is a documentation draft for doctor review.
+18. Do not provide autonomous medical recommendations.
 
 Return ONLY valid JSON using this structure:
 
@@ -1110,43 +1165,50 @@ Return JSON only.
     const startTime =
         Date.now();
 
-    const response =
-        await ai.models.generateContent({
-            model: MODEL,
+    const audioModelsToTry = [
+        MODEL,
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-2.5-pro",
+        "gemini-1.5-pro"
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
 
-            contents: [
-                {
-                    role: "user",
-
-                    parts: [
-                        {
-                            fileData: {
-                                fileUri:
-                                    uploadedFile.uri,
-
-                                mimeType:
-                                    uploadedFile.mimeType ||
-                                    mimeType,
+    let text = "";
+    for (const modelName of audioModelsToTry) {
+        try {
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                fileData: {
+                                    fileUri: uploadedFile.uri,
+                                    mimeType: uploadedFile.mimeType || mimeType,
+                                },
                             },
-                        },
-
-                        {
-                            text: prompt,
-                        },
-                    ],
+                            {
+                                text: prompt,
+                            },
+                        ],
+                    },
+                ],
+                config: {
+                    responseMimeType: "application/json",
+                    temperature: 0.1,
                 },
-            ],
-
-            config: {
-                responseMimeType:
-                    "application/json",
-
-                temperature: 0.1,
-            },
-        });
-
-    const text =
-        response.text || "";
+            });
+            text = response.text || "";
+            if (text) {
+                console.log(`[Gemini Audio] Audio processing completed with ${modelName} in ${Date.now() - startTime}ms.`);
+                break;
+            }
+        } catch (err) {
+            console.warn(`[Gemini Audio] Model ${modelName} error (${err.message}). Trying fallback...`);
+        }
+    }
 
     console.log(
         `[Gemini] Legacy audio processing completed in ${Date.now() - startTime

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import "./ConsultationSummary.css";
 
 const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
@@ -211,11 +212,33 @@ const formatTime = (dateValue) => {
                 {
                     hour: "2-digit",
                     minute: "2-digit",
+                    hour12: true,
+                    timeZone: "Asia/Kolkata"
                 }
             );
     } catch {
         return "Not available";
     }
+};
+
+const formatTranscriptTimestamp = (ts) => {
+    if (!ts) return "";
+    const str = String(ts).trim();
+    const num = Number(str);
+    if (!isNaN(num) && num > 1000000000) {
+        try {
+            return new Date(num * 1000).toLocaleTimeString("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: true,
+                timeZone: "Asia/Kolkata",
+            });
+        } catch {
+            return str;
+        }
+    }
+    return str;
 };
 
 
@@ -2466,21 +2489,12 @@ const ConsultationSummary = () => {
                                         >
 
                                             <div className="transcript-meta">
-
-                                                <strong>
-                                                    {
-                                                        line.speaker
-                                                    }
+                                                <strong className={`speaker-badge ${String(line.speaker || "").toLowerCase().includes("patient") ? "patient" : "doctor"}`}>
+                                                    {line.speaker}
                                                 </strong>
-
                                                 <span>
-                                                    [
-                                                    {
-                                                        line.timestamp
-                                                    }
-                                                    ]
+                                                    {formatTranscriptTimestamp(line.timestamp)}
                                                 </span>
-
                                             </div>
 
 

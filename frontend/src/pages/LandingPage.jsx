@@ -1,10 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import AuthModal from '../components/AuthModal';
 import './LandingPage.css'; // Will create this for mobile menu specifics if needed, or put in styles.css
 
 export default function LandingPage() {
     const navigate = useNavigate();
+    const { doctor } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+    const handleAuthActionClick = (e) => {
+        e.preventDefault();
+        if (doctor) {
+            navigate('/dashboard');
+        } else {
+            setIsAuthModalOpen(true);
+        }
+    };
     
     useEffect(() => {
         if (window.location.hash.includes('access_token=')) {
@@ -44,11 +57,11 @@ export default function LandingPage() {
                         <a href="#modules" className="nav-item">Modules</a>
                         <a href="#automation" className="nav-item">Automation</a>
                         <a href="#operations" className="nav-item">Operations</a>
-                        <a href="/dashboard" className="nav-item">Live Transcribe</a>
+                        <a href="/dashboard" onClick={handleAuthActionClick} className="nav-item">Live Transcribe</a>
                     </div>
 
                     <div className="nav-right" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                        <a href="/login" className="btn-nav-action desktop-only">
+                        <a href="/login" onClick={handleAuthActionClick} className="btn-nav-action desktop-only">
                             Partner With Us <i className="fa-solid fa-arrow-up-right"></i>
                         </a>
                         <button 
@@ -68,9 +81,9 @@ export default function LandingPage() {
                         <a href="#modules" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Modules</a>
                         <a href="#automation" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Automation</a>
                         <a href="#operations" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Operations</a>
-                        <a href="/dashboard" className="mobile-nav-item" onClick={() => setIsMobileMenuOpen(false)}>Live Transcribe</a>
+                        <a href="/dashboard" className="mobile-nav-item" onClick={(e) => { setIsMobileMenuOpen(false); handleAuthActionClick(e); }}>Live Transcribe</a>
                         <div className="mobile-nav-divider"></div>
-                        <a href="/login" className="btn-nav-action" style={{ textAlign: 'center', marginTop: '1rem' }} onClick={() => setIsMobileMenuOpen(false)}>Partner With Us</a>
+                        <a href="/login" className="btn-nav-action" style={{ textAlign: 'center', marginTop: '1rem' }} onClick={(e) => { setIsMobileMenuOpen(false); handleAuthActionClick(e); }}>Partner With Us</a>
                     </div>
                 </div>
             </nav>
@@ -99,7 +112,7 @@ export default function LandingPage() {
                             post-surgery AI care pathways. Run your entire practice on a single secure ecosystem.
                         </p>
                         <div className="hero-actions entry-reveal-item" style={{ "--anim-order": "4" }}>
-                            <a href="/login" className="btn-hero-primary">Partner With Us</a>
+                            <a href="/login" onClick={handleAuthActionClick} className="btn-hero-primary">Partner With Us</a>
                             <a href="#modules" className="btn-hero-secondary">Explore AI Modules <i
                                 className="fa-solid fa-arrow-right"></i></a>
                         </div>
@@ -378,6 +391,7 @@ export default function LandingPage() {
 
 
 
+            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
         </>
     );
 }

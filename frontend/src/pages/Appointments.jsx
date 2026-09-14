@@ -32,13 +32,11 @@ export default function Appointments() {
     const [error, setError] = useState("");
     const [selectedAppointment, setSelectedAppointment] = useState(null);
 
-    // Redirect if unauthenticated or incomplete onboarding
+    // Redirect if unauthenticated
     useEffect(() => {
         if (!authLoading) {
             if (!doctor) {
                 navigate("/login");
-            } else if (!doctor.onboardingCompleted) {
-                navigate("/onboarding");
             }
         }
     }, [doctor, authLoading, navigate]);

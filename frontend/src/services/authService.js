@@ -181,6 +181,39 @@ class AuthService {
         return data;
     }
 
+    async resetPassword(
+        accessToken,
+        newPassword
+    ) {
+        const response =
+            await fetch(
+                `${API_BASE_URL}/api/auth/reset-password`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+                    },
+                    body: JSON.stringify({
+                        accessToken,
+                        newPassword,
+                    }),
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.message ||
+                "Failed to reset password."
+            );
+        }
+
+        return data;
+    }
+
     /*
      * GOOGLE AUTH
      */
@@ -456,6 +489,31 @@ class AuthService {
             );
         }
 
+        return data;
+    }
+
+    async changePassword(currentPassword, newPassword) {
+        const token = this.getToken();
+        if (!token) {
+            throw new Error("Not authenticated.");
+        }
+
+        const response = await fetch(
+            `${API_BASE_URL}/api/auth/change-password`,
+            {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ currentPassword, newPassword }),
+            }
+        );
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || "Failed to change password.");
+        }
         return data;
     }
 }

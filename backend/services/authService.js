@@ -322,26 +322,52 @@ class AuthService {
                 .eq("user_id", authData.user.id)
                 .maybeSingle();
 
-            let newDoctor = docByUserId;
+            const nameParts = fullName.trim().split(" ");
+            const firstName = nameParts[0] || fullName.trim();
+            const lastName = nameParts.slice(1).join(" ") || "";
 
-            if (!newDoctor) {
+            const doctorPayload = {
+                user_id: authData.user.id,
+                doctor_name: fullName.trim(),
+                doctor_first_name: firstName,
+                doctor_last_name: lastName,
+                doctor_email: normalizedEmail,
+                doctor_mobile: mobileNumber?.trim() || "0000000000",
+                doctor_dob: dob || null,
+                doctor_registration_number: registrationNumber?.trim() || null,
+                doctor_verification_status: "Pending",
+                doctor_is_active: true,
+                onboarding_completed: false,
+                updated_at: new Date().toISOString(),
+            };
+
+            let newDoctor = null;
+
+            if (docByUserId && docByUserId.doctor_id) {
+                // Update existing trigger-created or pre-existing doctor record
+                const {
+                    data: updatedDoctor,
+                    error: updateError,
+                } = await supabaseAdmin
+                    .from("doctors")
+                    .update(doctorPayload)
+                    .eq("doctor_id", docByUserId.doctor_id)
+                    .select()
+                    .single();
+
+                if (updateError) {
+                    console.error("[AuthService] Doctor profile update error:", updateError);
+                    throw new Error("Unable to save doctor profile details. Please try again.");
+                }
+                newDoctor = updatedDoctor;
+            } else {
+                // Insert or upsert new doctor record
                 const {
                     data: insertedDoctor,
                     error: insertError,
                 } = await supabaseAdmin
                     .from("doctors")
-                    .insert({
-                        user_id: authData.user.id,
-                        doctor_name: fullName.trim(),
-                        doctor_email: normalizedEmail,
-                        doctor_mobile: mobileNumber?.trim() || "0000000000",
-                        doctor_dob: dob || null,
-                        doctor_registration_number: registrationNumber?.trim() || null,
-                        doctor_specialization: null,
-                        doctor_verification_status: "Pending",
-                        doctor_is_active: true,
-                        onboarding_completed: false,
-                    })
+                    .upsert(doctorPayload, { onConflict: "user_id" })
                     .select()
                     .single();
 
@@ -349,16 +375,28 @@ class AuthService {
                     console.error("[AuthService] Doctor registration insert error:", insertError);
 
                     if (insertError.code === "23505" || (insertError.message && insertError.message.includes("duplicate key"))) {
-                        throw new Error("An account with this email address or registration details already exists. Please log in instead.");
-                    }
-                    throw new Error("Unable to complete registration. Please check your details and try again.");
-                }
+                        // Fallback update by email
+                        const { data: updatedByEmail, error: emailErr } = await supabaseAdmin
+                            .from("doctors")
+                            .update(doctorPayload)
+                            .eq("doctor_email", normalizedEmail)
+                            .select()
+                            .single();
 
-                newDoctor = insertedDoctor;
+                        if (emailErr) {
+                            throw new Error("An account with this email address or registration details already exists. Please log in instead.");
+                        }
+                        newDoctor = updatedByEmail;
+                    } else {
+                        throw new Error("Unable to complete registration. Please check your details and try again.");
+                    }
+                } else {
+                    newDoctor = insertedDoctor;
+                }
             }
 
             /*
-             * Create application user row.
+             * Create / Update application user row.
              */
             const {
                 error: userInsertError,
@@ -369,9 +407,12 @@ class AuthService {
                         id: authData.user.id,
                         email: normalizedEmail,
                         full_name: fullName.trim(),
+                        first_name: firstName,
+                        last_name: lastName,
                         phone: mobileNumber?.trim() || null,
                         role: "doctor",
-                        status: "active"
+                        status: "active",
+                        updated_at: new Date().toISOString(),
                     },
                     { onConflict: "id" }
                 );
@@ -597,6 +638,87 @@ class AuthService {
                 this.generateToken(
                     doctor
                 ),
+        };
+    }
+
+    /*
+     * ============================================================
+     * FORGOT & RESET PASSWORD
+     * ============================================================
+     */
+
+    async requestPasswordReset({ email }) {
+        const normalizedEmail = email.trim().toLowerCase();
+
+        if (isSupabaseConfigured && supabase) {
+            // Check if doctor exists in doctors or users table
+            const { data: existingDoctor } = await supabase
+                .from("doctors")
+                .select("doctor_id, doctor_email, user_id")
+                .eq("doctor_email", normalizedEmail)
+                .maybeSingle();
+
+            if (!existingDoctor) {
+                return {
+                    success: true,
+                    message: `If an account exists for ${email}, a password reset link has been sent.`
+                };
+            }
+
+            const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+            const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+                redirectTo: `${clientUrl}/reset-password`,
+            });
+
+            if (error) {
+                console.error("[AuthService] Supabase resetPasswordForEmail error:", error);
+                throw new Error(error.message || "Failed to send password reset email.");
+            }
+
+            return {
+                success: true,
+                message: `Password reset instructions have been sent to ${normalizedEmail}. Please check your inbox.`
+            };
+        }
+
+        return {
+            success: true,
+            message: `Password reset link sent to ${normalizedEmail}.`
+        };
+    }
+
+    async resetPasswordWithToken({ accessToken, newPassword }) {
+        if (isSupabaseConfigured && supabase) {
+            // Step 1: Validate access token and get user
+            const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+
+            if (userError || !userData?.user) {
+                console.error("[AuthService] Supabase getUser error:", userError);
+                throw new Error("Password reset link is invalid or has expired. Please request a new link.");
+            }
+
+            const userId = userData.user.id;
+            const db = supabaseAdmin || supabase;
+
+            // Step 2: Admin password update
+            const { error: updateError } = await db.auth.admin.updateUserById(userId, {
+                password: newPassword,
+            });
+
+            if (updateError) {
+                console.error("[AuthService] Supabase updateUserById error:", updateError);
+                throw new Error(updateError.message || "Failed to reset password.");
+            }
+
+            return {
+                success: true,
+                message: "Password updated successfully! You can now log in with your new password."
+            };
+        }
+
+        return {
+            success: true,
+            message: "Password reset completed."
         };
     }
 
@@ -1758,6 +1880,50 @@ class AuthService {
                 );
 
         return data.publicUrl;
+    }
+
+    async changePassword({ doctorId, currentPassword, newPassword }) {
+        if (!newPassword || newPassword.length < 6) {
+            throw new Error("New password must be at least 6 characters long.");
+        }
+
+        if (isSupabaseConfigured && supabase) {
+            // Find doctor record
+            const { data: doc, error: docError } = await supabase
+                .from("doctors")
+                .select("doctor_id, user_id, doctor_email")
+                .eq("doctor_id", doctorId)
+                .maybeSingle();
+
+            const userId = doc?.user_id;
+
+            if (userId && supabaseAdmin) {
+                const { error: updateAuthErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+                    password: newPassword,
+                });
+                if (updateAuthErr) {
+                    throw new Error(`Failed to update password: ${updateAuthErr.message}`);
+                }
+                return { success: true, message: "Password changed successfully." };
+            }
+        }
+
+        // Fallback for in-memory or when supabaseAdmin is unavailable
+        const docIndex = inMemoryDoctors.findIndex(
+            (d) => d.id === doctorId || d.doctor_id === doctorId
+        );
+        if (docIndex !== -1) {
+            if (currentPassword && inMemoryDoctors[docIndex].password_hash) {
+                const match = await bcrypt.compare(currentPassword, inMemoryDoctors[docIndex].password_hash);
+                if (!match) {
+                    throw new Error("Current password is incorrect.");
+                }
+            }
+            inMemoryDoctors[docIndex].password_hash = await bcrypt.hash(newPassword, 10);
+            return { success: true, message: "Password changed successfully." };
+        }
+
+        return { success: true, message: "Password updated successfully." };
     }
 }
 

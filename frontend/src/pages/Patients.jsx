@@ -177,8 +177,6 @@ const Patients = () => {
         if (!authLoading) {
             if (!doctor) {
                 navigate("/login");
-            } else if (!doctor.onboardingCompleted) {
-                navigate("/onboarding");
             } else {
                 fetchPatients("");
             }
