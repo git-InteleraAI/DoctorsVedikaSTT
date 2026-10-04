@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { supabaseAdmin } = require("../config/supabase");
 
 const {
   processConsultationAudio,
@@ -25,16 +26,10 @@ const SUMMARY_STATE_TTL_MS =
 // This prevents a Gemini request for every single speech
 // segment.
 const MIN_NEW_LINES_FOR_BACKGROUND_SUMMARY =
-  8;
+  2;
 
-
-// Minimum time between background Gemini requests for the
-// same consultation.
-//
-// This prevents rapid repeated requests when transcript
-// updates arrive quickly.
 const MIN_BACKGROUND_SUMMARY_INTERVAL_MS =
-  15 * 1000; // 15 seconds
+  4000; // 4 seconds
 
 
 // ============================================================
@@ -534,7 +529,8 @@ function startBackgroundSummaryPreparation(
   const preparationPromise =
     generateSummaryFromTranscript(
       transcriptSnapshot,
-      patientReason
+      patientReason,
+      { priority: "LOW" }
     )
       .then((result) => {
 
@@ -646,13 +642,12 @@ async function prepareConsultationSummary(
 
     if (
       !doctorId ||
-      !patientId ||
       !appointmentId
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "doctorId, patientId and appointmentId are required.",
+          "doctorId and appointmentId are required.",
       });
     }
 
@@ -858,13 +853,12 @@ async function completeConsultation(
 
     if (
       !doctorId ||
-      !patientId ||
       !appointmentId
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "doctorId, patientId and appointmentId are required.",
+          "doctorId and appointmentId are required.",
       });
     }
 
@@ -957,7 +951,8 @@ async function completeConsultation(
 
     if (
       state.summary &&
-      Object.keys(state.summary).length > 0
+      Object.keys(state.summary).length > 0 &&
+      !hasSubstantialNewLines
     ) {
       console.log(
         "[Consultation] Using pre-prepared AI summary (instant response)."
@@ -988,7 +983,7 @@ async function completeConsultation(
       );
 
       try {
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 1200));
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 3500));
         const preparedResult = await Promise.race([state.preparationPromise, timeoutPromise]);
 
         if (
@@ -1036,10 +1031,12 @@ async function completeConsultation(
         Date.now();
 
 
+      const finalizationKey = `${consultationId || appointmentId}_finalization`;
       const result =
         await generateSummaryFromTranscript(
           liveTranscript,
-          patientReason
+          patientReason,
+          { priority: "HIGH", idempotencyKey: finalizationKey }
         );
 
 

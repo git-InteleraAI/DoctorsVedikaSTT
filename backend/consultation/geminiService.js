@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { GoogleGenAI } = require("@google/genai");
 
 require("dotenv").config();
+const { geminiRequestManager } = require("./GeminiRequestManager");
 
 // ============================================================
 // GEMINI CONFIGURATION
@@ -25,7 +26,7 @@ function getAIClient() {
 
 const MODEL =
     process.env.GEMINI_MODEL ||
-    "gemini-2.5-flash";
+    "gemini-3.6-flash";
 
 // ============================================================
 // MIME TYPE DETECTION
@@ -567,7 +568,7 @@ The patient provided the following pre-consultation problem details & vitals bef
 CRITICAL INSTRUCTIONS FOR GEMINI:
 1. READ AND ANALYZE BOTH THE PREFILLED SYMPTOMS/INTAKE DATA ABOVE AND THE LIVE CONVERSATION TRANSCRIPT SIMULTANEOUSLY.
 2. Incorporate these prefilled symptoms, chief complaints, duration, severity, current medications, and vitals into the "chief_complaint", "symptoms", "history_of_present_illness", "current_medications", and "vital_signs" sections of the summary alongside the transcript analysis.
-3. Ensure no prefilled symptom or reported problem detail is omitted from the final medical summary.
+3. DO NOT output metadata keys like "Patient Name:" or "Patient Gender:" inside the "chief_complaint" or "consultation_overview" values. "chief_complaint" must contain ONLY the actual symptom or medical problem (e.g. "Eye sight / Vision strain" or "Fever").
 ` : "";
 
     return `
@@ -701,90 +702,75 @@ No additional text.
  */
 async function generateSummaryFromTranscript(
     liveTranscript = [],
-    patientReason = ""
+    patientReason = "",
+    options = {}
 ) {
-    const transcript =
-        normalizeTranscript(
-            liveTranscript
-        );
+    const { priority = "HIGH", idempotencyKey = null } = typeof options === "string" ? { priority: options } : options;
+    const transcript = normalizeTranscript(liveTranscript);
 
-    if (
-        transcript.length === 0
-    ) {
-        throw new Error(
-            "No usable transcript was provided."
-        );
+    if (transcript.length === 0) {
+        throw new Error("No usable transcript was provided.");
     }
 
-    const ai =
-        getAIClient();
+    const ai = getAIClient();
+    const transcriptHash = createTranscriptHash(transcript);
 
-    const transcriptHash =
-        createTranscriptHash(
-            transcript
-        );
+    console.log(`[Gemini] Generating text-only consultation summary (Priority: ${priority}, Key: ${idempotencyKey || 'none'}).`);
+    console.log(`[Gemini] Transcript lines: ${transcript.length}`);
 
-    console.log(
-        `[Gemini] Generating text-only consultation summary.`
-    );
-
-    console.log(
-        `[Gemini] Transcript lines: ${transcript.length}`
-    );
-
-    console.log(
-        `[Gemini] Transcript hash: ${transcriptHash.slice(
-            0,
-            12
-        )}...`
-    );
-
-    const startTime =
-        Date.now();
-
-    const prompt =
-        buildTranscriptSummaryPrompt(
-            transcript,
-            patientReason
-        );
+    const startTime = Date.now();
+    const prompt = buildTranscriptSummaryPrompt(transcript, patientReason);
 
     const envModel = process.env.GEMINI_MODEL;
     const modelsToTry = [
         ...(envModel ? [envModel] : []),
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-pro"
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite"
     ].filter((v, i, a) => v && a.indexOf(v) === i);
 
     let text = "";
     let lastError = null;
 
-    for (const modelName of modelsToTry) {
-        try {
-            console.log(`[Gemini] Attempting summary generation with ${modelName}...`);
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    temperature: 0.1,
-                },
-            });
-            text = response.text || "";
-            if (text) {
-                console.log(`[Gemini] Summary successfully generated with ${modelName} in ${Date.now() - startTime}ms.`);
-                break;
-            }
-        } catch (err) {
-            lastError = err;
-            console.warn(`[Gemini] Model ${modelName} error (${err.status || err.code || err.message}). Trying fallback model...`);
-            // Brief pause before trying fallback model if 429 quota error
-            if (err?.status === 429 || String(err?.message).includes("RESOURCE_EXHAUSTED") || String(err?.message).includes("Quota exceeded")) {
-                await new Promise((r) => setTimeout(r, 1500));
+    const requestFn = async () => {
+        for (const modelName of modelsToTry) {
+            try {
+                console.log(`[Gemini] Attempting summary generation with ${modelName}...`);
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: prompt,
+                    config: {
+                        responseMimeType: "application/json",
+                        temperature: 0.1,
+                    },
+                });
+                text = response.text || "";
+                if (text) {
+                    console.log(`[Gemini] Summary successfully generated with ${modelName} in ${Date.now() - startTime}ms.`);
+                    return text;
+                }
+            } catch (err) {
+                const isRateLimit = err?.status === 429 || String(err?.message || "").includes("RESOURCE_EXHAUSTED") || String(err?.message || "").includes("Quota exceeded") || String(err).includes("429");
+                const normErr = new Error(isRateLimit ? "429 Quota Exceeded" : (err?.message || "Gemini API Error"));
+                normErr.status = err?.status || (isRateLimit ? 429 : 500);
+                lastError = normErr;
+                console.warn(`[Gemini] Model ${modelName} error (${normErr.message}). Trying next fallback model...`);
             }
         }
+        if (!text && lastError) {
+            throw lastError;
+        }
+        return text;
+    };
+
+    try {
+        text = await geminiRequestManager.enqueue({
+            priority,
+            idempotencyKey,
+            requestFn,
+        });
+    } catch (enqueueErr) {
+        console.warn("[Gemini] GeminiRequestManager queue/request error:", enqueueErr.message);
+        lastError = enqueueErr;
     }
 
     let parsed = null;
@@ -814,7 +800,7 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
     if (lowerText.includes("స్లీప్") || lowerText.includes("sleep") || lowerText.includes("నిద్ర")) symptomsFound.push("Sleep Disturbance");
     if (lowerText.includes("తినలేకపో") || lowerText.includes("appetite") || lowerText.includes("ఆకలి")) symptomsFound.push("Loss of Appetite");
     if (lowerText.includes("జ్వరం") || lowerText.includes("fever") || lowerText.includes("बुखार")) symptomsFound.push("Fever");
-    if (lowerText.includes("తలనెప్పి") || lowerText.includes("headache") || lowerText.includes("सिर दर्द")) symptomsFound.push("Headache");
+    if (lowerText.includes("తలనెప్పి") || lowerText.includes("headache") || lowerText.includes("హెడ్యాక్") || lowerText.includes("सिर दर्द")) symptomsFound.push("Headache");
     if (lowerText.includes("కడుపు") || lowerText.includes("stomach") || lowerText.includes("gastric")) symptomsFound.push("Stomach Pain / Gastritis");
     if (lowerText.includes("స్వెల్లింగ్") || lowerText.includes("swelling") || lowerText.includes("వాపు") || lowerText.includes("edema")) symptomsFound.push("Swelling / Edema");
     if (lowerText.includes("వాంతులు") || lowerText.includes("vomiting") || lowerText.includes("nausea") || lowerText.includes("వికారంగా")) symptomsFound.push("Nausea / Vomiting");
@@ -825,12 +811,19 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
     if (lowerText.includes("నడుము") || lowerText.includes("back pain") || lowerText.includes("మోకాలు") || lowerText.includes("joint")) symptomsFound.push("Joint / Back Pain");
     if (lowerText.includes("దద్దుర్లు") || lowerText.includes("rash") || lowerText.includes("itching")) symptomsFound.push("Skin Rash / Itching");
 
+    // Ophthalmology / Eye Symptoms
+    if (lowerText.includes("బ్లర్") || lowerText.includes("blur") || lowerText.includes("కనిపించలేదు") || lowerText.includes("చీకటి")) symptomsFound.push("Blurred Vision & Darkness in Eyes");
+    if (lowerText.includes("దగ్గర ఉన్న వస్తువులు") || lowerText.includes("near object") || lowerText.includes("difficulty seeing near")) symptomsFound.push("Difficulty Seeing Near Objects");
+
     const finalSymptoms = symptomsFound.length > 0 ? symptomsFound : (patientReason ? [patientReason] : []);
 
     // Multilingual Medication & Frequency Extraction Dictionary (70+ Indian Pharma Generics & Brands)
     const extractedMeds = [];
 
     const pharmaDictionary = [
+        // Ophthalmic
+        { patterns: ["ఐ డ్రాప్స్", "eye drops", "eye drop", "డ్రాప్స్"], name: "Eye Drops", dosage: "1-2 Drops", defaultFreq: "1-0-1 (Twice daily)", instructions: "Instill eye drops as instructed until regular check-up" },
+
         // Analgesics & Antipyretics
         { patterns: ["dolo", "డోలో", "డోలర్", "calpol", "crocin", "క్రోసిన్"], name: "Dolo 650 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food for fever/pain relief" },
         { patterns: ["paracetamol", "పారాసిటమాల్", "పరసిటమల్"], name: "Paracetamol 500 mg", dosage: "1 Tablet", defaultFreq: "1-0-1 (Twice daily after food)", instructions: "Take after food as needed for fever" },
@@ -899,32 +892,77 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
         }
     }
 
-    // Doctor Advice extraction
+    // Doctor Advice extraction (Strictly verbatim - no fake default advice)
     const adviceList = [];
+    if (lowerText.includes("స్పెక్స్") || lowerText.includes("specs") || lowerText.includes("spectacles")) {
+        adviceList.push("Use recommended spectacles (specs)");
+    }
+    if (lowerText.includes("చెకప్") || lowerText.includes("checkup") || lowerText.includes("check-up") || lowerText.includes("రండి")) {
+        adviceList.push("Attend regular eye check-up");
+    }
     if (lowerText.includes("cold drinks") || lowerText.includes("కోల్డ్") || lowerText.includes("బయట")) {
         adviceList.push("Avoid cold drinks, ice, and chilled food items.");
-        adviceList.push("Avoid going outside in cold weather and rest indoors.");
-    } else {
-        adviceList.push("Rest well and maintain warm fluid intake.");
+    } else if (lowerText.includes("rest") || lowerText.includes("విశ్రాంతి") || lowerText.includes("రెస్ట్")) {
+        adviceList.push("Take adequate rest");
+    } else if (lowerText.includes("water") || lowerText.includes("fluids") || lowerText.includes("నీళ్లు")) {
+        adviceList.push("Drink warm fluids / water");
     }
 
-    // Follow-up extraction
-    let followUpText = "Review in 5–7 days if symptoms persist.";
-    if (lowerText.includes("blood test") || lowerText.includes("బ్లడ్ టెస్ట్") || lowerText.includes("వారంలో") || lowerText.includes("one week")) {
+    // Follow-up extraction (Strictly verbatim - no fake default follow-up)
+    let followUpText = "";
+    if (lowerText.includes("రెగ్యులర్ చెకప్") || lowerText.includes("checkup") || lowerText.includes("check-up")) {
+        followUpText = "Return for regular eye check-up";
+    } else if (lowerText.includes("blood test") || lowerText.includes("బ్లడ్ టెస్ట్") || lowerText.includes("వారంలో") || lowerText.includes("one week")) {
         followUpText = "Review in 1 week (7 days). If not reduced, proceed with Blood Tests as advised.";
+    } else if (lowerText.includes("review") || lowerText.includes("3 days") || lowerText.includes("5 days") || lowerText.includes("తర్వాత రండి")) {
+        followUpText = "Review in 3–5 days if symptoms persist.";
     }
+
+    // Diagnosis detection (Myopia / Hypermetropia / Refractive Error)
+    const diagnosisList = [];
+    if (lowerText.includes("మాయోపియా") || lowerText.includes("myopia")) {
+        diagnosisList.push("Suspected Myopia");
+    }
+    if (lowerText.includes("హైపర్మెట్రోపియా") || lowerText.includes("hypermetropia")) {
+        diagnosisList.push("Suspected Hypermetropia");
+    }
+    if (diagnosisList.length === 0) {
+        if (finalSymptoms.length > 0) {
+            diagnosisList.push(finalSymptoms.join(" / "));
+        } else {
+            diagnosisList.push(patientReason || "Eye Evaluation / Visual Refractive Error");
+        }
+    }
+    const chiefText = finalSymptoms.join(", ") || patientReason || "General Medical Evaluation";
 
     return {
         consultation_summary: {
-            consultation_overview: `Patient presented with ${finalSymptoms.join(", ")}. Clinical evaluation conducted and symptomatic treatment prescribed.`,
-            chief_complaint: patientReason || `${finalSymptoms.join(", ")} reported during consultation`,
-            symptoms: finalSymptoms,
-            assessment: "Clinical evaluation completed for upper respiratory symptoms.",
-            diagnosis: [`Upper Respiratory Symptomatology (${finalSymptoms[0] || "Cough / Cold"})`],
-            treatment_plan: "Prescribed symptomatic medication and advised rest & dietary care.",
+            consultation_overview: `Patient presented for evaluation regarding ${chiefText}. Clinical consultation completed and appropriate care advised.`,
+            chief_complaint: chiefText,
+            symptoms: finalSymptoms.length > 0 ? finalSymptoms : [chiefText],
+            history_of_present_illness: `Patient presented with complaints of ${chiefText}. ${patientReason ? "Reason for visit: " + patientReason : ""}`,
+            past_medical_history: [],
+            allergies: [],
+            current_medications: [],
+            examination_findings: [],
+            vital_signs: {
+                blood_pressure: "",
+                heart_rate: "",
+                temperature: "",
+                respiratory_rate: "",
+                oxygen_saturation: "",
+                weight: ""
+            },
+            investigations: [],
+            assessment: `Clinical evaluation completed for ${chiefText}.`,
+            diagnosis: diagnosisList,
+            differential_diagnosis: [],
+            treatment_plan: extractedMeds.length > 0 ? `Prescribed ${extractedMeds.map(m => m.name).join(", ")}.` : "Advised medical management.",
             medications_discussed: extractedMeds,
             advice: adviceList,
-            follow_up: followUpText
+            follow_up: followUpText,
+            doctor_notes: "",
+            red_flags: []
         }
     };
 }
@@ -1167,11 +1205,8 @@ Return JSON only.
 
     const audioModelsToTry = [
         MODEL,
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-pro"
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite"
     ].filter((v, i, a) => v && a.indexOf(v) === i);
 
     let text = "";

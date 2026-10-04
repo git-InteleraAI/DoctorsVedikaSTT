@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
 import "../index.css";
 
-const API = import.meta.env.VITE_NODE_API_URL;
+const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
 const Patients = () => {
     const navigate = useNavigate();
@@ -27,6 +27,8 @@ const Patients = () => {
     const [lookupResult, setLookupResult] = useState(null);
     const [lookupLoading, setLookupLoading] = useState(false);
 
+    const getToken = () => localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token") || localStorage.getItem("sb-access-token");
+
     const handleLookup = async (q) => {
         const cleanQ = (q || "").trim();
         if (!cleanQ || cleanQ.length < 3) {
@@ -35,7 +37,7 @@ const Patients = () => {
         }
         setLookupLoading(true);
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const res = await axios.get(`${API}/api/patients/lookup`, {
                 params: { q: cleanQ },
                 headers: { Authorization: `Bearer ${token}` }
@@ -56,7 +58,7 @@ const Patients = () => {
         setLoading(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const targetId = patientObj.userId || patientObj.id || patientObj.patientCode;
 
             // 1. Create Walk-in Visit for currently logged-in doctor
@@ -103,7 +105,7 @@ const Patients = () => {
         setSavingEmail(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             await axios.put(`${API}/api/patients/${selectedPatient.userId || selectedPatient.id}`, {
                 email: tempEmail
             }, {
@@ -149,7 +151,7 @@ const Patients = () => {
         setDeleting(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const headers = { Authorization: `Bearer ${token}` };
 
             if (deleteModal.mode === "single" && deleteModal.appointmentId) {
@@ -187,7 +189,7 @@ const Patients = () => {
         setLoading(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const response = await axios.get(`${API}/api/patients/search`, {
                 params: { q },
                 headers: { Authorization: `Bearer ${token}` }
@@ -215,7 +217,7 @@ const Patients = () => {
         setLoading(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
 
             // 1. Create Walk-in Patient (or reuse existing)
             const patRes = await axios.post(`${API}/api/patients/walkin`, walkinForm, {
@@ -271,7 +273,7 @@ const Patients = () => {
         setLoading(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const response = await axios.get(`${API}/api/patients/${patientId}/history`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -304,7 +306,7 @@ const Patients = () => {
         setLoadingSlots(true);
         setSlotReason("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const res = await axios.get(`${API}/api/availability/slots`, {
                 params: { doctorId: doctor.id, date: dateStr },
                 headers: { Authorization: `Bearer ${token}` }
@@ -335,7 +337,7 @@ const Patients = () => {
         setBookingFollowUp(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = getToken();
             const res = await axios.post(`${API}/api/appointments/book`, {
                 doctorId: doctor.id,
                 patientId: selectedPatient.userId,

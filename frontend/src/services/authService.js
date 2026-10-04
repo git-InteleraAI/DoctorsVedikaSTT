@@ -3,9 +3,11 @@ const API_BASE_URL =
 
 class AuthService {
     getToken() {
-        return localStorage.getItem(
-            "doctors_vedika_token"
-        );
+        const t = localStorage.getItem("doctors_vedika_token");
+        if (!t || t === "null" || t === "undefined" || t === "[object Object]") {
+            return null;
+        }
+        return t;
     }
 
     getCurrentDoctor() {
@@ -14,7 +16,7 @@ class AuthService {
                 "doctors_vedika_user"
             );
 
-        if (!stored) {
+        if (!stored || stored === "null" || stored === "undefined") {
             return null;
         }
 
@@ -66,7 +68,8 @@ class AuthService {
 
     async login(
         email,
-        password
+        password,
+        portal
     ) {
         const response =
             await fetch(
@@ -80,6 +83,7 @@ class AuthService {
                     body: JSON.stringify({
                         email,
                         password,
+                        portal,
                     }),
                 }
             );
@@ -119,35 +123,45 @@ class AuthService {
             return null;
         }
 
-        const response =
-            await fetch(
-                `${API_BASE_URL}/api/auth/me`,
-                {
-                    headers: {
-                        Authorization:
-                            `Bearer ${token}`,
-                    },
-                }
-            );
+        try {
+            const response =
+                await fetch(
+                    `${API_BASE_URL}/api/auth/me`,
+                    {
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`,
+                        },
+                    }
+                );
 
-        if (!response.ok) {
-            this.logout();
-            return null;
+            if (response.status === 401) {
+                this.logout();
+                return null;
+            }
+
+            if (!response.ok) {
+                return this.getCurrentDoctor();
+            }
+
+            const data =
+                await response.json();
+
+            if (data?.doctor) {
+                localStorage.setItem(
+                    "doctors_vedika_user",
+                    JSON.stringify(
+                        data.doctor
+                    )
+                );
+                return data.doctor;
+            } else {
+                return this.getCurrentDoctor();
+            }
+        } catch (err) {
+            console.warn("[AuthService] fetchProfile network/parse error:", err.message);
+            return this.getCurrentDoctor();
         }
-
-        const data =
-            await response.json();
-
-        if (data.doctor) {
-            localStorage.setItem(
-                "doctors_vedika_user",
-                JSON.stringify(
-                    data.doctor
-                )
-            );
-        }
-
-        return data.doctor;
     }
 
     async forgotPassword(

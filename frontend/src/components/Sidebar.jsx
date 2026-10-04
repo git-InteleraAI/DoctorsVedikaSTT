@@ -12,7 +12,38 @@ export default function Sidebar({
 }) {
     const navigate = useNavigate();
     const location = useLocation();
-    const { logout } = useAuth();
+    const { logout, doctor } = useAuth();
+
+    const isAdminMode =
+        location.pathname === "/admin" ||
+        location.pathname.startsWith("/admin/") ||
+        location.pathname === "/hospital-admin" ||
+        location.pathname.startsWith("/hospital-admin/");
+
+    const isStaffMode =
+        location.pathname === "/staff" ||
+        location.pathname.startsWith("/staff/");
+
+    const adminSubTab = useMemo(() => {
+        const p = location.pathname;
+        if (p.includes("/doctors")) return "doctors";
+        if (p.includes("/staff")) return "staff";
+        if (p.includes("/hospital")) return "hospital";
+        if (p.includes("/settings")) return "settings";
+        if (p.includes("/audit")) return "audit";
+        return "dashboard";
+    }, [location.pathname]);
+
+    const staffSubTab = useMemo(() => {
+        const p = location.pathname;
+        if (p.includes("/patients")) return "patients";
+        if (p.includes("/appointments")) return "appointments";
+        if (p.includes("/check-in")) return "check-in";
+        if (p.includes("/queue")) return "queue";
+        if (p.includes("/profile")) return "profile";
+        if (p.includes("/settings")) return "settings";
+        return "dashboard";
+    }, [location.pathname]);
 
     /*
      * ============================================================
@@ -44,6 +75,14 @@ export default function Sidebar({
 
         if (path === "/qna" || path.startsWith("/qna/")) {
             return "qna";
+        }
+
+        if (path === "/staff" || path.startsWith("/staff/")) {
+            return "staff";
+        }
+
+        if (path === "/admin" || path.startsWith("/admin/")) {
+            return "admin";
         }
 
         if (path === "/profile" || path.startsWith("/profile/")) {
@@ -172,6 +211,14 @@ export default function Sidebar({
     const isSettings =
         currentSection === "settings" ||
         activePage === "settings";
+
+    const isAdmin =
+        currentSection === "admin" ||
+        activePage === "admin";
+
+    const isStaff =
+        currentSection === "staff" ||
+        activePage === "staff";
 
     const isAppointmentsOpen = openSection === "appointments";
     const isPatientsOpen = openSection === "patients";
@@ -636,419 +683,555 @@ export default function Sidebar({
                             gap: 4,
                         }}
                     >
-                        {/* =================================================
-                            DASHBOARD
-                        ================================================= */}
+                        {isAdminMode ? (
+                            <>
+                                {/* Workspace Header */}
+                                <div style={{ padding: "4px 8px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: "8px" }}>
+                                    <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff", letterSpacing: "0.02em" }}>
+                                        Doctors Vedika
+                                    </div>
+                                    <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "#01b6af", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: "2px" }}>
+                                        Hospital Administration
+                                    </div>
+                                </div>
 
-                        <li>
-                            <PrimaryButton
-                                itemKey="dashboard"
-                                active={isDashboard}
-                                iconClass="fa-solid fa-house"
-                                onClick={() => {
-                                    /*
-                                     * Do not manually close dropdowns here.
-                                     * Navigation happens first.
-                                     */
-                                    if (
-                                        location.pathname ===
-                                        "/dashboard"
-                                    ) {
-                                        return;
-                                    }
+                                {/* Dashboard */}
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="admin-dashboard"
+                                        active={adminSubTab === "dashboard"}
+                                        iconClass="fa-solid fa-chart-pie"
+                                        onClick={() => navigate("/admin")}
+                                    >
+                                        Dashboard
+                                    </PrimaryButton>
+                                </li>
 
-                                    navigate("/dashboard");
-                                }}
-                            >
-                                Dashboard
-                            </PrimaryButton>
-                        </li>
+                                {/* Hospital Management Group */}
+                                <li style={{ marginTop: "12px", padding: "6px 12px 2px", fontSize: "0.68rem", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                    Hospital Management
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="admin-doctors"
+                                        active={adminSubTab === "doctors"}
+                                        iconClass="fa-solid fa-user-md"
+                                        onClick={() => navigate("/admin/doctors")}
+                                    >
+                                        Doctors
+                                    </PrimaryButton>
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="admin-staff"
+                                        active={adminSubTab === "staff"}
+                                        iconClass="fa-solid fa-users-gear"
+                                        onClick={() => navigate("/admin/staff")}
+                                    >
+                                        Staff
+                                    </PrimaryButton>
+                                </li>
 
-                        {/* =================================================
-                            APPOINTMENTS
-                        ================================================= */}
+                                {/* Hospital Group */}
+                                <li style={{ marginTop: "12px", padding: "6px 12px 2px", fontSize: "0.68rem", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                    Hospital
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="admin-hospital"
+                                        active={adminSubTab === "hospital"}
+                                        iconClass="fa-solid fa-hospital"
+                                        onClick={() => navigate("/admin/hospital")}
+                                    >
+                                        Hospital Profile
+                                    </PrimaryButton>
+                                </li>
 
-                        <li>
-                            <PrimaryButton
-                                itemKey="appointments"
-                                active={isAppointments}
-                                iconClass="fa-solid fa-calendar-days"
-                                rightIcon="fa-solid fa-chevron-down"
-                                rightIconStyle={{
-                                    transform:
-                                        isAppointmentsOpen
-                                            ? "rotate(180deg)"
-                                            : "rotate(0deg)",
+                                {/* Administration Group */}
+                                <li style={{ marginTop: "12px", padding: "6px 12px 2px", fontSize: "0.68rem", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                    Administration
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="admin-settings"
+                                        active={adminSubTab === "settings"}
+                                        iconClass="fa-solid fa-sliders"
+                                        onClick={() => navigate("/admin/settings")}
+                                    >
+                                        Settings
+                                    </PrimaryButton>
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="admin-audit"
+                                        active={adminSubTab === "audit"}
+                                        iconClass="fa-solid fa-file-invoice"
+                                        onClick={() => navigate("/admin/audit")}
+                                    >
+                                        Audit Logs
+                                    </PrimaryButton>
+                                </li>
+                            </>
+                        ) : isStaffMode ? (
+                            <>
+                                {/* Workspace Header */}
+                                <div style={{ padding: "4px 8px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: "8px" }}>
+                                    <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff", letterSpacing: "0.02em" }}>
+                                        Doctors Vedika
+                                    </div>
+                                    <div style={{ fontSize: "0.7rem", fontWeight: 800, color: "#01b6af", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: "2px" }}>
+                                        Staff Operations
+                                    </div>
+                                </div>
 
-                                    transition:
-                                        "transform 0.25s ease-in-out",
-                                }}
-                                onClick={() => {
-                                    /*
-                                     * If we are not on Appointments,
-                                     * navigate first and let the effect
-                                     * open the submenu after navigation.
-                                     */
-                                    if (
-                                        currentSection !==
-                                        "appointments"
-                                    ) {
-                                        navigate(
-                                            "/appointments"
-                                        );
-                                        return;
-                                    }
+                                {/* Dashboard */}
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-dashboard"
+                                        active={staffSubTab === "dashboard"}
+                                        iconClass="fa-solid fa-chart-line"
+                                        onClick={() => navigate("/staff")}
+                                    >
+                                        Dashboard
+                                    </PrimaryButton>
+                                </li>
 
-                                    /*
-                                     * Already on Appointments:
-                                     * allow intentional toggle.
-                                     */
-                                    setOpenSection(
-                                        (current) =>
-                                            current ===
-                                                "appointments"
-                                                ? null
-                                                : "appointments"
-                                    );
-                                }}
-                            >
-                                Appointments
-                            </PrimaryButton>
-
-                            <div
-                                style={{
-                                    maxHeight:
-                                        isAppointmentsOpen
-                                            ? "140px"
-                                            : "0px",
-
-                                    opacity:
-                                        isAppointmentsOpen
-                                            ? 1
-                                            : 0,
-
-                                    overflow: "hidden",
-
-                                    transition:
-                                        "max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease-in-out, margin 0.28s ease-in-out",
-
-                                    margin:
-                                        isAppointmentsOpen
-                                            ? "3px 0 5px 21px"
-                                            : "0 0 0 21px",
-
-                                    paddingLeft: 12,
-
-                                    borderLeft:
-                                        `1px solid ${COLORS.submenuBorder}`,
-
-                                    pointerEvents:
-                                        isAppointmentsOpen
-                                            ? "auto"
-                                            : "none",
-
-                                    visibility:
-                                        isAppointmentsOpen
-                                            ? "visible"
-                                            : "hidden",
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        flexDirection:
-                                            "column",
-                                        gap: 2,
-                                    }}
-                                >
-                                    <SubmenuButton
-                                        itemKey="confirmed"
-                                        theme="cyan"
-                                        active={
-                                            (isAppointments ||
-                                                isDashboard) &&
-                                            (
-                                                dashboardTab ===
-                                                "confirmed" ||
-                                                location.search.includes(
-                                                    "tab=confirmed"
-                                                )
-                                            )
-                                        }
+                                {/* Patient Operations Group */}
+                                <li style={{ marginTop: "12px", padding: "6px 12px 2px", fontSize: "0.68rem", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                    Patient Operations
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-patients"
+                                        active={staffSubTab === "patients"}
+                                        iconClass="fa-solid fa-hospital-user"
+                                        onClick={() => navigate("/staff/patients")}
+                                    >
+                                        Patients
+                                    </PrimaryButton>
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-appointments"
+                                        active={staffSubTab === "appointments"}
                                         iconClass="fa-solid fa-calendar-check"
-                                        onClick={() =>
-                                            goTab(
-                                                "confirmed"
-                                            )
-                                        }
+                                        onClick={() => navigate("/staff/appointments")}
                                     >
-                                        Upcoming / Confirmed
-                                    </SubmenuButton>
+                                        Appointments
+                                    </PrimaryButton>
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-checkin"
+                                        active={staffSubTab === "check-in"}
+                                        iconClass="fa-solid fa-user-check"
+                                        onClick={() => navigate("/staff/check-in")}
+                                    >
+                                        Check-in
+                                    </PrimaryButton>
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-queue"
+                                        active={staffSubTab === "queue"}
+                                        iconClass="fa-solid fa-list-ol"
+                                        onClick={() => navigate("/staff/queue")}
+                                    >
+                                        Queue
+                                    </PrimaryButton>
+                                </li>
 
-                                    <SubmenuButton
-                                        itemKey="completed"
-                                        theme="green"
+                                {/* Account Group */}
+                                <li style={{ marginTop: "12px", padding: "6px 12px 2px", fontSize: "0.68rem", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                    Account
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-profile"
+                                        active={staffSubTab === "profile"}
+                                        iconClass="fa-solid fa-id-card"
+                                        onClick={() => navigate("/staff/profile")}
+                                    >
+                                        Profile
+                                    </PrimaryButton>
+                                </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="staff-settings"
+                                        active={staffSubTab === "settings"}
+                                        iconClass="fa-solid fa-sliders"
+                                        onClick={() => navigate("/staff/settings")}
+                                    >
+                                        Settings
+                                    </PrimaryButton>
+                                </li>
+                            </>
+                        ) : (
+                            <>
+                                {/* =================================================
+                                    DOCTOR PORTAL NAVIGATION
+                                ================================================= */}
+
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="dashboard"
+                                        active={isDashboard}
+                                        iconClass="fa-solid fa-house"
+                                        onClick={() => {
+                                            if (location.pathname === "/dashboard") return;
+                                            navigate("/dashboard");
+                                        }}
+                                    >
+                                        Dashboard
+                                    </PrimaryButton>
+                                </li>
+
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="appointments"
+                                        active={isAppointments}
+                                        iconClass="fa-solid fa-calendar-days"
+                                        rightIcon="fa-solid fa-chevron-down"
+                                        rightIconStyle={{
+                                            transform:
+                                                isAppointmentsOpen
+                                                    ? "rotate(180deg)"
+                                                    : "rotate(0deg)",
+
+                                            transition:
+                                                "transform 0.25s ease-in-out",
+                                        }}
+                                        onClick={() => {
+                                            if (
+                                                currentSection !==
+                                                "appointments"
+                                            ) {
+                                                navigate(
+                                                    "/appointments"
+                                                );
+                                                return;
+                                            }
+
+                                            setOpenSection(
+                                                (current) =>
+                                                    current ===
+                                                        "appointments"
+                                                        ? null
+                                                        : "appointments"
+                                            );
+                                        }}
+                                    >
+                                        Appointments
+                                    </PrimaryButton>
+
+                                    <div
+                                        style={{
+                                            maxHeight:
+                                                isAppointmentsOpen
+                                                    ? "140px"
+                                                    : "0px",
+
+                                            opacity:
+                                                isAppointmentsOpen
+                                                    ? 1
+                                                    : 0,
+
+                                            overflow: "hidden",
+
+                                            transition:
+                                                "max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease-in-out, margin 0.28s ease-in-out",
+
+                                            margin:
+                                                isAppointmentsOpen
+                                                    ? "3px 0 5px 21px"
+                                                    : "0 0 0 21px",
+
+                                            paddingLeft: 12,
+
+                                            borderLeft:
+                                                `1px solid ${COLORS.submenuBorder}`,
+
+                                            pointerEvents:
+                                                isAppointmentsOpen
+                                                    ? "auto"
+                                                    : "none",
+
+                                            visibility:
+                                                isAppointmentsOpen
+                                                    ? "visible"
+                                                    : "hidden",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                flexDirection:
+                                                    "column",
+                                                gap: 2,
+                                            }}
+                                        >
+                                            <SubmenuButton
+                                                itemKey="confirmed"
+                                                theme="cyan"
+                                                active={
+                                                    (isAppointments ||
+                                                        isDashboard) &&
+                                                    (
+                                                        dashboardTab ===
+                                                        "confirmed" ||
+                                                        location.search.includes(
+                                                            "tab=confirmed"
+                                                        )
+                                                    )
+                                                }
+                                                iconClass="fa-solid fa-calendar-check"
+                                                onClick={() =>
+                                                    goTab(
+                                                        "confirmed"
+                                                    )
+                                                }
+                                            >
+                                                Upcoming / Confirmed
+                                            </SubmenuButton>
+
+                                            <SubmenuButton
+                                                itemKey="completed"
+                                                theme="green"
+                                                active={
+                                                    (isAppointments ||
+                                                        isDashboard) &&
+                                                    (
+                                                        dashboardTab ===
+                                                        "completed" ||
+                                                        location.search.includes(
+                                                            "tab=completed"
+                                                        )
+                                                    )
+                                                }
+                                                iconClass="fa-solid fa-circle-check"
+                                                onClick={() =>
+                                                    goTab(
+                                                        "completed"
+                                                    )
+                                                }
+                                            >
+                                                Completed
+                                            </SubmenuButton>
+                                        </div>
+                                    </div>
+                                </li>
+
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="patients"
                                         active={
-                                            (isAppointments ||
-                                                isDashboard) &&
-                                            (
-                                                dashboardTab ===
-                                                "completed" ||
-                                                location.search.includes(
-                                                    "tab=completed"
-                                                )
-                                            )
+                                            isPatients &&
+                                            isPatientsOpen
                                         }
-                                        iconClass="fa-solid fa-circle-check"
-                                        onClick={() =>
-                                            goTab(
-                                                "completed"
-                                            )
-                                        }
-                                    >
-                                        Completed
-                                    </SubmenuButton>
-                                </div>
-                            </div>
-                        </li>
+                                        iconClass="fa-solid fa-user-group"
+                                        rightIcon="fa-solid fa-chevron-down"
+                                        rightIconStyle={{
+                                            transform:
+                                                isPatientsOpen
+                                                    ? "rotate(180deg)"
+                                                    : "rotate(0deg)",
 
-                        {/* =================================================
-                            PATIENTS
-                        ================================================= */}
-
-                        <li>
-                            <PrimaryButton
-                                itemKey="patients"
-                                active={
-                                    isPatients &&
-                                    isPatientsOpen
-                                }
-                                iconClass="fa-solid fa-user-group"
-                                rightIcon="fa-solid fa-chevron-down"
-                                rightIconStyle={{
-                                    transform:
-                                        isPatientsOpen
-                                            ? "rotate(180deg)"
-                                            : "rotate(0deg)",
-
-                                    transition:
-                                        "transform 0.25s ease-in-out",
-                                }}
-                                onClick={() => {
-                                    /*
-                                     * If we are not on Patients,
-                                     * navigate first.
-                                     */
-                                    if (
-                                        currentSection !==
-                                        "patients"
-                                    ) {
-                                        navigate("/patients");
-                                        return;
-                                    }
-
-                                    /*
-                                     * Already on Patients:
-                                     * allow intentional toggle.
-                                     */
-                                    setOpenSection(
-                                        (current) =>
-                                            current ===
+                                            transition:
+                                                "transform 0.25s ease-in-out",
+                                        }}
+                                        onClick={() => {
+                                            if (
+                                                currentSection !==
                                                 "patients"
-                                                ? null
-                                                : "patients"
-                                    );
-                                }}
-                            >
-                                Patients
-                            </PrimaryButton>
+                                            ) {
+                                                navigate("/patients");
+                                                return;
+                                            }
 
-                            <div
-                                style={{
-                                    maxHeight:
-                                        isPatientsOpen
-                                            ? "140px"
-                                            : "0px",
-
-                                    opacity:
-                                        isPatientsOpen
-                                            ? 1
-                                            : 0,
-
-                                    overflow: "hidden",
-
-                                    transition:
-                                        "max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease-in-out, margin 0.28s ease-in-out",
-
-                                    margin:
-                                        isPatientsOpen
-                                            ? "3px 0 5px 21px"
-                                            : "0 0 0 21px",
-
-                                    paddingLeft: 12,
-
-                                    borderLeft:
-                                        `1px solid ${COLORS.submenuBorder}`,
-
-                                    pointerEvents:
-                                        isPatientsOpen
-                                            ? "auto"
-                                            : "none",
-
-                                    visibility:
-                                        isPatientsOpen
-                                            ? "visible"
-                                            : "hidden",
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        flexDirection:
-                                            "column",
-                                        gap: 2,
-                                    }}
-                                >
-                                    <SubmenuButton
-                                        itemKey="directory"
-                                        theme="cyan"
-                                        active={
-                                            isPatients &&
-                                            (
-                                                patientView ===
-                                                "search" ||
-                                                patientView ===
-                                                "profile"
-                                            )
-                                        }
-                                        iconClass="fa-solid fa-magnifying-glass"
-                                        onClick={() =>
-                                            goPatientView(
-                                                "search"
-                                            )
-                                        }
+                                            setOpenSection(
+                                                (current) =>
+                                                    current ===
+                                                        "patients"
+                                                        ? null
+                                                        : "patients"
+                                            );
+                                        }}
                                     >
-                                        Directory
-                                    </SubmenuButton>
+                                        Patients
+                                    </PrimaryButton>
 
-                                    <SubmenuButton
-                                        itemKey="walkin"
-                                        theme="orange"
-                                        active={
-                                            isPatients &&
-                                            patientView ===
-                                            "walkin"
-                                        }
-                                        iconClass="fa-solid fa-user-plus"
-                                        onClick={() =>
-                                            goPatientView(
-                                                "walkin"
-                                            )
-                                        }
+                                    <div
+                                        style={{
+                                            maxHeight:
+                                                isPatientsOpen
+                                                    ? "140px"
+                                                    : "0px",
+
+                                            opacity:
+                                                isPatientsOpen
+                                                    ? 1
+                                                    : 0,
+
+                                            overflow: "hidden",
+
+                                            transition:
+                                                "max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease-in-out, margin 0.28s ease-in-out",
+
+                                            margin:
+                                                isPatientsOpen
+                                                    ? "3px 0 5px 21px"
+                                                    : "0 0 0 21px",
+
+                                            paddingLeft: 12,
+
+                                            borderLeft:
+                                                `1px solid ${COLORS.submenuBorder}`,
+
+                                            pointerEvents:
+                                                isPatientsOpen
+                                                    ? "auto"
+                                                    : "none",
+
+                                            visibility:
+                                                isPatientsOpen
+                                                    ? "visible"
+                                                    : "hidden",
+                                        }}
                                     >
-                                        Add Walk-in
-                                    </SubmenuButton>
-                                </div>
-                            </div>
-                        </li>
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                flexDirection:
+                                                    "column",
+                                                gap: 2,
+                                            }}
+                                        >
+                                            <SubmenuButton
+                                                itemKey="directory"
+                                                theme="cyan"
+                                                active={
+                                                    isPatients &&
+                                                    (
+                                                        patientView ===
+                                                        "search" ||
+                                                        patientView ===
+                                                        "profile"
+                                                    )
+                                                }
+                                                iconClass="fa-solid fa-magnifying-glass"
+                                                onClick={() =>
+                                                    goPatientView(
+                                                        "search"
+                                                    )
+                                                }
+                                            >
+                                                Directory
+                                            </SubmenuButton>
 
-                        {/* =================================================
-                            AVAILABILITY
-                        ================================================= */}
+                                            <SubmenuButton
+                                                itemKey="walkin"
+                                                theme="orange"
+                                                active={
+                                                    isPatients &&
+                                                    patientView ===
+                                                    "walkin"
+                                                }
+                                                iconClass="fa-solid fa-user-plus"
+                                                onClick={() =>
+                                                    goPatientView(
+                                                        "walkin"
+                                                    )
+                                                }
+                                            >
+                                                Add Walk-in
+                                            </SubmenuButton>
+                                        </div>
+                                    </div>
+                                </li>
 
-                        <li>
-                            <PrimaryButton
-                                itemKey="availability"
-                                active={isAvailability}
-                                iconClass="fa-solid fa-clock"
-                                onClick={() => {
-                                    if (
-                                        location.pathname ===
-                                        "/availability"
-                                    ) {
-                                        return;
-                                    }
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="availability"
+                                        active={isAvailability}
+                                        iconClass="fa-solid fa-clock"
+                                        onClick={() => {
+                                            if (
+                                                location.pathname ===
+                                                "/availability"
+                                            ) {
+                                                return;
+                                            }
 
-                                    navigate(
-                                        "/availability"
-                                    );
-                                }}
-                            >
-                                Availability
-                            </PrimaryButton>
-                        </li>
+                                            navigate(
+                                                "/availability"
+                                            );
+                                        }}
+                                    >
+                                        Availability
+                                    </PrimaryButton>
+                                </li>
 
-                        {/* =================================================
-                            VIDEOS
-                        ================================================= */}
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="videos"
+                                        active={isVideos}
+                                        iconClass="fa-solid fa-circle-play"
+                                        onClick={() => {
+                                            if (
+                                                location.pathname ===
+                                                "/videos"
+                                            ) {
+                                                return;
+                                            }
 
-                        <li>
-                            <PrimaryButton
-                                itemKey="videos"
-                                active={isVideos}
-                                iconClass="fa-solid fa-circle-play"
-                                onClick={() => {
-                                    if (
-                                        location.pathname ===
-                                        "/videos"
-                                    ) {
-                                        return;
-                                    }
+                                            navigate("/videos");
+                                        }}
+                                    >
+                                        Videos & Shorts
+                                    </PrimaryButton>
+                                </li>
 
-                                    navigate("/videos");
-                                }}
-                            >
-                                Videos & Shorts
-                            </PrimaryButton>
-                        </li>
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="qna"
+                                        active={isQna}
+                                        iconClass="fa-solid fa-circle-question"
+                                        onClick={() => {
+                                            if (
+                                                location.pathname ===
+                                                "/qna"
+                                            ) {
+                                                return;
+                                            }
 
-                        {/* =================================================
-                            Q&A
-                        ================================================= */}
+                                            navigate("/qna");
+                                        }}
+                                    >
+                                        Q&A
+                                    </PrimaryButton>
+                                </li>
 
-                        <li>
-                            <PrimaryButton
-                                itemKey="qna"
-                                active={isQna}
-                                iconClass="fa-solid fa-circle-question"
-                                onClick={() => {
-                                    if (
-                                        location.pathname ===
-                                        "/qna"
-                                    ) {
-                                        return;
-                                    }
+                                <li>
+                                    <PrimaryButton
+                                        itemKey="profile"
+                                        active={isProfile}
+                                        iconClass="fa-solid fa-user"
+                                        onClick={() => {
+                                            if (
+                                                location.pathname ===
+                                                "/profile"
+                                            ) {
+                                                return;
+                                            }
 
-                                    navigate("/qna");
-                                }}
-                            >
-                                Q&A
-                            </PrimaryButton>
-                        </li>
-
-                        {/* =================================================
-                            PROFILE
-                        ================================================= */}
-
-                        <li>
-                            <PrimaryButton
-                                itemKey="profile"
-                                active={isProfile}
-                                iconClass="fa-solid fa-user"
-                                onClick={() => {
-                                    if (
-                                        location.pathname ===
-                                        "/profile"
-                                    ) {
-                                        return;
-                                    }
-
-                                    navigate("/profile");
-                                }}
-                            >
-                                Profile
-                            </PrimaryButton>
-                        </li>
+                                            navigate("/profile");
+                                        }}
+                                    >
+                                        Profile
+                                    </PrimaryButton>
+                                </li>
+                            </>
+                        )}
                     </ul>
                 </nav>
 
@@ -1078,9 +1261,13 @@ export default function Sidebar({
 
                     <PrimaryButton
                         itemKey="settings"
-                        active={isSettings}
+                        active={isAdminMode ? adminSubTab === "settings" : isSettings}
                         iconClass="fa-solid fa-gear"
                         onClick={() => {
+                            if (isAdminMode) {
+                                navigate("/hospital-admin/settings");
+                                return;
+                            }
                             if (
                                 location.pathname ===
                                 "/settings"
@@ -1165,133 +1352,135 @@ export default function Sidebar({
                 </div>
 
                 {/* =========================================================
-                    UPGRADE CARD
+                    UPGRADE CARD (Doctor mode only)
                 ========================================================= */}
 
-                <div
-                    className="dv-upgrade-card"
-                    style={{
-                        flexShrink: 0,
-
-                        marginTop: 10,
-
-                        padding: 13,
-
-                        borderRadius: 13,
-
-                        background:
-                            "linear-gradient(135deg, #082B68 0%, #08AEB8 100%)",
-
-                        boxShadow:
-                            "0 4px 14px rgba(8,43,104,0.08)",
-                    }}
-                >
+                {!isAdminMode && (
                     <div
+                        className="dv-upgrade-card"
                         style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 7,
+                            flexShrink: 0,
 
-                            marginBottom: 7,
-                        }}
-                    >
-                        <span
-                            style={{
-                                width: 27,
-                                height: 27,
+                            marginTop: 10,
 
-                                borderRadius: 8,
+                            padding: 13,
 
-                                display:
-                                    "inline-flex",
-
-                                alignItems:
-                                    "center",
-
-                                justifyContent:
-                                    "center",
-
-                                background:
-                                    "rgba(255,255,255,0.14)",
-
-                                flexShrink: 0,
-                            }}
-                        >
-                            <i
-                                className="fa-solid fa-star"
-                                style={{
-                                    color:
-                                        "#FACC15",
-                                    fontSize: 12,
-                                }}
-                            />
-                        </span>
-
-                        <span
-                            style={{
-                                color:
-                                    "#FFFFFF",
-                                fontWeight:
-                                    800,
-                                fontSize: 13,
-                            }}
-                        >
-                            Upgrade to Pro
-                        </span>
-                    </div>
-
-                    <p
-                        style={{
-                            color:
-                                "rgba(255,255,255,0.82)",
-
-                            fontSize: 11.5,
-                            lineHeight: 1.45,
-
-                            margin:
-                                "0 0 10px",
-                        }}
-                    >
-                        Unlock premium features
-                        and exclusive medical
-                        resources.
-                    </p>
-
-                    <button
-                        type="button"
-                        onClick={() => {
-                            // Add subscription route here later.
-                        }}
-                        style={{
-                            width: "100%",
-                            minHeight: 36,
-
-                            padding:
-                                "8px 10px",
-
-                            border: "none",
-                            borderRadius: 8,
+                            borderRadius: 13,
 
                             background:
-                                "#FFFFFF",
+                                "linear-gradient(135deg, #082B68 0%, #08AEB8 100%)",
 
-                            color:
-                                COLORS.navy,
-
-                            fontFamily:
-                                "inherit",
-
-                            fontSize: 12,
-                            fontWeight: 800,
-
-                            cursor: "pointer",
-
-                            outline: "none",
+                            boxShadow:
+                                "0 4px 14px rgba(8,43,104,0.08)",
                         }}
                     >
-                        Upgrade Now
-                    </button>
-                </div>
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 7,
+
+                                marginBottom: 7,
+                            }}
+                        >
+                            <span
+                                style={{
+                                    width: 27,
+                                    height: 27,
+
+                                    borderRadius: 8,
+
+                                    display:
+                                        "inline-flex",
+
+                                    alignItems:
+                                        "center",
+
+                                    justifyContent:
+                                        "center",
+
+                                    background:
+                                        "rgba(255,255,255,0.14)",
+
+                                    flexShrink: 0,
+                                }}
+                            >
+                                <i
+                                    className="fa-solid fa-star"
+                                    style={{
+                                        color:
+                                            "#FACC15",
+                                        fontSize: 12,
+                                    }}
+                                />
+                            </span>
+
+                            <span
+                                style={{
+                                    color:
+                                        "#FFFFFF",
+                                    fontWeight:
+                                        800,
+                                    fontSize: 13,
+                                }}
+                            >
+                                Upgrade to Pro
+                            </span>
+                        </div>
+
+                        <p
+                            style={{
+                                color:
+                                    "rgba(255,255,255,0.82)",
+
+                                fontSize: 11.5,
+                                lineHeight: 1.45,
+
+                                margin:
+                                    "0 0 10px",
+                            }}
+                        >
+                            Unlock premium features
+                            and exclusive medical
+                            resources.
+                        </p>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                // Add subscription route here later.
+                            }}
+                            style={{
+                                width: "100%",
+                                minHeight: 36,
+
+                                padding:
+                                    "8px 10px",
+
+                                border: "none",
+                                borderRadius: 8,
+
+                                background:
+                                    "#FFFFFF",
+
+                                color:
+                                    COLORS.navy,
+
+                                fontFamily:
+                                    "inherit",
+
+                                fontSize: 12,
+                                fontWeight: 800,
+
+                                cursor: "pointer",
+
+                                outline: "none",
+                            }}
+                        >
+                            Upgrade Now
+                        </button>
+                    </div>
+                )}
             </aside>
         </>
     );

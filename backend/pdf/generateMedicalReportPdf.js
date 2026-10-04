@@ -237,9 +237,20 @@ function renderPdfToStream(patientRecord, stream) {
         s.patientGender
     );
 
+    const dobVal = getFirst(
+        patientRecord.dateOfBirth,
+        patientRecord.date_of_birth,
+        patientRecord.dob,
+        patientRecord.patient?.date_of_birth,
+        patientRecord.patient?.dateOfBirth,
+        s.date_of_birth,
+        s.dob
+    );
+
     const ageStr = hasValue(rawAge) ? (String(rawAge).toLowerCase().includes('y') ? String(rawAge) : `${rawAge} Y`) : '';
     const genderStr = hasValue(rawGender) ? String(rawGender).trim() : '';
-    const ageGender = [ageStr, genderStr].filter(Boolean).join(' / ') || '-';
+    const dobStr = hasValue(dobVal) ? formatISTDate(dobVal) : '';
+    const ageGender = [ageStr, genderStr, dobStr ? `DOB: ${dobStr}` : ''].filter(Boolean).join(' / ') || '-';
 
     function sanitizePlaceholderText(txt) {
         if (!hasValue(txt) || typeof txt !== 'string') return txt;
@@ -405,7 +416,7 @@ function renderPdfToStream(patientRecord, stream) {
     }
 
     function drawBulletsBlock(items, contentW = PAGE.contentWidth - 12) {
-        const list = Array.isArray(items) ? items : String(items || '').split(/\n|•/).map((x) => x.trim()).filter(Boolean);
+        const list = Array.isArray(items) ? items : (typeof items === 'string' ? items.split(/\n|•/).map((x) => x.trim()).filter(Boolean) : (items ? [items] : []));
         if (!list.length) return;
 
         const curX = PAGE.marginX + 6;
@@ -478,6 +489,8 @@ function renderPdfToStream(patientRecord, stream) {
         ['Oxygen Saturation', vitalsData.oxygen_saturation || vitalsData.oxygenSaturation || vitalsData.spo2],
         ['Respiratory Rate', vitalsData.respiratory_rate || vitalsData.respiratoryRate],
         ['Weight', vitalsData.weight],
+        ['Height', vitalsData.height],
+        ['Blood Group', vitalsData.blood_group || vitalsData.bloodGroup],
     ].filter(([, v]) => hasValue(v));
 
     const hasExam = hasValue(examination) || vitalsList.length > 0 || hasValue(investigations);

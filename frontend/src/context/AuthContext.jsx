@@ -19,7 +19,9 @@ export function AuthProvider({
         );
 
     const [loading, setLoading] =
-        useState(true);
+        useState(
+            !authService.getCurrentDoctor() && authService.isAuthenticated()
+        );
 
     useEffect(() => {
         let mounted = true;
@@ -33,18 +35,15 @@ export function AuthProvider({
                         const profile =
                             await authService.fetchProfile();
 
-                        if (
-                            mounted &&
-                            profile
-                        ) {
-                            setDoctor(
-                                profile
-                            );
+                        if (mounted && profile) {
+                            setDoctor(profile);
                         }
+                    } else if (mounted) {
+                        setDoctor(null);
                     }
                 } catch (error) {
-                    console.error(
-                        "[AuthContext] Initialization error:",
+                    console.warn(
+                        "[AuthContext] Initialization warning:",
                         error
                     );
                 } finally {
@@ -65,18 +64,21 @@ export function AuthProvider({
 
     const login = async (
         email,
-        password
+        password,
+        portal
     ) => {
         const result =
             await authService.login(
                 email,
-                password
+                password,
+                portal
             );
 
         if (result?.doctor) {
             setDoctor(
                 result.doctor
             );
+            setLoading(false);
         }
 
         return result;
@@ -113,15 +115,17 @@ export function AuthProvider({
         setDoctor(null);
     };
 
+    const currentDoctor = doctor || authService.getCurrentDoctor();
+
     return (
         <AuthContext.Provider
             value={{
-                doctor,
-                user: doctor,
+                doctor: currentDoctor,
+                user: currentDoctor,
 
                 isAuthenticated:
                     Boolean(
-                        doctor ||
+                        currentDoctor ||
                         authService.isAuthenticated()
                     ),
 

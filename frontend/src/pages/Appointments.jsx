@@ -6,7 +6,7 @@ import DashboardLayout from "../components/DashboardLayout";
 import "./Appointments.css";
 import "../index.css";
 
-const API = import.meta.env.VITE_NODE_API_URL;
+const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
 export default function Appointments() {
     const navigate = useNavigate();

@@ -57,6 +57,12 @@ const DoctorSignup = () => {
       return;
     }
 
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(normalizedEmail)) {
+      setErrorMsg("Only Gmail addresses (@gmail.com) are allowed for Doctor and Staff accounts.");
+      return;
+    }
+
     if (formData.dob) {
       const selectedDate = new Date(formData.dob);
       if (selectedDate > todayDate) {

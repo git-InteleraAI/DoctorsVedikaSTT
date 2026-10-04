@@ -60,10 +60,17 @@ export default function DashboardLayout({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    const isAdminRoute = activePage === "admin" || (typeof window !== "undefined" && (window.location.pathname.startsWith("/admin") || window.location.pathname.startsWith("/hospital-admin")));
+    const userDisplayName = (doctor?.fullName && doctor.fullName !== "Patient") 
+        ? doctor.fullName 
+        : (doctor?.doctor_name && doctor.doctor_name !== "Patient" 
+            ? doctor.doctor_name 
+            : (isAdminRoute ? "Hospital Admin" : "Dr. Harshini"));
+
     const doctorAvatar =
         doctor?.avatarUrl ||
         `https://ui-avatars.com/api/?name=${encodeURIComponent(
-            doctor?.fullName || "Doctor"
+            userDisplayName
         )}&background=01b6af&color=fff`;
 
     return (
@@ -477,30 +484,40 @@ export default function DashboardLayout({
                                     >
                                         <div
                                             style={{
-                                                fontWeight: 700,
+                                                fontWeight: 800,
                                                 fontSize: "0.85rem",
-                                                color: "#082b68",
+                                                color: "#0b1c2d",
                                                 lineHeight: 1.2,
                                                 whiteSpace: "nowrap",
                                                 overflow: "hidden",
                                                 textOverflow: "ellipsis",
                                             }}
                                         >
-                                            {doctor?.fullName || "Doctor"}
+                                            {userDisplayName}
                                         </div>
 
                                         <div
                                             style={{
                                                 fontSize: "0.72rem",
-                                                color: "#64748b",
+                                                fontWeight: 700,
+                                                color: "#08AEB8",
                                                 lineHeight: 1.2,
                                                 whiteSpace: "nowrap",
                                                 overflow: "hidden",
                                                 textOverflow: "ellipsis",
                                             }}
                                         >
-                                            {doctor?.specialization || "Cardiologist"}
+                                            {activePage === "admin" || (typeof window !== "undefined" && (window.location.pathname.startsWith("/admin") || window.location.pathname.startsWith("/hospital-admin")))
+                                                ? "Hospital Administrator"
+                                                : activePage === "staff" || (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) || doctor?.role === "staff"
+                                                    ? (doctor?.hospitalRole || doctor?.staff_role || "Reception Staff")
+                                                    : (doctor?.specialization || "Doctor")}
                                         </div>
+                                        {activePage === "admin" && doctor?.specialization && (
+                                            <div style={{ fontSize: "0.65rem", color: "#64748b", fontWeight: 500, lineHeight: 1.1 }}>
+                                                Doctor • {doctor.specialization}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <i
@@ -527,27 +544,49 @@ export default function DashboardLayout({
                                         position: "absolute",
                                         top: "calc(100% + 10px)",
                                         right: 0,
-                                        width: "240px",
+                                        width: "260px",
                                         background: "#fff",
                                         borderRadius: "16px",
-                                        boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
+                                        boxShadow: "0 10px 40px rgba(0,0,0,0.12)",
                                         border: "1px solid #e2e8f0",
                                         zIndex: 2002,
                                         overflow: "hidden",
                                         animation: "slideUp 0.2s ease"
                                     }}
                                 >
-                                    <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
-                                        <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                            {doctor?.fullName || "Doctor"}
+                                    <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%)" }}>
+                                        <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0b1c2d", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {userDisplayName}
                                         </div>
-                                        <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                            {doctor?.specialization || "Cardiologist"}
+                                        <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#08AEB8", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {activePage === "admin" || (typeof window !== "undefined" && (window.location.pathname.startsWith("/admin") || window.location.pathname.startsWith("/hospital-admin")))
+                                                ? "Hospital Administrator"
+                                                : activePage === "staff" || (typeof window !== "undefined" && window.location.pathname.startsWith("/staff")) || doctor?.role === "staff"
+                                                    ? (doctor?.hospitalRole || doctor?.staff_role || "Reception Staff")
+                                                    : (doctor?.specialization || "Doctor")}
+                                        </div>
+                                        {(activePage === "admin" || (typeof window !== "undefined" && (window.location.pathname.startsWith("/admin") || window.location.pathname.startsWith("/hospital-admin")))) && doctor?.specialization && (
+                                            <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: 2 }}>
+                                                Doctor • {doctor.specialization}
+                                            </div>
+                                        )}
+                                        <div style={{ fontSize: "0.72rem", color: "#475569", marginTop: 4, fontWeight: 600 }}>
+                                            {doctor?.hospitalName || "Doctors Vedika Main Hospital"}
                                         </div>
                                     </div>
                                     <div style={{ padding: "8px 0" }}>
                                         <button
-                                            onClick={() => { setProfileMenuOpen(false); navigate("/profile"); }}
+                                            onClick={() => {
+                                                setProfileMenuOpen(false);
+                                                const p = typeof window !== "undefined" ? window.location.pathname : "";
+                                                if (p.startsWith("/admin") || p.startsWith("/hospital-admin")) {
+                                                    navigate("/admin/profile");
+                                                } else if (p.startsWith("/staff")) {
+                                                    navigate("/staff/profile");
+                                                } else {
+                                                    navigate("/profile");
+                                                }
+                                            }}
                                             style={{ width: "100%", textAlign: "left", padding: "12px 20px", background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", color: "#334155", display: "flex", alignItems: "center", gap: 12 }}
                                             onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#08AEB8"; }}
                                             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#334155"; }}
@@ -555,12 +594,22 @@ export default function DashboardLayout({
                                             <i className="fa-regular fa-user" style={{ width: 16 }} /> Profile
                                         </button>
                                         <button
-                                            onClick={() => { setProfileMenuOpen(false); navigate("/settings"); }}
+                                            onClick={() => {
+                                                setProfileMenuOpen(false);
+                                                const p = typeof window !== "undefined" ? window.location.pathname : "";
+                                                if (p.startsWith("/admin") || p.startsWith("/hospital-admin")) {
+                                                    navigate("/admin/settings");
+                                                } else if (p.startsWith("/staff")) {
+                                                    navigate("/staff/settings");
+                                                } else {
+                                                    navigate("/settings");
+                                                }
+                                            }}
                                             style={{ width: "100%", textAlign: "left", padding: "12px 20px", background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", color: "#334155", display: "flex", alignItems: "center", gap: 12 }}
                                             onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#08AEB8"; }}
                                             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#334155"; }}
                                         >
-                                            <i className="fa-solid fa-gear" style={{ width: 16 }} /> Settings
+                                            <i className="fa-solid fa-gear" style={{ width: 16 }} /> Settings & Preferences
                                         </button>
                                         <div style={{ margin: "4px 0", height: 1, background: "#f1f5f9" }} />
                                         <button
@@ -647,17 +696,13 @@ export default function DashboardLayout({
                     height: `calc(100dvh - ${HEADER_HEIGHT}px)`,
 
                     overflowX: "hidden",
-                    overflowY:
-                        activePage === "profile" && !isMobile ? "hidden" : "auto",
+                    overflowY: "auto",
 
                     background: "#F8FBFF", // Light Sea Blue Main Area
 
                     boxSizing: "border-box",
 
-                    padding:
-                        activePage === "profile"
-                            ? (isMobile ? "16px" : "24px 28px")
-                            : (isMobile ? "16px" : "28px 32px"),
+                    padding: isMobile ? "16px" : "20px 24px",
 
                     WebkitOverflowScrolling: "touch",
 
@@ -672,7 +717,6 @@ export default function DashboardLayout({
                         maxWidth: "100%",
                         minWidth: 0,
                         boxSizing: "border-box",
-                        minHeight: "100%",
                         display: "flex",
                         flexDirection: "column"
                     }}

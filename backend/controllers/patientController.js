@@ -1,6 +1,7 @@
 const { supabase, supabaseAdmin } = require("../config/supabase");
 const db = supabaseAdmin || supabase;
 const crypto = require("crypto");
+const { encryptPayload, decryptRecord } = require("../services/encryptionService");
 
 // In-memory fallback maps for walk-in patients created without auth accounts
 const inMemoryPatients = new Map();
@@ -55,55 +56,98 @@ class PatientController {
     /**
      * Search patients (Only returns patients with completed consultations / visits for logged-in doctor)
      */
+    /**
+     * Search patients (Returns both registered patients and walk-in patients associated with logged-in doctor/hospital)
+     */
     async searchPatients(req, res) {
         try {
             const { q } = req.query;
             const doctorIds = this._getDoctorIds(req.doctor);
+            const searchStr = q && String(q).trim() ? `%${q.trim()}%` : null;
 
-            let allowedPatientIds = [];
             let docApps = [];
             let docNotes = [];
+            let docVisits = [];
+            let allowedPatientIds = [];
+            let allowedHospitalPatientIds = [];
 
             if (db && doctorIds.length > 0) {
+                // Fetch appointments for this doctor (all statuses, not just completed)
                 const { data: appsData } = await db
                     .from("appointments")
-                    .select("patient_id, appointment_date, status, doctor_id")
-                    .in("doctor_id", doctorIds)
-                    .ilike("status", "completed");
+                    .select("id, patient_id, hospital_patient_id, appointment_date, status, doctor_id")
+                    .in("doctor_id", doctorIds);
 
+                // Fetch consultation notes for this doctor
                 const { data: notesData } = await db
                     .from("consultation_notes")
-                    .select("patient_id, doctor_id, created_at, appointment_id")
+                    .select("id, patient_id, hospital_patient_id, doctor_id, created_at, appointment_id")
+                    .in("doctor_id", doctorIds);
+
+                // Fetch patient visits for this doctor
+                const { data: visitsData } = await db
+                    .from("patient_visits")
+                    .select("id, patient_id, hospital_patient_id, doctor_id, created_at, visit_stage")
                     .in("doctor_id", doctorIds);
 
                 docApps = appsData || [];
                 docNotes = notesData || [];
+                docVisits = visitsData || [];
 
                 allowedPatientIds = [...new Set([
                     ...docApps.map(a => a.patient_id),
                     ...docNotes.map(n => n.patient_id),
+                    ...docVisits.map(v => v.patient_id),
+                ].filter(Boolean))];
+
+                allowedHospitalPatientIds = [...new Set([
+                    ...docApps.map(a => a.hospital_patient_id),
+                    ...docNotes.map(n => n.hospital_patient_id),
+                    ...docVisits.map(v => v.hospital_patient_id),
                 ].filter(Boolean))];
             }
 
-            if (allowedPatientIds.length === 0) {
-                return res.json({ success: true, patients: [] });
+            // Also check doctor's hospital ID if available
+            let hospitalId = req.doctor?.hospital_id || null;
+            if (!hospitalId && db && doctorIds.length > 0) {
+                const { data: hm } = await db
+                    .from("hospital_members")
+                    .select("hospital_id")
+                    .in("user_id", doctorIds)
+                    .maybeSingle();
+                if (hm) hospitalId = hm.hospital_id;
             }
 
-            let query = db.from("patients").select("*");
-            const quotedIds = allowedPatientIds.map(id => `"${id}"`).join(",");
-            query = query.or(`user_id.in.(${quotedIds}),id.in.(${quotedIds}),patient_code.in.(${quotedIds})`);
+            let registeredPatients = [];
+            let walkinPatients = [];
 
-            if (q && String(q).trim()) {
-                const searchStr = `%${q.trim()}%`;
-                query = query.or(`first_name.ilike.${searchStr},last_name.ilike.${searchStr},full_name.ilike.${searchStr},email.ilike.${searchStr},patient_code.ilike.${searchStr}`);
+            // 1. Fetch Registered Patients from 'patients' table (STRICTLY FOR LOGGED-IN DOCTOR)
+            if (db && (searchStr || allowedPatientIds.length > 0)) {
+                let pQuery = db.from("patients").select("*");
+                const uuidPats = allowedPatientIds.filter(id => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+                if (uuidPats.length > 0) {
+                    const quotedIds = uuidPats.map(id => `"${id}"`).join(",");
+                    pQuery = pQuery.or(`user_id.in.(${quotedIds}),id.in.(${quotedIds})`);
+                }
+                if (searchStr) {
+                    pQuery = pQuery.or(`first_name.ilike.${searchStr},last_name.ilike.${searchStr},full_name.ilike.${searchStr},email.ilike.${searchStr},patient_code.ilike.${searchStr},phone.ilike.${searchStr}`);
+                }
+
+                pQuery = pQuery.order("created_at", { ascending: false }).limit(50);
+                const { data: pData } = await pQuery;
+                if (pData) {
+                    registeredPatients = pData.filter(p => {
+                        const pKeys = [p.user_id, p.id, p.patient_code].filter(Boolean);
+                        const hasDocVisits = docApps.some(a => pKeys.includes(a.patient_id)) ||
+                            docNotes.some(n => pKeys.includes(n.patient_id)) ||
+                            docVisits.some(v => pKeys.includes(v.patient_id));
+                        return hasDocVisits;
+                    });
+                }
             }
 
-            query = query.order("created_at", { ascending: false }).limit(50);
-            const { data: patients, error } = await query;
-            if (error) throw new Error(error.message);
-
-            // Fetch real phone and email from users table
-            const userIds = [...new Set((patients || []).map(p => p.user_id).filter(Boolean))];
+            // Fetch user details for real phone and email for registered patients
+            const userIds = [...new Set((registeredPatients || []).map(p => p.user_id).filter(Boolean))];
             let usersMap = {};
             if (db && userIds.length > 0) {
                 const { data: usersData } = await db
@@ -111,24 +155,25 @@ class PatientController {
                     .select("id, phone, email")
                     .in("id", userIds);
                 if (usersData) {
-                    usersData.forEach(u => {
-                        usersMap[u.id] = u;
-                    });
+                    usersData.forEach(u => { usersMap[u.id] = u; });
                 }
             }
 
-            const formattedPatients = (patients || []).map(p => {
+            const formattedRegistered = (registeredPatients || []).map(rawP => {
+                const p = decryptRecord("patients", rawP);
                 const pIdKeys = [p.user_id, p.id, p.patient_code].filter(Boolean);
                 const patientApps = docApps.filter(a => pIdKeys.includes(a.patient_id));
                 const patientNotes = docNotes.filter(n => pIdKeys.includes(n.patient_id));
+                const patientVisits = docVisits.filter(v => pIdKeys.includes(v.patient_id));
 
-                const totalVisits = Math.max(patientApps.length, patientNotes.length, 1);
+                const totalVisits = Math.max(patientApps.length, patientNotes.length, patientVisits.length, 1);
                 const dates = [
                     ...patientApps.map(a => a.appointment_date),
-                    ...patientNotes.map(n => n.created_at ? n.created_at.split("T")[0] : null)
+                    ...patientNotes.map(n => n.created_at ? n.created_at.split("T")[0] : null),
+                    ...patientVisits.map(v => v.created_at ? v.created_at.split("T")[0] : null)
                 ].filter(Boolean).sort().reverse();
 
-                const lastVisit = dates[0] || new Date().toISOString().split("T")[0];
+                const lastVisit = dates[0] || (p.created_at ? p.created_at.split("T")[0] : new Date().toISOString().split("T")[0]);
 
                 let age = null;
                 if (p.date_of_birth) {
@@ -156,11 +201,105 @@ class PatientController {
                     email: realEmail,
                     totalVisits: totalVisits,
                     lastVisit: lastVisit,
-                    profilePhoto: p.profile_photo || null
+                    profilePhoto: p.profile_photo || null,
+                    isWalkIn: false
                 };
             });
 
-            return res.json({ success: true, patients: formattedPatients });
+            // 2. Fetch Walk-in Patients from 'hospital_patient_records' table (STRICTLY FOR LOGGED-IN DOCTOR)
+            if (db && (searchStr || allowedHospitalPatientIds.length > 0)) {
+                let hprQuery = db.from("hospital_patient_records").select("*");
+                const uuidHprs = allowedHospitalPatientIds.filter(id => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+                if (uuidHprs.length > 0) {
+                    const quotedHprIds = uuidHprs.map(id => `"${id}"`).join(",");
+                    hprQuery = hprQuery.or(`id.in.(${quotedHprIds})`);
+                }
+                if (searchStr) {
+                    hprQuery = hprQuery.or(`full_name.ilike.${searchStr},phone.ilike.${searchStr},hospital_patient_code.ilike.${searchStr}`);
+                }
+
+                hprQuery = hprQuery.order("created_at", { ascending: false }).limit(50);
+                const { data: hprData } = await hprQuery;
+                if (hprData) {
+                    walkinPatients = hprData.filter(hpr => {
+                        const hprKeys = [hpr.id, hpr.hospital_patient_code].filter(Boolean);
+                        const hasDocVisits = docApps.some(a => hprKeys.includes(a.hospital_patient_id)) ||
+                            docNotes.some(n => hprKeys.includes(n.hospital_patient_id)) ||
+                            docVisits.some(v => hprKeys.includes(v.hospital_patient_id));
+                        return hasDocVisits;
+                    });
+                }
+            }
+
+            const formattedWalkins = (walkinPatients || []).map(rawHpr => {
+                const hpr = decryptRecord("hospital_patient_records", rawHpr);
+                const hprKeys = [hpr.id, hpr.hospital_patient_code].filter(Boolean);
+                const patientApps = docApps.filter(a => hprKeys.includes(a.hospital_patient_id));
+                const patientNotes = docNotes.filter(n => hprKeys.includes(n.hospital_patient_id));
+                const patientVisits = docVisits.filter(v => hprKeys.includes(v.hospital_patient_id));
+
+                const totalVisits = Math.max(patientApps.length, patientNotes.length, patientVisits.length, 1);
+                const dates = [
+                    ...patientApps.map(a => a.appointment_date),
+                    ...patientNotes.map(n => n.created_at ? n.created_at.split("T")[0] : null),
+                    ...patientVisits.map(v => v.created_at ? v.created_at.split("T")[0] : null)
+                ].filter(Boolean).sort().reverse();
+
+                const lastVisit = dates[0] || (hpr.created_at ? hpr.created_at.split("T")[0] : new Date().toISOString().split("T")[0]);
+
+                let age = null;
+                if (hpr.date_of_birth) {
+                    const dob = new Date(hpr.date_of_birth);
+                    const diffMs = Date.now() - dob.getTime();
+                    age = Math.abs(new Date(diffMs).getUTCFullYear() - 1970);
+                }
+
+                return {
+                    id: hpr.id,
+                    userId: hpr.id,
+                    patientCode: hpr.hospital_patient_code || "",
+                    fullName: hpr.full_name || "Walk-in Patient",
+                    age: age || hpr.age || null,
+                    gender: hpr.gender || "Unknown",
+                    mobile: hpr.phone || "",
+                    email: hpr.email || "",
+                    totalVisits: totalVisits,
+                    lastVisit: lastVisit,
+                    profilePhoto: null,
+                    isWalkIn: true
+                };
+            });
+
+            // Merge and deduplicate by patient id
+            const combinedMap = new Map();
+            formattedRegistered.forEach(p => combinedMap.set(p.id, p));
+            formattedWalkins.forEach(w => {
+                if (!combinedMap.has(w.id)) {
+                    combinedMap.set(w.id, w);
+                }
+            });
+
+            // Also check inMemoryPatients map
+            if (searchStr) {
+                const qClean = q.trim().toLowerCase();
+                for (const [id, p] of inMemoryPatients.entries()) {
+                    if (p.fullName?.toLowerCase().includes(qClean) || p.mobile?.includes(qClean) || p.patientCode?.toLowerCase().includes(qClean)) {
+                        if (!combinedMap.has(p.id)) {
+                            combinedMap.set(p.id, {
+                                ...p,
+                                totalVisits: 1,
+                                lastVisit: new Date().toISOString().split("T")[0],
+                                isWalkIn: true
+                            });
+                        }
+                    }
+                }
+            }
+
+            const allPatients = Array.from(combinedMap.values());
+            allPatients.sort((a, b) => (b.lastVisit || "").localeCompare(a.lastVisit || ""));
+
+            return res.json({ success: true, patients: allPatients });
         } catch (error) {
             console.error("[PatientController] Search Error:", error);
             return res.status(500).json({ success: false, error: error.message });
@@ -177,7 +316,10 @@ class PatientController {
 
             const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
             let patient = null;
+            let isWalkInRecord = false;
+
             if (db) {
+                // 1. Try 'patients' table first
                 if (isUuid(patientId)) {
                     const { data } = await db
                         .from("patients")
@@ -193,6 +335,36 @@ class PatientController {
                         .maybeSingle();
                     patient = data;
                 }
+
+                // 2. If not found in 'patients', try 'hospital_patient_records'
+                if (!patient) {
+                    if (isUuid(patientId)) {
+                        const { data: hpr } = await db
+                            .from("hospital_patient_records")
+                            .select("*")
+                            .eq("id", patientId)
+                            .maybeSingle();
+                        patient = hpr;
+                        if (patient) isWalkInRecord = true;
+                    } else {
+                        const { data: hpr } = await db
+                            .from("hospital_patient_records")
+                            .select("*")
+                            .eq("hospital_patient_code", patientId)
+                            .maybeSingle();
+                        patient = hpr;
+                        if (patient) isWalkInRecord = true;
+                    }
+                }
+            }
+
+            // 3. In-memory fallback
+            if (!patient) {
+                const memP = inMemoryPatients.get(patientId);
+                if (memP) {
+                    patient = memP;
+                    isWalkInRecord = true;
+                }
             }
 
             if (!patient) {
@@ -200,8 +372,7 @@ class PatientController {
             }
 
             const pUserId = patient.user_id || patient.id;
-            const matchedUuidList = [...new Set([patientId, pUserId, patient.id].filter(Boolean))].filter(isUuid);
-            const validDoctorUuids = doctorIds.filter(isUuid);
+            const matchedUuidList = [...new Set([patientId, pUserId, patient.id, patient.hospital_patient_code, patient.patient_code].filter(Boolean))];
 
             let age = null;
             if (patient.date_of_birth) {
@@ -210,9 +381,9 @@ class PatientController {
                 age = Math.abs(new Date(diffMs).getUTCFullYear() - 1970);
             }
 
-            // Fetch user table details for real phone & email
+            // Fetch user table details if registered user
             let userData = null;
-            if (db && pUserId) {
+            if (db && !isWalkInRecord && pUserId && isUuid(pUserId)) {
                 const { data: uRes } = await db
                     .from("users")
                     .select("phone, email")
@@ -221,56 +392,66 @@ class PatientController {
                 userData = uRes;
             }
 
-            const realPhone = patient.phone || userData?.phone || "";
-            let realEmail = patient.email || userData?.email || "";
+            const decPatient = isWalkInRecord
+                ? decryptRecord("hospital_patient_records", patient)
+                : decryptRecord("patients", patient);
+
+            const realPhone = decPatient.phone || userData?.phone || "";
+            let realEmail = decPatient.email || userData?.email || "";
             if (realEmail && (realEmail.includes("@doctorsvedika.com") || realEmail.startsWith("dv-p-"))) {
                 realEmail = "";
             }
 
             const formattedPatient = {
-                id: patient.id,
+                id: decPatient.id,
                 userId: pUserId,
-                patientCode: patient.patient_code || "",
-                fullName: patient.full_name || `${patient.first_name || ""} ${patient.last_name || ""}`.trim(),
-                age: age,
-                dob: patient.date_of_birth,
-                gender: patient.gender,
-                bloodGroup: patient.blood_group,
+                patientCode: decPatient.patient_code || decPatient.hospital_patient_code || "",
+                fullName: decPatient.full_name || `${decPatient.first_name || ""} ${decPatient.last_name || ""}`.trim(),
+                age: age || decPatient.age || null,
+                dob: decPatient.date_of_birth,
+                gender: decPatient.gender,
+                bloodGroup: decPatient.blood_group,
                 mobile: realPhone,
                 email: realEmail,
-                address: patient.address,
-                profilePhoto: patient.profile_photo
+                address: decPatient.address,
+                profilePhoto: decPatient.profile_photo || null,
+                isWalkIn: isWalkInRecord
             };
 
             let appointments = [];
-            if (db && matchedUuidList.length > 0) {
-                let appQuery = db
-                    .from("appointments")
-                    .select("*")
-                    .in("patient_id", matchedUuidList);
-                if (validDoctorUuids.length > 0) {
-                    appQuery = appQuery.in("doctor_id", validDoctorUuids);
-                }
-                const { data: appData } = await appQuery.order("appointment_date", { ascending: false });
-                if (appData) appointments = appData;
-            }
-
             let notes = [];
+            let prescriptions = [];
+
             if (db && matchedUuidList.length > 0) {
-                let noteQuery = db
-                    .from("consultation_notes")
-                    .select("*")
-                    .in("patient_id", matchedUuidList);
-                if (validDoctorUuids.length > 0) {
-                    noteQuery = noteQuery.in("doctor_id", validDoctorUuids);
+                const uuidFilter = matchedUuidList.filter(isUuid);
+
+                if (uuidFilter.length > 0) {
+                    const quoted = uuidFilter.map(i => `"${i}"`).join(",");
+                    const appOrs = `patient_id.in.(${quoted}),hospital_patient_id.in.(${quoted})`;
+                    const { data: appData } = await db.from("appointments").select("*").or(appOrs).order("appointment_date", { ascending: false });
+                    if (appData) appointments = appData;
+
+                    const appIds = (appointments || []).map(a => a.id).filter(isUuid);
+                    const quotedApps = appIds.length > 0 ? appIds.map(i => `"${i}"`).join(",") : null;
+
+                    const noteOrs = quotedApps
+                        ? `patient_id.in.(${quoted}),appointment_id.in.(${quotedApps})`
+                        : `patient_id.in.(${quoted})`;
+                    const { data: noteData } = await db.from("consultation_notes").select("*").or(noteOrs);
+                    if (noteData) notes = noteData.map(n => decryptRecord("consultation_notes", n));
+
+                    const rxOrs = quotedApps
+                        ? `patient_id.in.(${quoted}),appointment_id.in.(${quotedApps})`
+                        : `patient_id.in.(${quoted})`;
+                    const { data: rxData } = await db.from("prescriptions").select("*").or(rxOrs);
+                    if (rxData) prescriptions = rxData.map(r => decryptRecord("prescriptions", r));
                 }
-                const { data: noteData } = await noteQuery;
-                if (noteData) notes = noteData;
             }
 
             const formattedVisits = (appointments || []).map(app => {
-                const note = (notes || []).find(n => n.appointment_id === app.id) || {};
-                
+                const note = (notes || []).find(n => n.appointment_id === app.id || n.hospital_patient_id === app.hospital_patient_id) || {};
+                const rx = (prescriptions || []).find(r => r.appointment_id === app.id || r.hospital_patient_id === app.hospital_patient_id) || {};
+
                 return {
                     appointmentId: app.id,
                     date: app.appointment_date,
@@ -283,6 +464,7 @@ class PatientController {
                     chiefComplaint: note.symptoms || app.reason || "",
                     diagnosis: note.diagnosis || "",
                     notes: note.notes || "",
+                    prescription: rx.medicines || rx.prescription_data || null,
                     doctorId: app.doctor_id
                 };
             });
@@ -646,9 +828,10 @@ class PatientController {
             updates.updated_at = new Date().toISOString();
 
             if (db) {
+                const encUpdates = encryptPayload("patients", updates);
                 const { data: updatedPat } = await db
                     .from("patients")
-                    .update(updates)
+                    .update(encUpdates)
                     .or(`user_id.eq."${pUserId}",id.eq."${patient.id}"`)
                     .select()
                     .single()
@@ -660,7 +843,7 @@ class PatientController {
             return res.json({
                 success: true,
                 message: "Patient details updated successfully",
-                patient: patient
+                patient: decryptRecord("patients", patient)
             });
         } catch (error) {
             console.error("[PatientController] Update Patient error:", error);
@@ -679,8 +862,8 @@ class PatientController {
             const doctorId = doctorIds[0] || req.doctor.id;
 
             const now = new Date();
-            const dateStr = now.toISOString().split("T")[0];
-            const timeStr = now.toLocaleTimeString("en-IN", { hour12: false });
+            const dateStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(now);
+            const timeStr = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(now);
             const visitKey = `${doctorId}_${patientId}_${dateStr}`;
 
             // Prevent duplicate visits on the same day from repeated clicks
@@ -693,12 +876,14 @@ class PatientController {
             }
 
             if (db) {
+                const isUuidCheck = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+                const patOr = isUuidCheck(patientId) ? `patient_id.eq.${patientId},hospital_patient_id.eq.${patientId}` : `hospital_patient_id.eq.${patientId}`;
                 const { data: existingApp } = await db
                     .from("appointments")
                     .select("*")
                     .eq("doctor_id", doctorId)
-                    .eq("patient_id", patientId)
                     .eq("appointment_date", dateStr)
+                    .or(patOr)
                     .maybeSingle();
 
                 if (existingApp) {
@@ -711,9 +896,25 @@ class PatientController {
                 }
             }
 
+            let appPatientId = null;
+            let appHprId = null;
+
+            const isUuidStr = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+            if (db && isUuidStr(patientId)) {
+                const { data: pCheck } = await db.from("patients").select("id").or(`id.eq.${patientId},user_id.eq.${patientId}`).maybeSingle();
+                if (pCheck) {
+                    appPatientId = pCheck.id;
+                } else {
+                    appHprId = patientId;
+                }
+            } else if (patientId) {
+                appHprId = patientId;
+            }
+
             const newAppointment = {
                 doctor_id: doctorId,
-                patient_id: patientId,
+                patient_id: appPatientId,
+                hospital_patient_id: appHprId,
                 appointment_date: dateStr,
                 appointment_time: timeStr,
                 status: "confirmed",

@@ -36,11 +36,17 @@ const PROCESSING_STEPS = [
 ];
 
 const Consultation = () => {
-    const { patientId } = useParams();
+    const params = useParams();
+    const routeId = params.visitId || params.encounterId || params.patientId;
     const navigate = useNavigate();
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
+
     const appointmentId = location.state?.appointmentId || searchParams.get("appointmentId") || null;
+    const visitId = location.state?.visitId || searchParams.get("visitId") || (routeId && routeId.length > 20 ? routeId : null);
+    const hospitalPatientId = location.state?.hospitalPatientId || searchParams.get("hospitalPatientId") || location.state?.patient?.hospital_patient_id || null;
+    const patientId = location.state?.patientId || searchParams.get("patientId") || location.state?.patient?.patient_id || (params.patientId || null);
+
     const doctorId = location.state?.doctorId || "default-doctor";
     const appointmentPatient = location.state?.patient;
     const [fetchedPatientInfo, setFetchedPatientInfo] = useState(null);
@@ -57,6 +63,10 @@ const Consultation = () => {
         weight: appointmentPatient?.weight || "",
         bloodPressure: appointmentPatient?.bloodPressure || appointmentPatient?.blood_pressure || "",
         allergies: appointmentPatient?.allergies || "",
+        temperature: appointmentPatient?.temperature || appointmentPatient?.temp || "",
+        pulse: appointmentPatient?.pulse || appointmentPatient?.heart_rate || appointmentPatient?.heartRate || "",
+        spo2: appointmentPatient?.spo2 || appointmentPatient?.oxygen_saturation || "",
+        height: appointmentPatient?.height || "",
     });
 
     const resolveCleanPatientCode = (code, rawId) => {
@@ -69,92 +79,169 @@ const Consultation = () => {
         if (rawId && typeof rawId === "string" && rawId.length > 20) {
             return `DV-P-${rawId.slice(0, 6).toUpperCase()}`;
         }
-        return code || "DV-P-000086";
+        return code || "DV-P-WALKIN";
     };
 
     useEffect(() => {
-        if (!patientId) return;
         const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:8005";
         const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token");
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-        // 1. Fetch symptoms directly from public.appointment_symptoms table
-        fetch(`${NODE_API_URL}/api/appointments/symptoms/details?patientId=${patientId}&appointmentId=${appointmentId || ""}`, { headers })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((symRes) => {
-                if (symRes?.success && symRes?.symptoms) {
-                    const s = symRes.symptoms;
-                    setProblemDetails((prev) => ({
-                        symptoms: s.symptoms || prev.symptoms || "",
-                        duration: s.duration || prev.duration || "",
-                        severity: s.severity || prev.severity || "",
-                        currentMedications: s.current_medications || s.currentMedications || prev.currentMedications || "",
-                        additionalNotes: s.additional_notes || s.additionalNotes || prev.additionalNotes || "",
-                    }));
-                }
-            })
-            .catch(() => {});
-
-        // 2. Fetch Patient & Appointment details
-        fetch(`${NODE_API_URL}/api/patients`, { headers })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data) => {
-                if (!data) return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then((r) => (r.ok ? r.json() : null));
-                const list = Array.isArray(data) ? data : data?.data || data?.patients || [];
-                const matched = list.find((p) => p.user_id === patientId || p.id === patientId || p.patient_code === patientId);
-                if (matched) {
-                    let calcAge = "";
-                    if (matched.date_of_birth) {
-                        const dob = new Date(matched.date_of_birth);
-                        if (!isNaN(dob.getTime())) {
-                            calcAge = String(new Date().getFullYear() - dob.getFullYear());
-                        }
-                    }
-                    setFetchedPatientInfo({
-                        code: matched.patient_code || matched.patient_number || "",
-                        name: matched.full_name || matched.first_name || matched.name || "",
-                        age: matched.age || calcAge,
-                        gender: matched.gender ? matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1) : "",
-                    });
-                    return null;
-                }
-                return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then((r) => (r.ok ? r.json() : null));
-            })
-            .then((appData) => {
-                if (!appData) return;
-                const list = Array.isArray(appData) ? appData : appData?.data || [];
-                const matched = list.find((a) => a.patient_id === patientId || a.patientId === patientId || a.id === patientId || a.user_id === patientId || a.id === appointmentId);
-                if (matched) {
-                    setFetchedPatientInfo((prev) => ({
-                        code: matched.patient_code || matched.patient_number || matched.patientCode || prev?.code || "",
-                        name: matched.patient_name || matched.patientName || matched.full_name || matched.name || prev?.name || "",
-                        age: matched.age || matched.patient_age || prev?.age || "",
-                        gender: matched.gender || matched.patient_gender || prev?.gender || "",
-                    }));
-
-                    setProblemDetails((prev) => ({
-                        symptoms: prev.symptoms || matched.symptoms || matched.reason || matched.chief_complaint || "",
-                        duration: prev.duration || matched.duration || "",
-                        severity: prev.severity || matched.severity || "",
-                        currentMedications: prev.currentMedications || matched.currentMedications || matched.current_medications || "",
-                        additionalNotes: prev.additionalNotes || matched.additionalNotes || matched.additional_notes || "",
-                    }));
-
-                    if (matched.blood_group || matched.weight || matched.blood_pressure || matched.allergies) {
+        if (appointmentId) {
+            fetch(`${NODE_API_URL}/api/appointments/${appointmentId}`, { headers })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data) => {
+                    if (data?.success && data?.appointment) {
+                        const app = data.appointment;
+                        setFetchedPatientInfo({
+                            code: app.patientCode || "",
+                            name: app.patientName || app.patient_name || "",
+                            age: app.age || "",
+                            gender: app.gender || "",
+                        });
+                        setProblemDetails((prev) => ({
+                            symptoms: prev.symptoms || app.symptoms || app.reason || "",
+                            duration: prev.duration || app.duration || "",
+                            severity: prev.severity || app.severity || "",
+                            currentMedications: prev.currentMedications || app.currentMedications || app.current_medications || "",
+                            additionalNotes: prev.additionalNotes || app.additionalNotes || app.additional_notes || "",
+                        }));
                         setVitals((prev) => ({
-                            bloodGroup: matched.blood_group || matched.bloodGroup || prev.bloodGroup,
-                            weight: matched.weight || prev.weight,
-                            bloodPressure: matched.blood_pressure || matched.bloodPressure || prev.bloodPressure,
-                            allergies: matched.allergies || prev.allergies,
+                            bloodGroup: prev.bloodGroup || app.bloodGroup || app.blood_group || "",
+                            weight: prev.weight || app.weight || "",
+                            bloodPressure: prev.bloodPressure || app.bloodPressure || app.blood_pressure || "",
+                            allergies: prev.allergies || app.allergies || "",
+                            temperature: prev.temperature || app.temperature || app.temp || "",
+                            pulse: prev.pulse || app.pulse || app.heart_rate || app.heartRate || "",
+                            spo2: prev.spo2 || app.spo2 || app.oxygen_saturation || "",
+                            height: prev.height || app.height || "",
                         }));
                     }
-                }
+                })
+                .catch(() => {});
+        } else if (routeId) {
+            fetch(`${NODE_API_URL}/api/appointments`, { headers })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((appData) => {
+                    if (!appData) return;
+                    const list = Array.isArray(appData) ? appData : appData?.data || [];
+                    const matched = list.find((a) => a.id === routeId || a.visit_id === routeId || a.patient_id === routeId || a.hospital_patient_id === routeId);
+                    if (matched) {
+                        setFetchedPatientInfo({
+                            code: matched.patient_code || matched.patientCode || "",
+                            name: matched.patient_name || matched.patientName || matched.name || "",
+                            age: matched.age || "",
+                            gender: matched.gender || "",
+                        });
+                        setProblemDetails((prev) => ({
+                            symptoms: prev.symptoms || matched.symptoms || matched.reason || "",
+                            duration: prev.duration || matched.duration || "",
+                            severity: prev.severity || matched.severity || "",
+                            currentMedications: prev.currentMedications || matched.currentMedications || "",
+                            additionalNotes: prev.additionalNotes || matched.additionalNotes || "",
+                        }));
+                    }
+                })
+                .catch(() => {});
+        }
+
+        const targetEncounterId = visitId || routeId || appointmentId;
+        if (targetEncounterId) {
+            const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token") || localStorage.getItem("sb-access-token");
+            const nodeApiBase = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+
+            const fetchVisitInfo = () => {
+                fetch(`${nodeApiBase}/api/v1/queue/visit/${targetEncounterId}`, {
+                    headers: {
+                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    }
+                })
+                    .then(res => (res.ok ? res.json() : null))
+                    .then(data => {
+                        if (data?.success && data?.visit) {
+                            const v = data.visit;
+                            const hpr = v.hospital_patient_records || {};
+                            const iv = v.intake_vitals || {};
+
+                            let ageCalculated = "";
+                            if (hpr.date_of_birth) {
+                                const dob = new Date(hpr.date_of_birth);
+                                if (!isNaN(dob.getTime())) {
+                                    const diffMs = Date.now() - dob.getTime();
+                                    const ageYears = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 365.25));
+                                    ageCalculated = `${ageYears} yrs`;
+                                }
+                            }
+
+                            setFetchedPatientInfo(prev => ({
+                                ...prev,
+                                code: hpr.hospital_patient_code || prev?.code || "",
+                                name: hpr.full_name || prev?.name || "",
+                                gender: hpr.gender || prev?.gender || "",
+                                age: ageCalculated || prev?.age || "",
+                                dateOfBirth: hpr.date_of_birth || ""
+                            }));
+
+                            setVitals(prev => ({
+                                ...prev,
+                                bloodGroup: iv.bloodGroup || iv.blood_group || hpr.blood_group || prev.bloodGroup || "",
+                                weight: iv.weight || prev.weight || "",
+                                bloodPressure: iv.bp || iv.bloodPressure || iv.blood_pressure || prev.bloodPressure || "",
+                                allergies: iv.allergies || prev.allergies || "",
+                                temperature: iv.temperature || iv.temp || prev.temperature || "",
+                                pulse: iv.pulse || iv.heart_rate || prev.pulse || "",
+                                spo2: iv.spo2 || prev.spo2 || "",
+                                height: iv.height || prev.height || ""
+                            }));
+
+                            if (v.chief_complaints) {
+                                setProblemDetails(prev => ({
+                                    ...prev,
+                                    symptoms: prev.symptoms || v.chief_complaints
+                                }));
+                            }
+
+                            const existingStart = v.consultation_started_at || v.started_at;
+                            if (existingStart) {
+                                startTimeRef.current = existingStart;
+                                const elapsed = Math.floor((Date.now() - new Date(existingStart).getTime()) / 1000);
+                                setRecordingSeconds(Math.max(0, elapsed));
+                            }
+                        }
+                    })
+                    .catch(err => console.warn("[Consultation] Fetch visit info notice:", err.message));
+            };
+
+            fetchVisitInfo();
+            const vitalsInterval = setInterval(fetchVisitInfo, 3000);
+
+            fetch(`${NODE_API_URL}/api/v1/queue/transition`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({
+                    visitId: targetEncounterId,
+                    targetStage: "in_consultation"
+                })
             })
-            .catch(() => {});
-    }, [patientId, appointmentId]);
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log("[Consultation] Visit stage transitioned to 'in_consultation'.");
+                        localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+                        window.dispatchEvent(new Event("storage"));
+                    }
+                })
+                .catch(err => console.warn("[Consultation] Stage transition notice:", err.message));
+
+            return () => clearInterval(vitalsInterval);
+        }
+    }, [appointmentId, routeId, visitId]);
 
     const patient = {
-        id: resolveCleanPatientCode(fetchedPatientInfo?.code || appointmentPatient?.patient_code || appointmentPatient?.patientCode, patientId),
+        id: resolveCleanPatientCode(fetchedPatientInfo?.code || appointmentPatient?.patient_code || appointmentPatient?.patientCode, patientId || hospitalPatientId || visitId || routeId),
         name: fetchedPatientInfo?.name || (appointmentPatient?.patientName && appointmentPatient?.patientName !== "Unknown Patient" ? appointmentPatient.patientName : null) || appointmentPatient?.name || "Patient",
         age: fetchedPatientInfo?.age || (appointmentPatient?.age && appointmentPatient?.age !== "Not Available" ? appointmentPatient.age : null) || "N/A",
         gender: fetchedPatientInfo?.gender || (appointmentPatient?.gender && appointmentPatient?.gender !== "Not Available" ? appointmentPatient.gender : null) || "N/A",
@@ -178,6 +265,9 @@ const Consultation = () => {
         if (problemDetails.currentMedications) parts.push(`Current Medications: ${problemDetails.currentMedications}`);
         if (problemDetails.additionalNotes) parts.push(`Additional Notes: ${problemDetails.additionalNotes}`);
         if (vitals.bloodPressure) parts.push(`BP: ${vitals.bloodPressure}`);
+        if (vitals.pulse) parts.push(`Pulse: ${vitals.pulse}`);
+        if (vitals.temperature) parts.push(`Temp: ${vitals.temperature}`);
+        if (vitals.spo2) parts.push(`SpO2: ${vitals.spo2}`);
         if (vitals.weight) parts.push(`Weight: ${vitals.weight}`);
         if (vitals.allergies && vitals.allergies !== "None") parts.push(`Allergies: ${vitals.allergies}`);
         if (vitals.bloodGroup) parts.push(`Blood Group: ${vitals.bloodGroup}`);
@@ -228,6 +318,7 @@ const Consultation = () => {
     const timerIntervalRef = useRef(null);
     const startTimeRef = useRef(null);
     const summaryIntervalRef = useRef(null);
+    const isPausedRef = useRef(false);
 
     const formatDuration = (totalSecs = 0) => {
         const total = Math.max(0, Math.floor(Number(totalSecs) || 0));
@@ -259,11 +350,12 @@ const Consultation = () => {
     // Instant Summary Pre-computation Optimization
     const lastPreparedCountRef = useRef(0);
     const lastPrepareTimeRef = useRef(0);
+    const latestPreparedSummaryRef = useRef(null);
 
     const triggerBackgroundSummaryPrepare = (currentTranscript, force = false) => {
-        if (!currentTranscript || currentTranscript.length < 2) return;
+        if (!currentTranscript || currentTranscript.length < 1) return;
         const now = Date.now();
-        if (force || (currentTranscript.length >= lastPreparedCountRef.current + 3 && (now - lastPrepareTimeRef.current) > 8000)) {
+        if (force || (currentTranscript.length >= lastPreparedCountRef.current + 2 && (now - lastPrepareTimeRef.current) > 4000)) {
             lastPreparedCountRef.current = currentTranscript.length;
             lastPrepareTimeRef.current = now;
             console.log(`[Consultation] Pre-generating background AI summary for ${currentTranscript.length} transcript lines...`);
@@ -278,7 +370,15 @@ const Consultation = () => {
                     liveTranscript: JSON.stringify(currentTranscript),
                     patientReason: getFullPatientIntakeContext(),
                 }),
-            }).catch((err) => console.warn("[Consultation] Background summary prepare notice:", err.message));
+            })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((data) => {
+                    if (data?.summary && Object.keys(data.summary).length > 0) {
+                        latestPreparedSummaryRef.current = data.summary;
+                        console.log("[Consultation] Stored background pre-prepared AI summary.");
+                    }
+                })
+                .catch((err) => console.warn("[Consultation] Background summary prepare notice:", err.message));
         }
     };
 
@@ -450,6 +550,7 @@ const Consultation = () => {
 
         console.log("[Consultation] Pausing consultation...");
         setIsPaused(true);
+        isPausedRef.current = true;
         setIsListening(false);
 
         // Pause timer
@@ -490,6 +591,7 @@ const Consultation = () => {
 
         console.log("[Consultation] Resuming consultation...");
         setIsPaused(false);
+        isPausedRef.current = false;
         setIsListening(true);
 
         // Resume timer
@@ -505,17 +607,20 @@ const Consultation = () => {
                 console.log("[Consultation] MediaRecorder resumed.");
             } else if (mediaRecorderRef.current && mediaRecorderRef.current.state === "inactive") {
                 mediaRecorderRef.current.start(1500);
+                console.log("[Consultation] MediaRecorder restarted from inactive.");
             }
         } catch (e) {
             console.warn("Resume MediaRecorder warning:", e);
         }
 
-        // Resume Speech Recognition removed (relying exclusively on Sarvam STT)
-        // try {
-        //     startBrowserSpeechRecognition();
-        // } catch (e) {
-        //     console.warn("Resume SpeechRecognition warning:", e);
-        // }
+        // If WebSocket is disconnected/unavailable, fallback to SpeechRecognition
+        if (!websocketRef.current || websocketRef.current.readyState !== WebSocket.OPEN) {
+            try {
+                startBrowserSpeechRecognition();
+            } catch (e) {
+                console.warn("Resume SpeechRecognition warning:", e);
+            }
+        }
 
         // Send resume to Python WebSocket
         try {
@@ -533,11 +638,11 @@ const Consultation = () => {
 
     const getLanguageParameter = () => {
         if (language === "te-IN" || language === "telugu" || language === "telugu+english") {
-            return "telugu+english";
+            return "auto";
         }
 
         if (language === "hi-IN" || language === "hindi" || language === "hindi+english") {
-            return "hindi+english";
+            return "auto";
         }
 
         if (language === "en-IN" || language === "english") {
@@ -990,6 +1095,10 @@ const Consultation = () => {
                     return;
                 }
 
+                if (isPausedRef.current) {
+                    return;
+                }
+
                 /*
                  * Always save the chunk.
                  *
@@ -1043,13 +1152,46 @@ const Consultation = () => {
 
                 setIsRecording(true);
                 setIsListening(true);
-                setRecordingSeconds(0);
                 if (timerIntervalRef.current) {
                     clearInterval(timerIntervalRef.current);
                 }
-                startTimeRef.current = new Date().toISOString();
+
+                // Call backend start-recording endpoint for authoritative backend timestamp
+                const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token") || localStorage.getItem("sb-access-token");
+                const targetEncounterId = visitId || routeId || appointmentId;
+                const nodeApiBase = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+
+                if (targetEncounterId) {
+                    fetch(`${nodeApiBase}/api/v1/queue/start-recording`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ visitId: targetEncounterId, appointmentId: targetEncounterId })
+                    })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.success && data.consultation_started_at) {
+                                const startIso = data.consultation_started_at;
+                                startTimeRef.current = startIso;
+                                const initialSecs = Math.max(0, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000));
+                                setRecordingSeconds(initialSecs);
+
+                                localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+                                window.dispatchEvent(new Event("storage"));
+                            }
+                        })
+                        .catch(err => console.warn("[Consultation] Start recording timestamp notice:", err.message));
+                }
+
                 timerIntervalRef.current = setInterval(() => {
-                    setRecordingSeconds((prev) => prev + 1);
+                    if (startTimeRef.current) {
+                        const elapsed = Math.max(0, Math.floor((Date.now() - new Date(startTimeRef.current).getTime()) / 1000));
+                        setRecordingSeconds(elapsed);
+                    } else {
+                        setRecordingSeconds((prev) => prev + 1);
+                    }
                 }, 1000);
             };
 
@@ -1254,6 +1396,103 @@ const Consultation = () => {
         return extractedMeds;
     };
 
+    const cleanSymptomString = (str) => {
+        if (!str || typeof str !== "string") return "";
+        let raw = str.trim();
+        if (raw.includes("Reported Symptoms:")) {
+            const match = raw.match(/Reported Symptoms:\s*([^|]+)/i);
+            if (match && match[1]) return match[1].trim();
+        }
+        if (raw.includes("|")) {
+            const parts = raw.split("|").map((p) => p.trim());
+            const symPart = parts.find((p) => p.toLowerCase().includes("symptom") || (!p.includes(":") && p.length < 40));
+            if (symPart) return symPart.replace(/.*:\s*/, "").trim();
+        }
+        if (/Patient Name:|Patient Gender:|Patient Age:|Blood Group:/i.test(raw) && raw.length > 25) {
+            return "General Consultation";
+        }
+        return raw;
+    };
+
+    const extractClinicalSummaryFromTranscript = (transcriptList = [], intakeDetails = {}, intakePatient = {}) => {
+        const textLines = (Array.isArray(transcriptList) ? transcriptList : [])
+            .map((t) => String(t?.text || t?.transcript || ""))
+            .filter(Boolean);
+        const fullText = textLines.join("\n");
+        const lowerText = fullText.toLowerCase();
+
+        // 1. Medicines (Spoken in transcript)
+        const localMeds = extractMedicinesFromTranscript(transcriptList);
+
+        // 2. Symptoms spoken in transcript
+        const symptomsSpoken = [];
+        if (/దగ్గు|cough/i.test(lowerText)) symptomsSpoken.push("Cough");
+        if (/జలుబు|cold|flu|nasal/i.test(lowerText)) symptomsSpoken.push("Cold / Nasal Congestion");
+        if (/జ్వరం|fever|feverish|బుఖార్/i.test(lowerText)) symptomsSpoken.push("Fever");
+        if (/తలనెప్పి|headache|सिर दर्द/i.test(lowerText)) symptomsSpoken.push("Headache");
+        if (/కడుపు|stomach|gastric|acidity/i.test(lowerText)) symptomsSpoken.push("Stomach Pain / Gastritis");
+        if (/వాంతులు|vomiting|nausea|వికారంగా/i.test(lowerText)) symptomsSpoken.push("Nausea / Vomiting");
+        if (/మోషన్స్|diarrhea|విరేచనాలు/i.test(lowerText)) symptomsSpoken.push("Loose Motions / Diarrhea");
+        if (/నీరసంగా|weakness|fatigue|వీక్నెస్/i.test(lowerText)) symptomsSpoken.push("Weakness / Fatigue");
+        if (/నడుము|back pain|మోకాలు|joint/i.test(lowerText)) symptomsSpoken.push("Joint / Back Pain");
+        if (/దద్దుర్లు|rash|itching/i.test(lowerText)) symptomsSpoken.push("Skin Rash / Itching");
+
+        const intakeSym = cleanSymptomString(intakeDetails.symptoms || intakePatient.reason || "");
+        const chiefComplaint = symptomsSpoken.length > 0
+            ? symptomsSpoken.join(", ")
+            : (intakeSym || "General Medical Evaluation");
+
+        // 3. Advice spoken in transcript (Strictly no fake unmentioned advice)
+        const adviceSpoken = [];
+        if (/rest|విశ్రాంతి|రెస్ట్/i.test(lowerText)) adviceSpoken.push("Take adequate rest");
+        if (/water|fluids|నీళ్లు|హాట్ వాటర్|వార్మ్/i.test(lowerText)) adviceSpoken.push("Drink warm fluids / water");
+        if (/cold food|ice|కోల్డ్|బయట/i.test(lowerText)) adviceSpoken.push("Avoid cold food, ice, and chilled items");
+        if (/food|ఆహారం|తిండి/i.test(lowerText)) adviceSpoken.push("Take light meals after medication");
+
+        // 4. Follow-up spoken in transcript
+        let followUpSpoken = "";
+        if (/review|5 days|3 days|వారంలో|week|ఫాలో అప్|తర్వాత రండి/i.test(lowerText)) {
+            if (/week|వారంలో|7 days/i.test(lowerText)) followUpSpoken = "Review in 1 week (7 days)";
+            else if (/3 days|3 రోజులు/i.test(lowerText)) followUpSpoken = "Review in 3 days";
+            else followUpSpoken = "Review in 3–5 days if symptoms persist";
+        }
+
+        // 5. Diagnosis spoken in transcript
+        const diagnosisSpoken = symptomsSpoken.length > 0 ? [symptomsSpoken.join(" / ")] : [chiefComplaint];
+
+        return {
+            consultation_overview: `Patient presented for clinical evaluation regarding ${chiefComplaint}. Comprehensive consultation conducted and treatment plan formulated.`,
+            chief_complaint: chiefComplaint,
+            symptoms: symptomsSpoken.length > 0 ? symptomsSpoken : [chiefComplaint],
+            history_of_present_illness: `Patient reported complaints of ${chiefComplaint}. ${intakeDetails.duration ? "Duration: " + intakeDetails.duration + "." : ""} ${intakeDetails.severity ? "Severity: " + intakeDetails.severity + "." : ""}`,
+            past_medical_history: [],
+            allergies: intakePatient.allergies ? [intakePatient.allergies] : [],
+            current_medications: intakeDetails.currentMedications ? [intakeDetails.currentMedications] : [],
+            examination_findings: [],
+            vital_signs: {
+                blood_pressure: vitals.bloodPressure || intakePatient.bloodPressure || "",
+                heart_rate: vitals.pulse || "",
+                temperature: vitals.temperature || "",
+                respiratory_rate: vitals.respiratoryRate || "",
+                oxygen_saturation: vitals.spo2 || "",
+                weight: vitals.weight || intakePatient.weight || "",
+                height: vitals.height || "",
+                blood_group: vitals.bloodGroup || intakePatient.bloodGroup || "",
+                allergies: vitals.allergies || intakePatient.allergies || ""
+            },
+            investigations: [],
+            assessment: `Clinical evaluation completed for ${chiefComplaint}.`,
+            diagnosis: diagnosisSpoken,
+            differential_diagnosis: [],
+            treatment_plan: localMeds.length > 0 ? `Prescribed ${localMeds.map(m => m.name).join(", ")}.` : "Advised medical management.",
+            medications_discussed: localMeds,
+            advice: adviceSpoken,
+            follow_up: followUpSpoken,
+            doctor_notes: "",
+            red_flags: []
+        };
+    };
+
     const processRecording = async () => {
         if (!isReviewing || isProcessing) {
             return;
@@ -1266,60 +1505,39 @@ const Consultation = () => {
             ? transcriptRef.current
             : (Array.isArray(transcript) ? transcript : []);
 
-        const localMeds = extractMedicinesFromTranscript(latestTranscript);
+        const saveClickedAt = Date.now();
+        console.log(`[Save & Process Clicked] saveClickedAt=${saveClickedAt}. Navigating immediately (0 ms delay)...`);
 
-        let finalSummary = {
-            consultation_overview: `Patient presented with ${problemDetails.symptoms || "clinical symptoms"}. Evaluation conducted and treatment advised.`,
-            chief_complaint: problemDetails.symptoms || patient.reason || "General Consultation",
-            symptoms: [problemDetails.symptoms || patient.reason || "Fever / Clinical Symptoms Discussed"],
-            history_of_present_illness: `Patient reported symptoms: ${problemDetails.symptoms || "clinical symptoms"} (Duration: ${problemDetails.duration || "N/A"}, Severity: ${problemDetails.severity || "N/A"}). Current medications: ${problemDetails.currentMedications || "None"}. Notes: ${problemDetails.additionalNotes || "None"}`,
-            assessment: "Clinical evaluation completed during consultation.",
-            diagnosis: ["Acute Symptomatic Illness"],
-            treatment_plan: "Prescribed symptomatic pharmacological treatment and lifestyle advice.",
-            medications_discussed: localMeds.length > 0 ? localMeds : [],
-            advice: ["Rest well", "Drink plenty of warm fluids", "Review if symptoms persist"],
-            follow_up: "Review in 3-5 days if symptoms persist."
-        };
-        let detectedLanguage = "Auto-detected";
-
-        try {
-            const formData = new FormData();
-            formData.append("doctorId", doctorId || "default-doctor");
-            formData.append("patientId", patient.id);
-            formData.append("appointmentId", String(appointmentId));
-            formData.append("liveTranscript", JSON.stringify(latestTranscript));
-            formData.append("consultationId", consultationId);
-            formData.append("patientReason", getFullPatientIntakeContext());
-
-            const res = await fetch(`${NODE_API_URL}/api/consultation/complete`, {
-                method: "POST",
-                body: formData,
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                if (data?.consultation?.summary && Object.keys(data.consultation.summary).length > 0) {
-                    finalSummary = data.consultation.summary;
-                }
-                if (data?.consultation?.detectedLanguage) {
-                    detectedLanguage = data.consultation.detectedLanguage;
-                }
-            }
-        } catch (err) {
-            console.warn("[Consultation] Completion API notice:", err.message);
-        }
+        // 1. Check if background AI Gemini summary is ready
+        const preparedSummary = latestPreparedSummaryRef.current;
+        const instantSummary = (preparedSummary && Object.keys(preparedSummary).length > 0)
+            ? preparedSummary
+            : extractClinicalSummaryFromTranscript(latestTranscript, problemDetails, patient);
 
         const summaryPayload = {
             patient,
+            vitals,
+            intake_vitals: vitals,
+            vital_signs: {
+                blood_pressure: vitals.bloodPressure || "",
+                heart_rate: vitals.pulse || "",
+                temperature: vitals.temperature || "",
+                respiratory_rate: vitals.respiratoryRate || "",
+                oxygen_saturation: vitals.spo2 || "",
+                weight: vitals.weight || "",
+                height: vitals.height || "",
+                blood_group: vitals.bloodGroup || "",
+                allergies: vitals.allergies || ""
+            },
             doctorId: doctorId || "default-doctor",
             patientId: patient.id,
             appointmentId: String(appointmentId),
             consultationId,
-            detectedLanguage,
+            detectedLanguage: "Auto-detected",
             transcript: latestTranscript,
             finalGeminiTranscript: latestTranscript,
             liveTranscript: latestTranscript,
-            summary: finalSummary,
+            summary: instantSummary,
             duration: formatDuration(recordingSeconds),
             durationSeconds: recordingSeconds,
             startedAt: startTimeRef.current || new Date().toISOString(),
@@ -1329,12 +1547,30 @@ const Consultation = () => {
 
         sessionStorage.setItem(`consultation-result-${patient.id}`, JSON.stringify(summaryPayload));
 
+        // 2. IMMEDIATE ZERO-DELAY NAVIGATION TO SUMMARY PAGE
         setIsProcessing(false);
-
         navigate(`/consultation/${patient.id}/summary`, {
             state: summaryPayload,
             replace: false,
         });
+
+        // 3. Async background completion save to database/Gemini (Non-blocking)
+        try {
+            const formData = new FormData();
+            formData.append("doctorId", doctorId || "default-doctor");
+            formData.append("patientId", patient.id);
+            formData.append("appointmentId", String(appointmentId));
+            formData.append("liveTranscript", JSON.stringify(latestTranscript));
+            formData.append("consultationId", consultationId);
+            formData.append("patientReason", getFullPatientIntakeContext());
+
+            fetch(`${NODE_API_URL}/api/consultation/complete`, {
+                method: "POST",
+                body: formData,
+            }).catch((err) => console.warn("[Consultation] Background completion save notice:", err.message));
+        } catch (err) {
+            console.warn("[Consultation] Async save notice:", err.message);
+        }
     };
 
     // ============================================================
@@ -1631,6 +1867,54 @@ const Consultation = () => {
                                             onChange={(e) => setVitals((prev) => ({ ...prev, bloodPressure: e.target.value }))}
                                             style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
                                             placeholder="120/80 mmHg"
+                                        />
+                                    </div>
+
+                                    {/* Pulse / Heart Rate */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Pulse / HR</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.pulse}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, pulse: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="72 bpm"
+                                        />
+                                    </div>
+
+                                    {/* Temperature */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Temp</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.temperature}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, temperature: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="98.6 °F"
+                                        />
+                                    </div>
+
+                                    {/* SpO2 */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>SpO2</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.spo2}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, spo2: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="98%"
+                                        />
+                                    </div>
+
+                                    {/* Height */}
+                                    <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", padding: "6px 10px", borderRadius: "8px", boxSizing: "border-box" }}>
+                                        <div style={{ fontSize: "0.64rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Height</div>
+                                        <input
+                                            type="text"
+                                            value={vitals.height}
+                                            onChange={(e) => setVitals((prev) => ({ ...prev, height: e.target.value }))}
+                                            style={{ width: "100%", background: "transparent", border: "none", outline: "none", fontSize: "0.88rem", fontWeight: 800, color: "#082b68", padding: "2px 0 0 0", boxSizing: "border-box" }}
+                                            placeholder="170 cm"
                                         />
                                     </div>
 

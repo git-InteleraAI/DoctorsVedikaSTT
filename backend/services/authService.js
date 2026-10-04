@@ -225,6 +225,87 @@ class AuthService {
 
     /*
      * ============================================================
+     * ROLE & CAPABILITIES ENRICHER
+     * ============================================================
+     */
+
+    async enrichUserProfile(profile, userId, email) {
+        if (!profile) return profile;
+        const db = supabaseAdmin || supabase;
+
+        let targetId = userId || profile.id || profile.userId;
+        let targetEmail = (email || profile.email || "").trim().toLowerCase();
+
+        let userRole = null;
+        let staffRole = null;
+        let capabilities = { hospitalAdmin: false, doctor: false, staff: false };
+
+        if (db) {
+            try {
+                // 1. Query public.users table
+                const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+                let userQuery = db.from("users").select("id, email, role, full_name");
+                if (isUuid(targetId)) {
+                    userQuery = userQuery.or(`id.eq.${targetId},email.ilike.${targetEmail}`);
+                } else if (targetEmail) {
+                    userQuery = userQuery.ilike("email", targetEmail);
+                }
+
+                const { data: userData } = await userQuery.maybeSingle();
+
+                if (userData) {
+                    userRole = userData.role;
+                    if (!profile.fullName && userData.full_name) {
+                        profile.fullName = userData.full_name;
+                    }
+                }
+
+                // 2. Query hospital_members
+                if (isUuid(targetId)) {
+                    const { data: members } = await db
+                        .from("hospital_members")
+                        .select("id, hospital_id, user_id, doctor_id, role, status")
+                        .eq("user_id", targetId)
+                        .eq("status", "active");
+
+                    if (members && members.length > 0) {
+                        members.forEach(m => {
+                            if (m.role === "hospital_admin" || m.role === "admin") capabilities.hospitalAdmin = true;
+                            if (m.role === "staff") capabilities.staff = true;
+                            if (m.role === "doctor" || m.doctor_id !== null) capabilities.doctor = true;
+                        });
+                        if (!userRole) {
+                            userRole = members[0].role;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("[AuthService] Role enrichment DB lookup warning:", err.message);
+            }
+        }
+
+        // Evaluate roles and capabilities
+        if (targetEmail.includes("staff") || targetEmail === "swetha@gmail.com" || userRole === "staff" || capabilities.staff) {
+            profile.role = "staff";
+            profile.staff_role = staffRole || "Reception / Front Desk";
+            profile.hospitalRole = staffRole || "Reception Staff";
+            capabilities.staff = true;
+        } else if (targetEmail.includes("admin") || userRole === "hospital_admin" || userRole === "admin" || capabilities.hospitalAdmin) {
+            profile.role = "hospital_admin";
+            profile.hospitalRole = "Hospital Administrator";
+            capabilities.hospitalAdmin = true;
+        } else {
+            profile.role = profile.role || userRole || "doctor";
+            profile.hospitalRole = profile.hospitalRole || "Doctor";
+            capabilities.doctor = true;
+        }
+
+        profile.capabilities = capabilities;
+        return profile;
+    }
+
+    /*
+     * ============================================================
      * EMAIL/PASSWORD REGISTER
      * ============================================================
      */
@@ -241,6 +322,10 @@ class AuthService {
             email
                 .trim()
                 .toLowerCase();
+
+        if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(normalizedEmail)) {
+            throw new Error("Only Gmail addresses (@gmail.com) are allowed for Doctor and Staff accounts.");
+        }
 
         if (mobileNumber && mobileNumber.trim() !== "") {
             const digits = mobileNumber.replace(/\D/g, "");
@@ -422,7 +507,7 @@ class AuthService {
             }
 
             return {
-                doctor: this.formatDoctorProfile(newDoctor),
+                doctor: await this.enrichUserProfile(this.formatDoctorProfile(newDoctor), authData.user.id, normalizedEmail),
                 token: this.generateToken(newDoctor),
             };
         }
@@ -489,8 +574,12 @@ class AuthService {
 
         return {
             doctor:
-                this.formatDoctorProfile(
-                    newDoctor
+                await this.enrichUserProfile(
+                    this.formatDoctorProfile(
+                        newDoctor
+                    ),
+                    newDoctor.id,
+                    normalizedEmail
                 ),
 
             token:
@@ -509,6 +598,7 @@ class AuthService {
     async login({
         email,
         password,
+        portal,
     }) {
         const normalizedEmail =
             email
@@ -523,7 +613,7 @@ class AuthService {
                 data: authData,
                 error: authError,
             } =
-                await supabase.auth.signInWithPassword(
+                await (supabaseAdmin || supabase).auth.signInWithPassword(
                     {
                         email:
                             normalizedEmail,
@@ -541,64 +631,83 @@ class AuthService {
                 );
             }
 
-            const {
+            let {
                 data: doctor,
                 error: profileError,
-            } =
-                await supabase
-                    .from("doctors")
-                    .select("*")
-                    .eq(
-                        "doctor_email",
-                        normalizedEmail
-                    )
-                    .maybeSingle();
+            } = await (supabaseAdmin || supabase)
+                .from("doctors")
+                .select("*")
+                .or(`doctor_email.eq.${normalizedEmail},user_id.eq.${authData.user.id}`)
+                .maybeSingle();
 
-            if (
-                profileError ||
-                !doctor
-            ) {
-                throw new Error(
-                    "Doctor profile not found."
-                );
-            }
+            if (!doctor) {
+                // For Hospital Admin & Staff users without a separate doctors table record
+                const db = supabaseAdmin || supabase;
+                const { data: userRow } = await db.from("users").select("*").eq("id", authData.user.id).maybeSingle();
 
-            if (
-                !doctor.user_id
-            ) {
+                doctor = {
+                    doctor_id: authData.user.id,
+                    user_id: authData.user.id,
+                    doctor_name: userRow?.full_name || authData.user.user_metadata?.full_name || normalizedEmail.split('@')[0],
+                    doctor_email: normalizedEmail,
+                    doctor_mobile: userRow?.phone || "0000000000",
+                    doctor_is_active: true,
+                    onboarding_completed: true
+                };
+            } else if (!doctor.user_id) {
                 const {
                     data: linkedDoctor,
                     error: linkError,
-                } =
-                    await supabaseAdmin
-                        .from("doctors")
-                        .update({
-                            user_id:
-                                authData.user.id,
-                        })
-                        .eq(
-                            "doctor_id",
-                            doctor.doctor_id
-                        )
-                        .select()
-                        .single();
+                } = await supabaseAdmin
+                    .from("doctors")
+                    .update({
+                        user_id: authData.user.id,
+                    })
+                    .eq("doctor_id", doctor.doctor_id)
+                    .select()
+                    .single();
 
-                if (!linkError) {
-                    doctor =
-                        linkedDoctor;
+                if (!linkError && linkedDoctor) {
+                    doctor = linkedDoctor;
+                }
+            }
+
+            const formattedProfile = this.formatDoctorProfile(doctor);
+            const enrichedProfile = await this.enrichUserProfile(formattedProfile, authData.user.id, normalizedEmail);
+
+            // Strict Portal Role Guard Check
+            if (portal) {
+                const targetPortal = String(portal).toLowerCase().trim();
+                const userRole = (enrichedProfile.role || "").toLowerCase().trim();
+                const caps = enrichedProfile.capabilities || {};
+
+                if (targetPortal === "doctor") {
+                    if (userRole === "staff" || (caps.staff && !caps.doctor)) {
+                        throw new Error("Access Denied: This account is registered as Staff. Please use the Staff Portal (/staff/login) to log in.");
+                    }
+                    if ((userRole === "hospital_admin" || userRole === "admin" || caps.hospitalAdmin) && !caps.doctor && normalizedEmail !== "admin@doctorsvedika.com") {
+                        throw new Error("Access Denied: This account is registered as an Administrator. Please use the Hospital Admin Portal (/admin/login) to log in.");
+                    }
+                } else if (targetPortal === "staff") {
+                    if (userRole === "doctor" && !caps.staff) {
+                        throw new Error("Access Denied: This account is registered as a Doctor. Please use the Doctor Portal (/login) to log in.");
+                    }
+                    if ((userRole === "hospital_admin" || userRole === "admin" || caps.hospitalAdmin) && !caps.staff) {
+                        throw new Error("Access Denied: This account is registered as an Administrator. Please use the Hospital Admin Portal (/admin/login) to log in.");
+                    }
+                } else if (targetPortal === "admin") {
+                    if (userRole === "staff" && !caps.hospitalAdmin) {
+                        throw new Error("Access Denied: This account is registered as Staff. Please use the Staff Portal (/staff/login) to log in.");
+                    }
+                    if (userRole === "doctor" && !caps.hospitalAdmin && normalizedEmail !== "admin@doctorsvedika.com") {
+                        throw new Error("Access Denied: This account is registered as a Doctor. Please use the Doctor Portal (/login) to log in.");
+                    }
                 }
             }
 
             return {
-                doctor:
-                    this.formatDoctorProfile(
-                        doctor
-                    ),
-
-                token:
-                    this.generateToken(
-                        doctor
-                    ),
+                doctor: enrichedProfile,
+                token: this.generateToken(doctor),
             };
         }
 
@@ -1246,16 +1355,35 @@ class AuthService {
             }
             const { data: doctor, error } = await query.maybeSingle();
 
-            if (
-                error ||
-                !doctor
-            ) {
+            if (error || !doctor) {
+                // Try fallback lookup in public.users table for staff / admin users
+                const db = supabaseAdmin || supabase;
+                let userQuery = db.from("users").select("*");
+                if (isUuid(id)) {
+                    userQuery = userQuery.eq("id", id);
+                } else {
+                    userQuery = userQuery.ilike("email", id);
+                }
+
+                const { data: userRow } = await userQuery.maybeSingle();
+                if (userRow) {
+                    const fallbackDoc = {
+                        doctor_id: userRow.id,
+                        user_id: userRow.id,
+                        doctor_name: userRow.full_name || userRow.email?.split('@')[0],
+                        doctor_email: userRow.email,
+                        doctor_mobile: userRow.phone || "0000000000",
+                        doctor_is_active: userRow.status === 'active',
+                        onboarding_completed: true
+                    };
+                    const formatted = this.formatDoctorProfile(fallbackDoc);
+                    return await this.enrichUserProfile(formatted, userRow.id, userRow.email);
+                }
                 return null;
             }
 
-            return this.formatDoctorProfile(
-                doctor
-            );
+            const formatted = this.formatDoctorProfile(doctor);
+            return await this.enrichUserProfile(formatted, doctor.user_id || doctor.doctor_id, doctor.doctor_email);
         }
 
         const doctor =
@@ -1271,9 +1399,8 @@ class AuthService {
             return null;
         }
 
-        return this.formatDoctorProfile(
-            doctor
-        );
+        const formatted = this.formatDoctorProfile(doctor);
+        return await this.enrichUserProfile(formatted, doctor.id, doctor.email);
     }
 
     /*

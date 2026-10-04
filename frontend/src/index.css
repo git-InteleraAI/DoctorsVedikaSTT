@@ -496,3 +496,384 @@ input:-webkit-autofill:active {
     font-weight: 600;
 }
 
+/* Custom Slim Scrollbar for Navigation Sidebars */
+.custom-slim-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-slim-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-slim-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+.custom-slim-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #08AEB8;
+}
+.custom-slim-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+/* ==========================================================================
+   DOCTORS VEDIKA UNIFIED EXECUTIVE SAAS DESIGN SYSTEM
+   ========================================================================== */
+
+/* Surface Cards */
+.vedika-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vedika-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+}
+
+/* Metric KPI Cards */
+.vedika-stat-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 18px -2px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s ease;
+}
+
+.vedika-stat-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 24px -2px rgba(15, 23, 42, 0.07);
+}
+
+.vedika-stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.vedika-stat-icon.teal {
+  background: rgba(8, 174, 184, 0.1);
+  color: #08AEB8;
+}
+
+.vedika-stat-icon.indigo {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366F1;
+}
+
+.vedika-stat-icon.sky {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0EA5E9;
+}
+
+.vedika-stat-icon.emerald {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+}
+
+.vedika-stat-icon.amber {
+  background: rgba(245, 158, 11, 0.1);
+  color: #F59E0B;
+}
+
+/* Tab Navigation Bar */
+.vedika-tab-bar {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+}
+
+.vedika-tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.vedika-tab-item:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.vedika-tab-item.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #08AEB8 0%, #06949E 100%);
+  box-shadow: 0 4px 14px rgba(8, 174, 184, 0.3);
+}
+
+.vedika-tab-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+
+.vedika-tab-item:not(.active) .vedika-tab-badge {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+/* Unified Tables */
+.vedika-table-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 18px -2px rgba(15, 23, 42, 0.03);
+}
+
+.vedika-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.86rem;
+}
+
+.vedika-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.vedika-table td {
+  padding: 14px 18px;
+  color: #334155;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.vedika-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.vedika-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.vedika-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Badges & Status Indicators */
+.vedika-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.vedika-badge.teal {
+  background: #f0fdfa;
+  color: #0d9488;
+  border: 1px solid #ccfbf1;
+}
+
+.vedika-badge.purple {
+  background: #faf5ff;
+  color: #7e22ce;
+  border: 1px solid #f3e8ff;
+}
+
+.vedika-badge.slate {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.vedika-badge.emerald {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.vedika-badge.amber {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.vedika-badge.rose {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+/* Unified Buttons */
+.vedika-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  outline: none;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.vedika-btn-primary {
+  background: linear-gradient(135deg, #08AEB8 0%, #06949E 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(8, 174, 184, 0.25);
+}
+
+.vedika-btn-primary:hover {
+  background: linear-gradient(135deg, #06949E 0%, #057d86 100%);
+  box-shadow: 0 6px 18px rgba(8, 174, 184, 0.35);
+  transform: translateY(-1px);
+}
+
+.vedika-btn-secondary {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.vedika-btn-secondary:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.vedika-btn-outline {
+  background: transparent;
+  color: #08AEB8;
+  border: 1px solid #08AEB8;
+}
+
+.vedika-btn-outline:hover {
+  background: rgba(8, 174, 184, 0.08);
+}
+
+.vedika-btn-danger {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.vedika-btn-danger:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.vedika-btn-sm {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+/* Forms & Inputs */
+.vedika-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vedika-input-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vedika-input,
+.vedika-select,
+.vedika-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-border-box;
+}
+
+.vedika-input:focus,
+.vedika-select:focus,
+.vedika-textarea:focus {
+  border-color: #08AEB8;
+  box-shadow: 0 0 0 3px rgba(8, 174, 184, 0.15);
+}
+
+/* Modal Overlay */
+.vedika-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.vedika-modal-content {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 540px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  animation: vedikaModalSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes vedikaModalSlide {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+
+

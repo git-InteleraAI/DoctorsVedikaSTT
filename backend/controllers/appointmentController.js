@@ -1,5 +1,6 @@
 const { supabase, supabaseAdmin } = require("../config/supabase");
 const db = supabaseAdmin || supabase;
+const { encryptPayload, decryptRecord } = require("../services/encryptionService");
 
 // Shared in-memory appointments store for fallback conflict checking
 const inMemoryAppointments = [];
@@ -108,8 +109,9 @@ class AppointmentController {
                 return (a.appointment_time || "").localeCompare(b.appointment_time || "");
             });
 
-            // 3. Fetch related Patient details & Appointment Symptoms
+            // 3. Fetch related Patient details, HPR details & Appointment Symptoms
             const patientIds = [...new Set(appointmentsData.map((a) => a.patient_id).filter(Boolean))];
+            const hprIds = [...new Set(appointmentsData.map((a) => a.hospital_patient_id).filter(Boolean))];
             const appointmentIds = appointmentsData.map((a) => a.id).filter(Boolean);
             
             let patientsMap = {};
@@ -122,9 +124,32 @@ class AppointmentController {
 
                 if (patientsData) {
                     patientsData.forEach(p => {
-                        if (p.user_id) patientsMap[p.user_id] = p;
-                        if (p.id) patientsMap[p.id] = p;
+                        const decP = decryptRecord("patients", p);
+                        if (p.user_id) patientsMap[p.user_id] = decP;
+                        if (p.id) patientsMap[p.id] = decP;
                     });
+                }
+            }
+
+            let hprMap = {};
+            if (hprIds.length > 0 && db) {
+                const { data: hprData } = await db
+                    .from("hospital_patient_records")
+                    .select("id, hospital_patient_code, first_name, last_name, full_name, phone, gender, date_of_birth")
+                    .in("id", hprIds);
+                if (hprData) {
+                    hprData.forEach(h => { hprMap[h.id] = decryptRecord("hospital_patient_records", h); });
+                }
+            }
+
+            let visitsMap = {};
+            if (appointmentIds.length > 0 && db) {
+                const { data: visitsData } = await db
+                    .from("patient_visits")
+                    .select("id, appointment_id, visit_stage, checked_in_at, consultation_started_at, consultation_completed_at, chief_complaints")
+                    .in("appointment_id", appointmentIds);
+                if (visitsData) {
+                    visitsData.forEach(v => { visitsMap[v.appointment_id] = decryptRecord("patient_visits", v); });
                 }
             }
 
@@ -137,7 +162,7 @@ class AppointmentController {
 
                 if (symptomsData) {
                     symptomsData.forEach(s => {
-                        symptomsMap[s.appointment_id] = s;
+                        symptomsMap[s.appointment_id] = decryptRecord("appointment_symptoms", s);
                     });
                 }
             }
@@ -145,38 +170,46 @@ class AppointmentController {
             // 4. Merge and format the response
             const formattedAppointments = appointmentsData.map((app) => {
                 const patient = patientsMap[app.patient_id] || {};
+                const hpr = hprMap[app.hospital_patient_id] || {};
+                const visit = visitsMap[app.id] || {};
                 const sym = symptomsMap[app.id] || {};
                 
                 // Calculate age dynamically
+                const dobStr = patient.date_of_birth || hpr.date_of_birth;
                 let age = null;
-                if (patient.date_of_birth) {
-                    const dob = new Date(patient.date_of_birth);
+                if (dobStr) {
+                    const dob = new Date(dobStr);
                     const diffMs = Date.now() - dob.getTime();
                     const ageDt = new Date(diffMs);
                     age = Math.abs(ageDt.getUTCFullYear() - 1970);
                 }
 
-                const name = patient.full_name || (patient.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || app.patient_name || "Unknown Patient";
+                const name = patient.full_name || (patient.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || hpr.full_name || app.patient_name || "Walk-in Patient";
 
                 return {
                     id: app.id,
-                    patientId: patient.user_id || patient.id || app.patient_id,
-                    patientCode: patient.patient_code || "",
+                    patientId: patient.user_id || patient.id || app.patient_id || null,
+                    hospital_patient_id: app.hospital_patient_id || null,
+                    patientCode: patient.patient_code || hpr.hospital_patient_code || (hpr.id ? `DV-P-${hpr.id.slice(0, 6).toUpperCase()}` : ""),
                     patientName: name,
                     patient_name: name,
                     patientPhoto: patient.profile_photo || null,
                     profile_photo: patient.profile_photo || null,
                     age: age || app.age || null,
-                    gender: patient.gender || app.gender || "Unknown",
+                    gender: patient.gender || hpr.gender || app.gender || "Unknown",
                     bloodGroup: patient.blood_group || app.blood_group || "-",
                     appointmentDate: app.appointment_date,
                     appointment_date: app.appointment_date,
                     time: app.appointment_time,
                     appointment_time: app.appointment_time,
+                    visitStage: visit.visit_stage || "scheduled",
+                    checkedInAt: visit.checked_in_at || null,
+                    startedAt: visit.consultation_started_at || null,
+                    completedAt: visit.consultation_completed_at || null,
                     type: app.appointment_type || "Consultation",
                     status: app.status,
-                    reason: sym.symptoms || app.reason || app.notes || "",
-                    symptoms: sym.symptoms || app.reason || "",
+                    reason: visit.chief_complaints || sym.symptoms || app.reason || app.notes || "",
+                    symptoms: visit.chief_complaints || sym.symptoms || app.reason || "",
                     duration: sym.duration || "",
                     severity: sym.severity || "",
                     current_medications: sym.current_medications || "",
@@ -217,47 +250,78 @@ class AppointmentController {
                 return res.status(404).json({ success: false, error: "Appointment not found" });
             }
 
-            const { data: patient } = await db
-                .from("patients")
-                .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
-                .or(`user_id.eq."${appointment.patient_id}",id.eq."${appointment.patient_id}"`)
-                .maybeSingle();
+            let patient = null;
+            if (appointment.patient_id) {
+                const { data: pRow } = await db
+                    .from("patients")
+                    .select("id, user_id, first_name, last_name, full_name, profile_photo, blood_group, gender, date_of_birth, patient_code")
+                    .or(`user_id.eq."${appointment.patient_id}",id.eq."${appointment.patient_id}"`)
+                    .maybeSingle();
+                if (pRow) patient = pRow;
+            }
 
-            const { data: sym } = await db
+            let hpr = null;
+            if (appointment.hospital_patient_id) {
+                const { data: hprRow } = await db
+                    .from("hospital_patient_records")
+                    .select("id, hospital_patient_code, first_name, last_name, full_name, phone, gender, date_of_birth")
+                    .eq("id", appointment.hospital_patient_id)
+                    .maybeSingle();
+                if (hprRow) hpr = decryptRecord("hospital_patient_records", hprRow);
+            }
+
+            let visit = null;
+            const { data: visitRow } = await db
+                .from("patient_visits")
+                .select("id, visit_stage, checked_in_at, consultation_started_at, consultation_completed_at, chief_complaints")
+                .eq("appointment_id", appointment.id)
+                .maybeSingle();
+            if (visitRow) visit = decryptRecord("patient_visits", visitRow);
+
+            let sym = null;
+            const { data: symRow } = await db
                 .from("appointment_symptoms")
                 .select("*")
                 .eq("appointment_id", appointment.id)
                 .maybeSingle();
+            if (symRow) sym = decryptRecord("appointment_symptoms", symRow);
+            if (patient) patient = decryptRecord("patients", patient);
 
+            const dobStr = patient?.date_of_birth || hpr?.date_of_birth;
             let age = null;
-            if (patient && patient.date_of_birth) {
-                const dob = new Date(patient.date_of_birth);
+            if (dobStr) {
+                const dob = new Date(dobStr);
                 const diffMs = Date.now() - dob.getTime();
                 const ageDt = new Date(diffMs);
                 age = Math.abs(ageDt.getUTCFullYear() - 1970);
             }
 
-            const name = patient?.full_name || (patient?.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || appointment.patient_name || "Unknown Patient";
+            const name = patient?.full_name || (patient?.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || hpr?.full_name || appointment.patient_name || "Walk-in Patient";
 
             const formattedAppointment = {
                 id: appointment.id,
-                patientId: patient?.user_id || patient?.id || appointment.patient_id,
-                patientCode: patient?.patient_code || "",
+                patientId: patient?.user_id || patient?.id || appointment.patient_id || null,
+                hospital_patient_id: appointment.hospital_patient_id || null,
+                patientCode: patient?.patient_code || hpr?.hospital_patient_code || (hpr?.id ? `DV-P-${hpr.id.slice(0, 6).toUpperCase()}` : ""),
                 patientName: name,
                 patient_name: name,
                 patientPhoto: patient?.profile_photo || null,
                 profile_photo: patient?.profile_photo || null,
                 age: age,
-                gender: patient?.gender || appointment.gender || "Unknown",
+                gender: patient?.gender || hpr?.gender || appointment.gender || "Unknown",
                 bloodGroup: patient?.blood_group || appointment.blood_group || "-",
                 appointmentDate: appointment.appointment_date,
                 appointment_date: appointment.appointment_date,
                 time: appointment.appointment_time,
                 appointment_time: appointment.appointment_time,
+                visitStage: visit?.visit_stage || "scheduled",
+                checkedInAt: visit?.checked_in_at || null,
+                startedAt: visit?.consultation_started_at || null,
+                completedAt: visit?.consultation_completed_at || null,
                 type: appointment.appointment_type || "Consultation",
                 status: appointment.status,
-                symptoms: sym?.symptoms || appointment.reason || "",
-                reason: sym?.symptoms || appointment.reason || "",
+                symptoms: visit?.chief_complaints || sym?.symptoms || appointment.reason || "",
+                reason: visit?.chief_complaints || sym?.symptoms || appointment.reason || "",
                 duration: sym?.duration || "",
                 severity: sym?.severity || "",
                 current_medications: sym?.current_medications || "",
@@ -303,7 +367,10 @@ class AppointmentController {
                 return res.json({ success: true, symptoms: null });
             }
 
-            return res.json({ success: true, symptoms: data?.[0] || null });
+            return res.json({
+                success: true,
+                symptoms: data?.[0] ? decryptRecord("appointment_symptoms", data[0]) : null
+            });
         } catch (error) {
             console.error("Error fetching appointment symptoms:", error);
             return res.status(500).json({ success: false, error: error.message });
@@ -529,8 +596,9 @@ class AppointmentController {
                         .or(`user_id.in.(${formattedIds}),id.in.(${formattedIds})`);
                     if (pData) {
                         pData.forEach(p => {
-                            if (p.user_id) pMap[p.user_id] = p;
-                            if (p.id) pMap[p.id] = p;
+                            const decP = decryptRecord("patients", p);
+                            if (p.user_id) pMap[p.user_id] = decP;
+                            if (p.id) pMap[p.id] = decP;
                         });
                     }
                 }

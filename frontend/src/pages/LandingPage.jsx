@@ -13,7 +13,14 @@ export default function LandingPage() {
     const handleAuthActionClick = (e) => {
         e.preventDefault();
         if (doctor) {
-            navigate('/dashboard');
+            const userRole = doctor.role || (doctor.capabilities?.staff ? "staff" : doctor.capabilities?.hospitalAdmin ? "hospital_admin" : "doctor");
+            if (userRole === "staff") {
+                navigate("/staff");
+            } else if (userRole === "hospital_admin" || userRole === "admin") {
+                navigate("/admin");
+            } else {
+                navigate("/dashboard");
+            }
         } else {
             setIsAuthModalOpen(true);
         }

@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
 import "../index.css";
 
-const API = import.meta.env.VITE_NODE_API_URL;
+const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -145,20 +145,42 @@ const Dashboard = () => {
     }, [loading, appointments, activeTab]);
 
     const openConsultation = (appointment) => {
-        if (!appointment.patientId) {
-            setError("This appointment does not have a patient ID.");
-            return;
-        }
-        navigate(`/consultation/${encodeURIComponent(appointment.patientId)}?appointmentId=${encodeURIComponent(appointment.id)}`, {
+        const encounterId = appointment.visit_id || appointment.visitId || appointment.hospital_patient_id || appointment.id;
+        const queryParams = new URLSearchParams();
+        if (appointment.id) queryParams.set("appointmentId", appointment.id);
+        if (appointment.visit_id || appointment.visitId) queryParams.set("visitId", appointment.visit_id || appointment.visitId);
+        
+        const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
+        fetch(`${API}/api/v1/queue/transition`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+                visitId: encounterId,
+                targetStage: "in_consultation"
+            })
+        })
+            .then(() => {
+                localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+                window.dispatchEvent(new Event("storage"));
+            })
+            .catch((e) => console.warn("Transition notice:", e));
+
+        navigate(`/consultation/${encodeURIComponent(encounterId)}?${queryParams.toString()}`, {
             state: {
                 appointmentId: appointment.id,
+                visitId: appointment.visit_id || appointment.visitId,
+                hospitalPatientId: appointment.hospital_patient_id,
+                patientId: appointment.patientId || appointment.patient_id || null,
                 patient: appointment,
                 doctorId: doctor?.id || "default-doctor",
             },
         });
     };
 
-    const patientRecord = (appointment) => completedRecords[appointment.patientId || appointment.patient_id];
+    const patientRecord = (appointment) => completedRecords[appointment.patientId || appointment.hospital_patient_id || appointment.id];
 
     return (
         <DashboardLayout
@@ -317,7 +339,7 @@ const Dashboard = () => {
                                         <div>
                                             <h3 style={{ margin: "0 0 4px 0", fontSize: "1.15rem", fontWeight: 700, color: "#0f172a" }}>{app.patientName}</h3>
                                             <p style={{ margin: 0, fontSize: "0.88rem", color: "#64748b" }}>
-                                                {app.patientCode || app.patientId || "No ID"} • {app.age ? `${app.age} yrs` : "Age —"} • {app.gender || "—"} • {app.bloodGroup || "—"}
+                                                {app.patientCode || (app.patientId ? `ID: ${app.patientId.slice(0, 8)}` : "Walk-in Patient")} • {app.age ? `${app.age} yrs` : "Age —"} • {app.gender || "—"} • {app.bloodGroup || "—"}
                                             </p>
                                             {app.reason && <p style={{ margin: "6px 0 0 0", color: "#334155", fontSize: "0.85rem", background: "#f1f5f9", padding: "4px 10px", borderRadius: "6px", display: "inline-block", fontWeight: 500 }}>
                                                 <i className="fa-solid fa-stethoscope" style={{ color: "#0d9488", marginRight: "6px" }}></i> {app.reason}

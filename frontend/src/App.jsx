@@ -17,6 +17,8 @@ import AuthCallback from "./pages/AuthCallback";
 import { AuthProvider } from "./context/AuthContext";
 
 import Profile from "./pages/Profile";
+import StaffPortal from "./pages/StaffPortal";
+import HospitalAdmin from "./pages/HospitalAdmin";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -30,10 +32,20 @@ function App() {
         {/* Auth Callback Route */}
         <Route path="/auth/callback" element={<AuthCallback />} />
 
-        {/* Doctor Authentication Routes */}
+        {/* Portal Authentication Routes */}
         <Route
           path="/login"
-          element={<DoctorLogin />}
+          element={<DoctorLogin portal="doctor" />}
+        />
+
+        <Route
+          path="/admin/login"
+          element={<DoctorLogin portal="admin" />}
+        />
+
+        <Route
+          path="/staff/login"
+          element={<DoctorLogin portal="staff" />}
         />
 
         <Route
@@ -87,7 +99,7 @@ function App() {
         />
 
         <Route
-          path="/consultation/:patientId"
+          path="/consultation/:visitId"
           element={
             <ProtectedRoute>
               <Consultation />
@@ -96,7 +108,7 @@ function App() {
         />
 
         <Route
-          path="/consultation/:patientId/summary"
+          path="/consultation/:visitId/summary"
           element={
             <ProtectedRoute>
               <ConsultationSummary />
@@ -148,6 +160,61 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        <Route
+          path="/staff"
+          element={
+            <ProtectedRoute>
+              <StaffPortal />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/staff/*"
+          element={
+            <ProtectedRoute>
+              <StaffPortal />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <HospitalAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/*"
+          element={
+            <ProtectedRoute>
+              <HospitalAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/hospital-admin"
+          element={
+            <ProtectedRoute>
+              <HospitalAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/hospital-admin/*"
+          element={
+            <ProtectedRoute>
+              <HospitalAdmin />
+            </ProtectedRoute>
+          }
+        />
+
 
       </Routes>
 

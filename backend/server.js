@@ -19,14 +19,25 @@ const {
 
 const { supabase, supabaseAdmin, isSupabaseConfigured } = require("./config/supabase");
 const db = supabaseAdmin || supabase;
+const { encryptPayload, decryptRecord } = require("./services/encryptionService");
 
 const app = express();
 
 const PORT = process.env.PORT || 5000;
 
-// =====================================================
-// MIDDLEWARE
-// =====================================================
+// Global Process Resilience: Prevent uncaught 429 API quota errors from crashing Node.js server
+process.on("unhandledRejection", (reason, promise) => {
+    const isQuotaError = reason?.status === 429 || String(reason?.message || reason).includes("429") || String(reason?.message || reason).includes("RESOURCE_EXHAUSTED");
+    if (isQuotaError) {
+        console.warn("[Process Resilience] Intercepted unhandled Gemini 429 Quota Exceeded error. Server remaining active.", reason?.message || reason);
+    } else {
+        console.error("[Process Resilience] Unhandled Promise Rejection:", reason);
+    }
+});
+
+process.on("uncaughtException", (err) => {
+    console.error("[Process Resilience] Uncaught Exception:", err);
+});
 
 app.use(cors());
 app.use(express.json({ limit: "20mb" }));
@@ -122,6 +133,14 @@ app.get("/ping", (req, res) => {
     res.status(200).send("pong");
 });
 
+const { geminiRequestManager } = require("./consultation/GeminiRequestManager");
+app.get("/api/v1/gemini/metrics", (req, res) => {
+    res.json({
+        success: true,
+        metrics: geminiRequestManager.getMetrics()
+    });
+});
+
 // =====================================================
 // AUTHENTICATION & SUPABASE
 // =====================================================
@@ -157,6 +176,18 @@ app.use("/api/educational-videos", videoRoutes);
 // =====================================================
 const questionRoutes = require("./routes/questionRoutes");
 app.use("/api/questions", questionRoutes);
+
+// =====================================================
+// HOSPITAL ADMIN, STAFF & QUEUE API ROUTES (V1 PHASE 2B)
+// =====================================================
+const hospitalAdminRoutes = require("./routes/hospitalAdmin");
+const staffRoutes = require("./routes/staff");
+const queueRoutes = require("./routes/queue");
+
+app.use("/api/v1/hospital-admin", hospitalAdminRoutes);
+app.use("/api/v1/staff", staffRoutes);
+app.use("/api/v1/queue", queueRoutes);
+
 
 // =====================================================
 // (Legacy duplicate route removed to ensure main clinical save and Supabase sync route is executed)
@@ -209,6 +240,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
     if (patientId) {
         try {
             let pData = null;
+            let isWalkIn = false;
             if (isUuid(patientId)) {
                 const { data } = await db.from("patients").select("id, user_id, full_name, age, gender, date_of_birth").or(`user_id.eq.${patientId},id.eq.${patientId}`).maybeSingle();
                 pData = data;
@@ -221,8 +253,23 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
                     .maybeSingle();
                 pData = data;
             }
+            if (!pData) {
+                const cleanId = String(patientId).trim();
+                let hprQuery = db.from("hospital_patient_records").select("id, hospital_patient_code, full_name, age, gender, date_of_birth");
+                if (isUuid(cleanId)) {
+                    hprQuery = hprQuery.eq("id", cleanId);
+                } else {
+                    hprQuery = hprQuery.or(`hospital_patient_code.ilike.${cleanId},full_name.ilike.%${cleanId}%`);
+                }
+                const { data: hprData } = await hprQuery.limit(1).maybeSingle();
+                if (hprData) {
+                    pData = hprData;
+                    isWalkIn = true;
+                }
+            }
+
             if (pData) {
-                patUuid = pData.user_id || pData.id;
+                patUuid = isWalkIn ? null : (pData.user_id || pData.id);
                 let calcAge = pData.age;
                 if (!calcAge && pData.date_of_birth) {
                     const dob = new Date(pData.date_of_birth);
@@ -246,27 +293,6 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
             const { data: appRow } = await db.from("appointments").select("patient_id").eq("id", appUuid).maybeSingle();
             if (appRow && appRow.patient_id) {
                 patUuid = appRow.patient_id;
-            }
-        } catch (err) {}
-    }
-
-    if (!patUuid) {
-        try {
-            const { data: pFirst } = await db.from("patients").select("id, user_id, full_name, age, gender, date_of_birth").limit(1).maybeSingle();
-            if (pFirst) {
-                patUuid = pFirst.user_id || pFirst.id;
-                let calcAge = pFirst.age;
-                if (!calcAge && pFirst.date_of_birth) {
-                    const dob = new Date(pFirst.date_of_birth);
-                    if (!isNaN(dob.getTime())) {
-                        calcAge = String(new Date().getFullYear() - dob.getFullYear());
-                    }
-                }
-                patientDetails = {
-                    age: calcAge ? String(calcAge) : null,
-                    gender: pFirst.gender ? String(pFirst.gender) : null,
-                    name: pFirst.full_name || null,
-                };
             }
         } catch (err) {}
     }
@@ -428,10 +454,10 @@ app.post(
                 prescription,
             } = req.body || {};
 
-            if (!patientId) {
+            if (!patientId && !req.body.hospitalPatientId && !req.body.appointmentId) {
                 return res.status(400).json({
                     success: false,
-                    message: "patientId is required",
+                    message: "patientId, hospitalPatientId, or appointmentId is required",
                 });
             }
 
@@ -501,7 +527,7 @@ app.post(
                     let resolvedDocUuid = docUuid;
                     let resolvedPatUuid = patUuid;
 
-                    if (!resolvedAppUuid || !resolvedDocUuid || !resolvedPatUuid) {
+                    if (!resolvedAppUuid || !resolvedDocUuid) {
                         const details = await resolveSupabaseDetails({
                             patientId: patientId,
                             doctorId: doctorId || req.doctor?.id,
@@ -513,12 +539,38 @@ app.post(
                         resolvedPatUuid = details.patUuid;
                     }
 
-                    if (resolvedAppUuid && resolvedDocUuid && resolvedPatUuid) {
-                        if (isCompleted) {
+                    if (resolvedAppUuid || req.body.visit_id || req.body.visitId || resolvedPatUuid) {
+                        const nowIso = new Date().toISOString();
+                        
+                        // Update appointments status to completed
+                        if (resolvedAppUuid) {
                             await targetDb
                                 .from("appointments")
-                                .update({ status: "completed", updated_at: new Date().toISOString() })
+                                .update({ status: "completed", updated_at: nowIso })
                                 .eq("id", resolvedAppUuid);
+                        }
+
+                        // Update patient_visits visit_stage to completed
+                        const isUuidStr = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+                        const visitConds = [];
+                        if (resolvedAppUuid) visitConds.push(`appointment_id.eq.${resolvedAppUuid}`);
+                        if (req.body.visit_id || req.body.visitId) visitConds.push(`id.eq.${req.body.visit_id || req.body.visitId}`);
+                        if (resolvedPatUuid && isUuidStr(resolvedPatUuid)) {
+                            visitConds.push(`hospital_patient_id.eq.${resolvedPatUuid}`);
+                            visitConds.push(`patient_id.eq.${resolvedPatUuid}`);
+                        }
+
+                        if (visitConds.length > 0) {
+                            await targetDb
+                                .from("patient_visits")
+                                .update({
+                                    visit_stage: "completed",
+                                    status: "completed",
+                                    completed_at: nowIso,
+                                    consultation_completed_at: nowIso,
+                                    updated_at: nowIso
+                                })
+                                .or(visitConds.join(","));
                         }
 
                         const formattedNotesText = req.body.notes || [
@@ -571,7 +623,7 @@ app.post(
                         const noteRecord = {
                             appointment_id: resolvedAppUuid,
                             doctor_id: resolvedDocUuid,
-                            patient_id: resolvedPatUuid,
+                            patient_id: resolvedPatUuid || (isUuid(patientId) ? patientId : '00000000-0000-0000-0000-000000000000'),
                             notes: notesStorageString,
                             symptoms: symptomsText || "No symptoms recorded",
                             diagnosis: diagnosisText || null,
@@ -582,14 +634,15 @@ app.post(
                             updated_at: new Date().toISOString(),
                         };
 
-                        const { error: noteErr } = await targetDb.from("consultation_notes").upsert(noteRecord, { onConflict: "appointment_id" });
+                        const encNoteRecord = encryptPayload("consultation_notes", noteRecord);
+                        const { error: noteErr } = await targetDb.from("consultation_notes").upsert(encNoteRecord, { onConflict: "appointment_id" });
                         if (noteErr) console.warn("[Clinical Save] consultation_notes sync warning:", noteErr.message);
                         else console.log("[Clinical Save] Successfully synced to public.consultation_notes table.");
 
                         const prescriptionRecord = {
                             appointment_id: resolvedAppUuid,
                             doctor_id: resolvedDocUuid,
-                            patient_id: resolvedPatUuid,
+                            patient_id: resolvedPatUuid || (isUuid(patientId) ? patientId : '00000000-0000-0000-0000-000000000000'),
                             medicines: formatMedicines(medications, prescription),
                             advice: formatAdvice(prescription?.advice || s.advice),
                             follow_up_date: formatFollowUpDate(prescription?.follow_up_date || prescription?.follow_up),
@@ -598,7 +651,8 @@ app.post(
                             updated_at: new Date().toISOString(),
                         };
 
-                        const { error: rxErr } = await targetDb.from("prescriptions").upsert(prescriptionRecord, { onConflict: "appointment_id" });
+                        const encPrescriptionRecord = encryptPayload("prescriptions", prescriptionRecord);
+                        const { error: rxErr } = await targetDb.from("prescriptions").upsert(encPrescriptionRecord, { onConflict: "appointment_id" });
                         if (rxErr) console.warn("[Clinical Save] prescriptions sync warning:", rxErr.message);
                         else console.log("[Clinical Save] Successfully synced to public.prescriptions table.");
                     } else {
@@ -698,6 +752,7 @@ app.get(
             let patient = null;
             let doctor = null;
             let appointment = null;
+            let visitData = null;
 
             const rawAppId = consultationId.replace("consultation-app-", "").replace("consultation-db-", "");
 
@@ -738,6 +793,26 @@ app.get(
                     patient = pData;
                 }
 
+                if (!patient && appointment?.hospital_patient_id) {
+                    const { data: hprData } = await targetDb
+                        .from("hospital_patient_records")
+                        .select("*")
+                        .eq("id", appointment.hospital_patient_id)
+                        .maybeSingle();
+                    if (hprData) {
+                        const decHpr = decryptRecord("hospital_patient_records", hprData);
+                        patient = {
+                            id: decHpr.id,
+                            full_name: decHpr.full_name || `${decHpr.first_name || ""} ${decHpr.last_name || ""}`.trim(),
+                            first_name: decHpr.first_name,
+                            last_name: decHpr.last_name,
+                            patient_code: decHpr.hospital_patient_code,
+                            gender: decHpr.gender,
+                            date_of_birth: decHpr.date_of_birth
+                        };
+                    }
+                }
+
                 // 3. Fetch consultation note
                 if (isUuid(rawAppId)) {
                     const { data: notesData } = await targetDb
@@ -772,7 +847,7 @@ app.get(
                     rx = rxData;
                 }
 
-                // 5. Fetch doctor
+                // 5. Fetch doctor & visit record for vitals/DOB
                 const docId = note?.doctor_id || appointment?.doctor_id;
                 if (docId && isUuid(docId)) {
                     const { data: docData } = await targetDb
@@ -782,35 +857,56 @@ app.get(
                         .maybeSingle();
                     doctor = docData;
                 }
+
+                visitData = null;
+                const targetVisitId = note?.visit_id || rawAppId;
+                if (targetVisitId) {
+                    const { data: vData } = await targetDb
+                        .from("patient_visits")
+                        .select("id, intake_vitals, chief_complaints, hospital_patient_records(date_of_birth, gender, full_name, hospital_patient_code)")
+                        .or(`id.eq.${targetVisitId},appointment_id.eq.${targetVisitId}`)
+                        .limit(1)
+                        .maybeSingle();
+                    visitData = vData;
+                }
+
+                if (patient) patient = decryptRecord("patients", patient);
+                if (note) note = decryptRecord("consultation_notes", note);
+                if (rx) rx = decryptRecord("prescriptions", rx);
+                if (visitData) visitData = decryptRecord("patient_visits", visitData);
             }
 
-            const patientName = patient?.full_name || `${patient?.first_name || ""} ${patient?.last_name || ""}`.trim() || "Patient";
+            const patientName = patient?.full_name || `${patient?.first_name || ""}`.trim() || visitData?.hospital_patient_records?.full_name || "Patient";
+            const patientDob = patient?.date_of_birth || visitData?.hospital_patient_records?.date_of_birth || null;
 
             let age = null;
-            if (patient?.date_of_birth) {
-                const dob = new Date(patient.date_of_birth);
+            if (patientDob) {
+                const dob = new Date(patientDob);
                 const diffMs = Date.now() - dob.getTime();
                 age = Math.abs(new Date(diffMs).getUTCFullYear() - 1970);
             }
 
-            // Parse full summary object from JSON string or paragraphs
+            // Parse full summary object from JSON string, object, or paragraphs
             let summaryObj = {};
             if (note?.notes) {
                 try {
-                    if (note.notes.trim().startsWith("{")) {
+                    if (typeof note.notes === "object") {
+                        summaryObj = note.notes.summary || note.notes;
+                    } else if (typeof note.notes === "string" && note.notes.trim().startsWith("{")) {
                         const parsed = JSON.parse(note.notes);
                         summaryObj = parsed.summary || parsed;
                     }
                 } catch (e) {}
             }
 
-            if (!summaryObj || Object.keys(summaryObj).length === 0) {
-                const paragraphs = (note?.notes || "").split("\n\n").map(p => p.trim()).filter(Boolean);
+            if (!summaryObj || typeof summaryObj !== "object" || Object.keys(summaryObj).length === 0) {
+                const notesStr = typeof note?.notes === "string" ? note.notes : (note?.notes ? JSON.stringify(note.notes) : "");
+                const paragraphs = notesStr.split("\n\n").map(p => p.trim()).filter(Boolean);
                 summaryObj = {
                     consultation_overview: paragraphs[0] || "",
-                    chief_complaint: paragraphs[1] || appointment?.reason || "",
+                    chief_complaint: paragraphs[1] || appointment?.reason || visitData?.chief_complaints || "",
                     history_of_present_illness: paragraphs[2] || "",
-                    symptoms: note?.symptoms || "",
+                    symptoms: note?.symptoms || visitData?.chief_complaints || "",
                     assessment: paragraphs[3] || "",
                     treatment_plan: paragraphs[4] || "",
                     advice: rx?.advice || "",
@@ -819,12 +915,34 @@ app.get(
                 };
             }
 
+            if (visitData?.intake_vitals) {
+                const iv = visitData.intake_vitals;
+                summaryObj.vital_signs = {
+                    ...(summaryObj.vital_signs || {}),
+                    blood_pressure: iv.bp || iv.blood_pressure || iv.bloodPressure || summaryObj.vital_signs?.blood_pressure || "",
+                    heart_rate: iv.pulse || iv.heart_rate || iv.heartRate || summaryObj.vital_signs?.heart_rate || "",
+                    temperature: iv.temperature || iv.temp || summaryObj.vital_signs?.temperature || "",
+                    respiratory_rate: iv.respiratory_rate || iv.respiratoryRate || summaryObj.vital_signs?.respiratory_rate || "",
+                    oxygen_saturation: iv.spo2 || iv.oxygen_saturation || summaryObj.vital_signs?.oxygen_saturation || "",
+                    weight: iv.weight || summaryObj.vital_signs?.weight || "",
+                    height: iv.height || summaryObj.vital_signs?.height || "",
+                    blood_group: iv.bloodGroup || iv.blood_group || summaryObj.vital_signs?.blood_group || "",
+                    allergies: iv.allergies || summaryObj.vital_signs?.allergies || "",
+                };
+            }
+
             let parsedDiagnosis = [];
             if (note?.diagnosis) {
                 try {
-                    parsedDiagnosis = typeof note.diagnosis === 'string' && note.diagnosis.startsWith('[')
-                        ? JSON.parse(note.diagnosis)
-                        : String(note.diagnosis).split(', ').map(s => s.trim()).filter(Boolean);
+                    if (Array.isArray(note.diagnosis)) {
+                        parsedDiagnosis = note.diagnosis;
+                    } else if (typeof note.diagnosis === "object") {
+                        parsedDiagnosis = [JSON.stringify(note.diagnosis)];
+                    } else {
+                        parsedDiagnosis = typeof note.diagnosis === "string" && note.diagnosis.startsWith("[")
+                            ? JSON.parse(note.diagnosis)
+                            : String(note.diagnosis).split(", ").map(s => s.trim()).filter(Boolean);
+                    }
                 } catch (e) {
                     parsedDiagnosis = [String(note.diagnosis)];
                 }
@@ -839,10 +957,11 @@ app.get(
             const patientRecord = {
                 consultationId,
                 appointmentId: rawAppId,
-                patientId: patient?.patient_code || patientId,
+                patientId: patient?.patient_code || visitData?.hospital_patient_records?.hospital_patient_code || patientId,
                 patientName: patientName,
+                dateOfBirth: patientDob,
                 patientAge: age || patient?.age || null,
-                patientGender: patient?.gender || "Unknown",
+                patientGender: patient?.gender || visitData?.hospital_patient_records?.gender || "Unknown",
                 doctorName: doctorName,
                 clinicName: clinicName,
                 clinicAddress: clinicAddress,
@@ -895,11 +1014,29 @@ app.patch(
 
             const targetAppId = appUuid || rawAppId;
 
+            const nowIso = new Date().toISOString();
             if (isSupabaseConfigured && targetDb && targetAppId) {
                 await targetDb
                     .from("appointments")
-                    .update({ status: "completed", updated_at: new Date().toISOString() })
+                    .update({ status: "completed", updated_at: nowIso })
                     .eq("id", targetAppId);
+
+                const isUuidStr = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+                const conds = [`appointment_id.eq.${targetAppId}`];
+                if (isUuidStr(patientId)) {
+                    conds.push(`patient_id.eq.${patientId}`);
+                    conds.push(`hospital_patient_id.eq.${patientId}`);
+                }
+                await targetDb
+                    .from("patient_visits")
+                    .update({
+                        visit_stage: "completed",
+                        status: "completed",
+                        completed_at: nowIso,
+                        consultation_completed_at: nowIso,
+                        updated_at: nowIso
+                    })
+                    .or(conds.join(","));
             }
 
             return res.json({
@@ -936,6 +1073,7 @@ app.get(
             if (isSupabaseConfigured && targetDbRead) {
                 try {
                     let pData = null;
+                    let hprData = null;
                     if (isUuid(patientId)) {
                         const { data } = await targetDbRead
                             .from("patients")
@@ -952,23 +1090,67 @@ app.get(
                         pData = data;
                     }
 
-                    const matchedUuids = [...new Set([patientId, pData?.id, pData?.user_id].filter(Boolean))].filter(isUuid);
+                    if (!pData) {
+                        if (isUuid(patientId)) {
+                            const { data: hpr } = await targetDbRead
+                                .from("hospital_patient_records")
+                                .select("id, hospital_patient_code")
+                                .eq("id", patientId)
+                                .maybeSingle();
+                            hprData = hpr;
+                        } else {
+                            const { data: hpr } = await targetDbRead
+                                .from("hospital_patient_records")
+                                .select("id, hospital_patient_code")
+                                .eq("hospital_patient_code", patientId)
+                                .maybeSingle();
+                            hprData = hpr;
+                        }
+                    }
+
+                    const matchedUuids = [...new Set([patientId, pData?.id, pData?.user_id, hprData?.id].filter(Boolean))].filter(isUuid);
+
+                    // Fetch appointments for this patient
+                    let appIds = [];
+                    if (matchedUuids.length > 0) {
+                        const quoted = matchedUuids.map(id => `"${id}"`).join(",");
+                        const { data: apps } = await targetDbRead
+                            .from("appointments")
+                            .select("id")
+                            .or(`patient_id.in.(${quoted}),hospital_patient_id.in.(${quoted})`);
+                        if (apps) appIds = apps.map(a => a.id);
+                    }
 
                     let dbNotes = [];
                     let dbRxs = [];
 
+                    const noteOrs = [];
+                    const rxOrs = [];
+                    if (appIds.length > 0) {
+                        const quotedApps = appIds.map(id => `"${id}"`).join(",");
+                        noteOrs.push(`appointment_id.in.(${quotedApps})`);
+                        rxOrs.push(`appointment_id.in.(${quotedApps})`);
+                    }
                     if (matchedUuids.length > 0) {
+                        const quotedUuids = matchedUuids.map(id => `"${id}"`).join(",");
+                        noteOrs.push(`patient_id.in.(${quotedUuids})`);
+                        rxOrs.push(`patient_id.in.(${quotedUuids})`);
+                    }
+
+                    if (noteOrs.length > 0) {
                         const { data: notesData } = await targetDbRead
                             .from("consultation_notes")
                             .select("*")
-                            .in("patient_id", matchedUuids);
-                        if (notesData) dbNotes = notesData;
+                            .or(noteOrs.join(","));
+                        if (notesData) dbNotes = notesData.map(n => decryptRecord("consultation_notes", n));
+                    }
 
+                    if (rxOrs.length > 0) {
                         const { data: rxsData } = await targetDbRead
                             .from("prescriptions")
                             .select("*")
-                            .in("patient_id", matchedUuids);
-                        if (rxsData) dbRxs = rxsData;
+                            .or(rxOrs.join(","));
+                        if (rxsData) dbRxs = rxsData.map(r => decryptRecord("prescriptions", r));
                     }
 
                     if (dbNotes && dbNotes.length > 0) {
@@ -1012,7 +1194,7 @@ app.get(
                                 consultationDate: (note.created_at ? new Date(note.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) : new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })),
                                 consultationTime: new Date(note.created_at || Date.now()).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }),
                                 summary: summaryObj,
-                                diagnosis: note.diagnosis ? note.diagnosis.split(", ") : (summaryObj.diagnosis ? [summaryObj.diagnosis] : []),
+                                diagnosis: note.diagnosis ? (Array.isArray(note.diagnosis) ? note.diagnosis : (typeof note.diagnosis === "string" ? note.diagnosis.split(", ") : [String(note.diagnosis)])) : (summaryObj.diagnosis ? [summaryObj.diagnosis] : []),
                                 medications: rx.medicines || [],
                                 prescription: {
                                     medicines: rx.medicines || [],

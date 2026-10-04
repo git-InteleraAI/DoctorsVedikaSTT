@@ -85,6 +85,7 @@ class AuthController {
             const {
                 email,
                 password,
+                portal,
             } = req.body || {};
 
             if (
@@ -102,6 +103,7 @@ class AuthController {
                 await authService.login({
                     email,
                     password,
+                    portal,
                 });
 
             return res.status(200).json({

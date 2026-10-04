@@ -561,36 +561,73 @@ const ConsultationSummary = () => {
        Initial report
     ---------------------------------------------------------------------- */
 
+    const cleanDisplaySummaryText = (val, isOverview = false) => {
+        if (!val || typeof val !== "string") return val || "";
+        let text = val.trim();
+        let extractedSymptom = "";
+        if (text.includes("Reported Symptoms:")) {
+            const match = text.match(/Reported Symptoms:\s*([^|]+)/i);
+            if (match && match[1]) {
+                extractedSymptom = match[1].trim();
+            }
+        } else if (text.includes("|") && (text.includes("Patient Name:") || text.includes("Patient Gender:"))) {
+            const parts = text.split("|").map((p) => p.trim());
+            const symPart = parts.find((p) => p.toLowerCase().includes("symptom") || (!p.includes(":") && p.length < 40));
+            if (symPart) {
+                extractedSymptom = symPart.replace(/.*:\s*/, "").trim();
+            }
+        }
+
+        if (extractedSymptom) {
+            return isOverview
+                ? `Patient presented for clinical evaluation regarding ${extractedSymptom}. Comprehensive consultation conducted and treatment plan formulated.`
+                : extractedSymptom;
+        }
+
+        if (/Patient Name:|Patient Gender:|Patient Age:|Blood Group:/i.test(text) && text.length > 25) {
+            return isOverview
+                ? "Patient presented for general clinical consultation. Comprehensive evaluation conducted."
+                : "General Medical Evaluation";
+        }
+        return text;
+    };
+
     const initialReport = useMemo(() => {
+
+        const rawCc = firstAvailable(
+            rawSummary.chief_complaint,
+            rawSummary.chiefComplaint
+        );
+
+        const rawOverview = firstAvailable(
+            rawSummary.consultation_overview,
+            rawSummary.consultationOverview,
+            rawSummary.overview,
+            ""
+        );
+
+        const rawHpi = firstAvailable(
+            rawSummary.history_of_present_illness,
+            rawSummary.historyOfPresentIllness,
+            rawSummary.history
+        );
 
         return {
 
             chief_complaint:
-                firstAvailable(
-                    rawSummary.chief_complaint,
-                    rawSummary.chiefComplaint
-                ),
+                cleanDisplaySummaryText(rawCc, false),
 
             consultation_overview:
-                firstAvailable(
-                    rawSummary.consultation_overview,
-                    rawSummary.consultationOverview,
-                    rawSummary.overview,
-                    ""
-                ),
+                cleanDisplaySummaryText(rawOverview || (rawCc ? `Patient presented for clinical evaluation regarding ${cleanDisplaySummaryText(rawCc, false)}.` : ""), true),
 
             symptoms:
                 arrayValue(
                     rawSummary.symptoms ||
                     rawSummary.presenting_symptoms
-                ),
+                ).map(s => cleanDisplaySummaryText(s, false)),
 
             history_of_present_illness:
-                firstAvailable(
-                    rawSummary.history_of_present_illness,
-                    rawSummary.historyOfPresentIllness,
-                    rawSummary.history
-                ),
+                cleanDisplaySummaryText(rawHpi, false),
 
             past_medical_history: (() => {
                 const direct = arrayValue(
@@ -632,17 +669,102 @@ const ConsultationSummary = () => {
                     rawSummary.examinationFindings
                 ),
 
-            vital_signs:
-                rawSummary.vital_signs ||
-                rawSummary.vitalSigns ||
-                {
-                    blood_pressure: "",
-                    heart_rate: "",
-                    temperature: "",
-                    respiratory_rate: "",
-                    oxygen_saturation: "",
-                    weight: "",
-                },
+            vital_signs: {
+                blood_pressure:
+                    rawSummary.vital_signs?.blood_pressure ||
+                    rawSummary.vital_signs?.bp ||
+                    rawSummary.vitalSigns?.blood_pressure ||
+                    rawSummary.vitalSigns?.bp ||
+                    state.vital_signs?.blood_pressure ||
+                    state.vitals?.bloodPressure ||
+                    state.intake_vitals?.bloodPressure ||
+                    state.intake_vitals?.bp ||
+                    state.patient?.bloodPressure ||
+                    storedResult?.vital_signs?.blood_pressure ||
+                    storedResult?.vitals?.bloodPressure ||
+                    "",
+                heart_rate:
+                    rawSummary.vital_signs?.heart_rate ||
+                    rawSummary.vital_signs?.pulse ||
+                    rawSummary.vitalSigns?.heart_rate ||
+                    rawSummary.vitalSigns?.pulse ||
+                    state.vital_signs?.heart_rate ||
+                    state.vitals?.pulse ||
+                    state.intake_vitals?.pulse ||
+                    storedResult?.vital_signs?.heart_rate ||
+                    storedResult?.vitals?.pulse ||
+                    "",
+                temperature:
+                    rawSummary.vital_signs?.temperature ||
+                    rawSummary.vital_signs?.temp ||
+                    rawSummary.vitalSigns?.temperature ||
+                    rawSummary.vitalSigns?.temp ||
+                    state.vital_signs?.temperature ||
+                    state.vitals?.temperature ||
+                    state.intake_vitals?.temperature ||
+                    storedResult?.vital_signs?.temperature ||
+                    storedResult?.vitals?.temperature ||
+                    "",
+                respiratory_rate:
+                    rawSummary.vital_signs?.respiratory_rate ||
+                    rawSummary.vitalSigns?.respiratory_rate ||
+                    state.vital_signs?.respiratory_rate ||
+                    state.vitals?.respiratoryRate ||
+                    state.intake_vitals?.respiratoryRate ||
+                    storedResult?.vital_signs?.respiratory_rate ||
+                    storedResult?.vitals?.respiratoryRate ||
+                    "",
+                oxygen_saturation:
+                    rawSummary.vital_signs?.oxygen_saturation ||
+                    rawSummary.vital_signs?.spo2 ||
+                    rawSummary.vitalSigns?.oxygen_saturation ||
+                    rawSummary.vitalSigns?.spo2 ||
+                    state.vital_signs?.oxygen_saturation ||
+                    state.vitals?.spo2 ||
+                    state.intake_vitals?.spo2 ||
+                    storedResult?.vital_signs?.oxygen_saturation ||
+                    storedResult?.vitals?.spo2 ||
+                    "",
+                weight:
+                    rawSummary.vital_signs?.weight ||
+                    rawSummary.vitalSigns?.weight ||
+                    state.vital_signs?.weight ||
+                    state.vitals?.weight ||
+                    state.intake_vitals?.weight ||
+                    state.patient?.weight ||
+                    storedResult?.vital_signs?.weight ||
+                    storedResult?.vitals?.weight ||
+                    "",
+                height:
+                    rawSummary.vital_signs?.height ||
+                    rawSummary.vitalSigns?.height ||
+                    state.vital_signs?.height ||
+                    state.vitals?.height ||
+                    state.intake_vitals?.height ||
+                    storedResult?.vital_signs?.height ||
+                    storedResult?.vitals?.height ||
+                    "",
+                blood_group:
+                    rawSummary.vital_signs?.blood_group ||
+                    rawSummary.vitalSigns?.blood_group ||
+                    state.vital_signs?.blood_group ||
+                    state.vitals?.bloodGroup ||
+                    state.intake_vitals?.bloodGroup ||
+                    state.patient?.bloodGroup ||
+                    storedResult?.vital_signs?.blood_group ||
+                    storedResult?.vitals?.bloodGroup ||
+                    "",
+                allergies:
+                    rawSummary.vital_signs?.allergies ||
+                    rawSummary.vitalSigns?.allergies ||
+                    state.vital_signs?.allergies ||
+                    state.vitals?.allergies ||
+                    state.intake_vitals?.allergies ||
+                    state.patient?.allergies ||
+                    storedResult?.vital_signs?.allergies ||
+                    storedResult?.vitals?.allergies ||
+                    "",
+            },
 
             investigations:
                 arrayValue(
@@ -1284,13 +1406,32 @@ const ConsultationSummary = () => {
                 pdfUrl: activePdfUrl,
             };
 
-            sessionStorage.setItem(
-                `consultation-result-${resolvedPatientId}`,
-                JSON.stringify(finalSessionResult)
-            );
+            // Trigger queue transition to completed stage for staff portal live sync
+            const targetEncounterId = appointmentId || state?.visitId || resolvedPatientId || consultationRecord.consultationId;
+            if (targetEncounterId) {
+                try {
+                    const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
+                    await fetch(`${NODE_API_URL}/api/v1/queue/transition`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            visitId: targetEncounterId,
+                            targetStage: "completed"
+                        })
+                    });
+                    localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+                    window.dispatchEvent(new Event("storage"));
+                } catch (qErr) {
+                    console.warn("[ConsultationSummary] Save queue transition notice:", qErr.message);
+                }
+            }
 
+            setConsultationCompleted(true);
             setSaveSuccess(true);
-            setSaveMessage("✓ Consultation saved and medical PDF generated successfully.");
+            setSaveMessage("✓ Consultation saved and marked as completed successfully.");
             setShowSaveModal(true);
             setError("");
         } catch (saveError) {
@@ -1344,6 +1485,29 @@ const ConsultationSummary = () => {
                     });
                 } catch (appErr) {
                     console.warn("[ConsultationSummary] Appointment complete notice:", appErr);
+                }
+            }
+
+            // Trigger queue transition to completed stage for staff portal live sync
+            const targetEncounterId = appointmentId || resolvedPatientId || consId;
+            if (targetEncounterId) {
+                try {
+                    const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
+                    await fetch(`${NODE_API_URL}/api/v1/queue/transition`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            visitId: targetEncounterId,
+                            targetStage: "completed"
+                        })
+                    });
+                    localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+                    window.dispatchEvent(new Event("storage"));
+                } catch (qErr) {
+                    console.warn("[ConsultationSummary] Queue transition completion notice:", qErr.message);
                 }
             }
 
@@ -1899,6 +2063,36 @@ const ConsultationSummary = () => {
                                 onChange={(value) =>
                                     updateVital(
                                         "weight",
+                                        value
+                                    )
+                                }
+                            />
+
+                            <InputField
+                                label="Height"
+                                value={
+                                    report.vital_signs
+                                        ?.height ||
+                                    ""
+                                }
+                                onChange={(value) =>
+                                    updateVital(
+                                        "height",
+                                        value
+                                    )
+                                }
+                            />
+
+                            <InputField
+                                label="Blood Group"
+                                value={
+                                    report.vital_signs
+                                        ?.blood_group ||
+                                    ""
+                                }
+                                onChange={(value) =>
+                                    updateVital(
+                                        "blood_group",
                                         value
                                     )
                                 }
@@ -2799,6 +2993,18 @@ const ConsultationSummary = () => {
                                             <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
                                                 <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Weight</div>
                                                 <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.weight}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.height && String(report.vital_signs.height).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Height</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.height}</div>
+                                            </div>
+                                        )}
+                                        {report.vital_signs.blood_group && String(report.vital_signs.blood_group).trim() !== "" && (
+                                            <div style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                                                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Blood Group</div>
+                                                <div style={{ fontWeight: 700, color: "#082b68", fontSize: "0.9rem" }}>{report.vital_signs.blood_group}</div>
                                             </div>
                                         )}
                                     </div>

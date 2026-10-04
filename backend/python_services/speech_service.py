@@ -237,29 +237,12 @@ app = FastAPI(
 def normalize_language(language):
     """
     Convert frontend language values to Sarvam language codes.
-
-    Auto / unknown:
-        unknown
-
-    Telugu:
-        te-IN
-
-    Hindi:
-        hi-IN
-
-    English:
-        en-IN
-
-    For your consultation flow we normally keep this as
-    "unknown" so Sarvam can detect the language.
+    For consultation flow we use "unknown" to allow Sarvam to detect
+    multilingual code-mixed speech (Telugu + English / Telugish).
     """
-
     value = str(language or "").strip().lower()
 
-    if not value:
-        return "unknown"
-
-    if value in {
+    if not value or value in {
         "auto",
         "automatic",
         "unknown",
@@ -267,24 +250,20 @@ def normalize_language(language):
         "detected",
         "all",
         "all-languages",
+        "telugu",
+        "te",
+        "te-in",
+        "telugu+english",
+        "telugu-english",
+        "telugu (english)",
     }:
         return "unknown"
 
     mapping = {
-        "telugu": "te-IN",
-        "te": "te-IN",
-        "te-in": "te-IN",
-        "telugu+english": "te-IN",
-        "telugu-english": "te-IN",
-        "telugu (english)": "te-IN",
-
         "hindi": "hi-IN",
         "hi": "hi-IN",
         "hi-in": "hi-IN",
         "hindi+english": "hi-IN",
-        "hindi-english": "hi-IN",
-        "hindi (english)": "hi-IN",
-
         "english": "en-IN",
         "en": "en-IN",
         "en-in": "en-IN",
@@ -297,23 +276,173 @@ def normalize_language(language):
 
 
 # ============================================================
-# TEXT HELPERS
+# TEXT HELPERS & CODE-MIXED RESTORATION
 # ============================================================
-
-UNWANTED_SCRIPT_STATIC = re.compile(r'[\u0980-\u09FF\u0B00-\u0B7F\u0A80-\u0AFF\u0A00-\u0A7F\u0D80-\u0DFF]+')
+UNWANTED_SCRIPT_STATIC = re.compile(r'[\u0B80-\u0BFF\u0980-\u09FF\u0B00-\u0B7F\u0A80-\u0AFF\u0A00-\u0A7F\u0D80-\u0DFF।॥]+')
 REPETITIVE_WORDS = re.compile(r'\b(\w+)(?:\s+\1){2,}\b', re.IGNORECASE)
+
+TELUGU_TO_ENGLISH_MAP = {
+    # Greetings & Common Expressions
+    "గుడ్ మార్నింగ్": "Good morning",
+    "గుడ్ ఈవినింగ్": "Good evening",
+    "గుడ్ ఆఫ్టర్నూన్": "Good afternoon",
+    "హ్యావ్ ఏ సీట్": "have a seat",
+    "థాంక్యూ": "Thank you",
+    "థాంక్స్": "Thanks",
+    "ధ్యాంక్స్": "Thanks",
+    "యు ఆర్ వెల్కమ్": "You're welcome",
+    "వెల్కమ్": "You're welcome",
+    "వెల్‌కమ్": "You're welcome",
+    "టేక్ కేర్": "Take care",
+    "ఓకే": "Okay",
+    "ఒకే": "Okay",
+    "హలో": "Hello",
+    "ఆమామ్": "అవును",
+
+    # Roles
+    "డాక్టర్": "Doctor",
+    "డాక్టరు": "Doctor",
+    "పేషెంట్": "Patient",
+
+    # Symptoms, Organs & Body Parts
+    "అపెండెక్స్": "appendix",
+    "స్టమక్ పెయిన్": "stomach pain",
+    "స్టమక్": "stomach",
+    "అబ్డామెన్": "abdomen",
+    "అబ్డామ్": "abdomen",
+    "లవర్ అబ్డామెన్": "lower abdomen",
+    "లవర్ అబ్డామ్": "lower abdomen",
+    "లోయర్ అబ్డామెన్": "lower abdomen",
+    "లోయర్ అబ్డామ్": "lower abdomen",
+    "అప్పర్ అబ్డామెన్": "upper abdomen",
+    "అప్పర్ అబ్డామ్": "upper abdomen",
+    "అప్పర్": "upper",
+    "వర్టిఫికేషన్": "verification",
+    "సెటిఫికేషన్": "certification",
+    "త్రోట్ పెయిన్": "throat pain",
+    "త్రోట్": "throat",
+    "స్వాలో": "Swallow",
+    "స్వాలోయింగ్": "swallowing",
+    "డిఫికల్టీ": "difficulty",
+    "మైల్డ్ ఫీవర్": "mild fever",
+    "హై ఫీవర్": "high fever",
+    "ఫీవర్": "fever",
+    "కోల్డ్": "cold",
+    "కాఫ్": "cough",
+    "నోస్ బ్లాక్": "Nose block",
+    "నేసల్ కాంజెషన్": "nasal congestion",
+    "వాటరీ డిశ్చార్జ్": "watery discharge",
+    "బ్రీథింగ్ ప్రాబ్లమ్": "breathing problem",
+    "బ్రీథింగ్ డిఫికల్టీ": "breathing difficulty",
+    "బ్రీథింగ్": "breathing",
+    "ఇయర్ పైన్": "ear pain",
+    "ఇయర్ పెయిన్": "ear pain",
+    "రిడ్యూస్డ్ హియరింగ్": "reduced hearing",
+    "హియరింగ్": "hearing",
+    "ఫుల్‌నెస్": "fullness",
+    "నార్మల్": "normal",
+    "వైటల్స్": "vitals",
+    "బిపి": "BP",
+    "బీపీ": "BP",
+    "పల్స్ రేట్": "pulse rate",
+    "పల్స్": "pulse",
+    "ఎస్పిఓ2": "SpO₂",
+    "ఎస్ పి ఓ 2": "SpO₂",
+    "టెంపరేచర్": "temperature",
+    "స్టేబుల్": "stable",
+    "సీరియస్ ప్రాబ్లమ్": "serious problem",
+    "సీరియస్": "Serious",
+    "ప్రాబ్లం": "problem",
+    "ప్రాబ్లమ్": "problem",
+    "సింప్టమ్స్": "symptoms",
+    "అప్పర్ రెస్పిరేటరీ": "upper respiratory",
+    "ఇన్ఫెక్షన్": "infection",
+    "ఇన్‌ఫెక్షన్": "infection",
+    "ఎగ్జామిన్": "examine",
+    "రేడ్‌నెస్": "redness",
+    "రెడ్‌నెస్": "redness",
+    "ఇన్ఫ్లమేషన్": "inflammation",
+    "ఇన్‌ఫ్లమేషన్": "inflammation",
+    "చెస్ట్ పెయిన్": "chest pain",
+    "హెడేక్": "headache",
+
+    # Medicines & Treatments
+    "పారాసిటమాల్": "Paracetamol",
+    "పారాసిటమోల్": "Paracetamol",
+    "డోలో 650": "Dolo 650",
+    "డోలో": "Dolo",
+    "అజిత్రోమైసిన్": "Azithromycin",
+    "మోంటైర్": "Montair",
+    "ప్యాంటోసిడ్": "Pantocid",
+    "సెటిరిజిన్": "Cetirizine",
+    "అమోక్సిసిలిన్": "Amoxicillin",
+    "క్రాసిన్": "Crocin",
+    "ఆస్ప్రిన్": "Aspirin",
+    "మెడిసిన్స్": "medicines",
+    "మెడిసిన్": "medicine",
+    "సలైన్ నేసల్ స్ప్రే": "saline nasal spray",
+    "నేసల్ స్ప్రే": "nasal spray",
+    "సలైన్": "saline",
+    "స్ప్రే": "spray",
+    "టాబ్లెట్స్": "tablets",
+    "టాబ్లెట్": "tablet",
+    "ఆఫ్టర్ ఫుడ్": "after food",
+    "బిఫోర్ ఫుడ్": "before food",
+    "యాంటీబయోటిక్": "Antibiotic",
+    "యాంటిబయాటిక్": "Antibiotic",
+    "సపోర్టివ్ కేర్": "supportive care",
+    "ప్రికాషన్స్": "precautions",
+    "సాల్ట్ వాటర్ గార్గ్లింగ్": "salt-water gargling",
+    "గార్గ్లింగ్": "gargling",
+    "వార్మ్ వాటర్": "warm water",
+    "కోల్డ్ డ్రింక్స్": "cold drinks",
+    "రెస్ట్": "rest",
+    "రివ్యూ": "review",
+    "అర్జెంట్ మెడికల్ కేర్": "urgent medical care",
+    "అర్జెంట్": "urgent",
+    "మెడికల్ కేర్": "medical care",
+    "హాస్పిటల్": "hospital",
+}
+
+def restore_codemixed_medical_text(text: str) -> str:
+    if not text:
+        return ""
+
+    result = str(text)
+
+    # 1. Replace using strict unicode word boundaries (avoids sub-word corruption)
+    sorted_keys = sorted(TELUGU_TO_ENGLISH_MAP.keys(), key=len, reverse=True)
+    for k in sorted_keys:
+        v = TELUGU_TO_ENGLISH_MAP[k]
+        pattern = r'(?<![\w\u0C00-\u0C7F])' + re.escape(k) + r'(?![\w\u0C00-\u0C7F])'
+        result = re.sub(pattern, v, result, flags=re.IGNORECASE)
+
+    # 2. Fix medical units & measurements
+    result = re.sub(r'(\d+)\s*(ఎంజి|మిగ్రా)', r'\1 mg', result)
+    result = re.sub(r'(\d+/\d+)\s*(ఎమ్ఎమ్హెచ్జి)', r'\1 mmHg', result)
+
+    # 3. Capitalize Doctor, Patient, BP, SpO2, Paracetamol, etc.
+    result = re.sub(r'\b(doctor)\b', 'Doctor', result, flags=re.IGNORECASE)
+    result = re.sub(r'\b(paracetamol)\b', 'Paracetamol', result, flags=re.IGNORECASE)
+    result = re.sub(r'\b(bp)\b', 'BP', result, flags=re.IGNORECASE)
+    result = re.sub(r'\b(spo2)\b', 'SpO₂', result, flags=re.IGNORECASE)
+
+    # 4. Clean spacing
+    result = " ".join(result.split())
+    return result
+
 
 def clean_text(text):
     """
     Normalize text, keeping English/Telugu/Hindi medical speech clean
-    while stripping Bengali/Oriya static artifacts and repetitive token loops.
+    while stripping non-Telugu/English static artifacts and restoring Telugu-scripted English words.
     """
     if text is None:
         return ""
 
     s = str(text).strip()
 
-    # Strip unexpected static scripts (Bengali, Oriya, Gujarati, Punjabi)
+    # Strip unexpected static scripts (Bengali, Oriya, Gujarati, Punjabi, Tamil, Devanagari danda)
     s = UNWANTED_SCRIPT_STATIC.sub(' ', s)
 
     # Remove single word loops repeated 3+ times (e.g. "Okay Okay Okay Okay")
@@ -321,6 +450,9 @@ def clean_text(text):
 
     # Strip known silence phrases
     s = re.sub(r'\b(subtitles\s+by|thank\s+you\s+for\s+watching)\b', '', s, flags=re.IGNORECASE)
+
+    # Restore code-mixed Telugu + English medical terms & words to English script
+    s = restore_codemixed_medical_text(s)
 
     # Normalize remaining spaces
     s = " ".join(s.split())
@@ -364,6 +496,8 @@ def normalize_for_comparison(text):
 
 # Known STT silence hallucination regex patterns
 HALLUCINATION_PATTERNS = [
+    r'\b(battery|oneplus|iphone|galaxy|nokia|xiaomi|redmi|realme)\s+\d+\s*(pro|max|plus|lite)?\b',
+    r'\b(north\s+of\s+(everything|all|whatever))\b',
     r'^(আচ্ছা\s*)+$',                   # Bengali "accha accha"
     r'^(ஆ\s*சரி\s*)+$',                 # Tamil "aa sari"
     r'^(હા\s*)+$',                      # Gujarati "haa"
@@ -373,14 +507,14 @@ HALLUCINATION_PATTERNS = [
     r'^(subtitles\s*by\s*.*)+$',
     r'^(thank\s*you\s*\.*\s*)+$',
     r'^(amara\s*)+$',                  # Oriya "amara"
-    r'^[.\s,\-!?]+$',                   # Punctuation only
+    r'^[।॥|\s.,\-!?]+$',                # Danda or punctuation only
 ]
 
 # Random unrequested scripts when silence is misdetected as rare regional languages
-RANDOM_SILENCE_SCRIPTS = re.compile(r'[\u0B00-\u0B7F\u0A80-\u0AFF\u0A00-\u0A7F\u0D80-\u0DFF]')
+RANDOM_SILENCE_SCRIPTS = re.compile(r'[\u0B00-\u0B7F\u0980-\u09FF\u0B00-\u0B7F\u0A80-\u0AFF\u0A00-\u0A7F\u0D80-\u0DFF।॥]')
 
 
-def is_audio_silent(wav_path: Path, min_rms: float = 25.0) -> bool:
+def is_audio_silent(wav_path: Path, min_rms: float = 45.0) -> bool:
     """
     Returns True if the 16kHz WAV file contains only silence or background static.
     This prevents sending silent/static audio to STT models which causes hallucinations.
@@ -423,6 +557,9 @@ def is_hallucinated_transcript(text: str) -> bool:
     if len(clean) <= 1:
         return True
 
+    if re.match(r'^[।॥|\s.,\-!?]+$', clean):
+        return True
+
     # Check for single word repeated 3+ times (e.g. "আচ্ছা আচ্ছা আচ্ছা")
     words = clean.split()
     if len(words) >= 3 and len(set(w.lower() for w in words)) == 1:
@@ -441,6 +578,7 @@ def is_hallucinated_transcript(text: str) -> bool:
         return True
 
     return False
+
 
 
 # ============================================================
@@ -593,6 +731,8 @@ def extract_recent_audio(
     cmd_convert = [
         ffmpeg_cmd,
         "-y",
+        "-err_detect", "ignore_err",
+        "-fflags", "+genpts+discardcorrupt",
         "-i", str(source_path),
         "-vn",
         "-ac", "1",
@@ -608,7 +748,7 @@ def extract_recent_audio(
         text=True,
     )
 
-    if res_convert.returncode != 0 or not temp_pcm_path.exists():
+    if not temp_pcm_path.exists() or temp_pcm_path.stat().st_size == 0:
         raise RuntimeError("FFmpeg failed to convert WebM to PCM: " + (res_convert.stderr[-500:] if res_convert.stderr else "Unknown error"))
 
     try:
@@ -1061,6 +1201,7 @@ async def live_transcription(
 
     previous_live_text = ""
     current_speaker = "Doctor"
+    is_paused = False
 
     latest_language = (
         ""
@@ -1158,6 +1299,21 @@ async def live_transcription(
                         "type": "pong",
                     })
 
+                    continue
+
+                # -------------------------------------------------
+                # PAUSE & RESUME
+                # -------------------------------------------------
+
+                if message_type == "pause":
+                    print("[Speech] Pause message received. Pausing session.")
+                    is_paused = True
+                    continue
+
+                if message_type == "resume":
+                    print("[Speech] Resume message received. Resuming session.")
+                    is_paused = False
+                    previous_live_text = ""
                     continue
 
                 # -------------------------------------------------
@@ -1402,6 +1558,10 @@ async def live_transcription(
             # =================================================
 
             if message.get("bytes") is not None:
+
+                if is_paused:
+                    print("[Speech] Ignoring audio chunk because session is paused.")
+                    continue
 
                 audio_bytes = message[
                     "bytes"

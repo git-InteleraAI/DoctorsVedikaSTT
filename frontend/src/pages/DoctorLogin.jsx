@@ -13,20 +13,47 @@ import iconDoctor from "../assets/doctor_bg.png";
 import iconEmail from "../assets/email.png";
 import iconPassword from "../assets/password.png";
 
-const DoctorLogin = () => {
+const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
   const navigate = useNavigate();
   const { login } = useAuth();
 
+  const [activePortal, setActivePortal] = useState(initialPortal);
   const [formData, setFormData] = useState({
-    email: "",
-    password: "",
+    email: activePortal === "admin" ? "admin@doctorsvedika.com" : "",
+    password: activePortal === "admin" ? "Admin@123456" : "",
   });
+
+  React.useEffect(() => {
+    const existing = authService.getCurrentDoctor();
+    if (existing && authService.isAuthenticated()) {
+      const caps = existing.capabilities || {};
+      const role = existing.role || (caps.staff ? "staff" : caps.hospitalAdmin ? "hospital_admin" : "doctor");
+      let targetRoute = "/dashboard";
+      if (role === "hospital_admin" || role === "admin") {
+        targetRoute = "/admin";
+      } else if (role === "staff") {
+        targetRoute = "/staff";
+      }
+      navigate(targetRoute, { replace: true });
+    }
+  }, [navigate]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  const handlePortalSwitch = (portal) => {
+    setActivePortal(portal);
+    setErrorMsg("");
+    setSuccessMsg("");
+    if (portal === "admin") {
+      setFormData({ email: "admin@doctorsvedika.com", password: "Admin@123456" });
+    } else {
+      setFormData({ email: "", password: "" });
+    }
+  };
 
   const handleChange = (e) => {
     setFormData({
@@ -47,18 +74,27 @@ const DoctorLogin = () => {
     setErrorMsg("");
 
     try {
-      const res = await login(formData.email, formData.password);
+      const res = await login(formData.email, formData.password, activePortal);
       if (res && res.success) {
-        setSuccessMsg("Welcome back, Doctor! Redirecting...");
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 1000);
+        const userObj = res.doctor || authService.getCurrentDoctor() || {};
+        const caps = userObj.capabilities || {};
+        const role = userObj.role || (caps.staff ? "staff" : caps.hospitalAdmin ? "hospital_admin" : "doctor");
+
+        let targetRoute = "/dashboard";
+        if (role === "hospital_admin" || role === "admin" || activePortal === "admin") {
+          targetRoute = "/admin";
+        } else if (role === "staff" || activePortal === "staff") {
+          targetRoute = "/staff";
+        }
+
+        setLoading(false);
+        navigate(targetRoute, { replace: true });
       } else {
-        setErrorMsg(res?.message || "Invalid credentials. Please try again.");
+        setErrorMsg(res?.message || "Invalid credentials. Please check your email and password.");
+        setLoading(false);
       }
     } catch (err) {
-      setErrorMsg(err.message || "Unable to connect to backend server.");
-    } finally {
+      setErrorMsg(err.message || "Unable to connect to authentication service.");
       setLoading(false);
     }
   };
@@ -159,9 +195,78 @@ const DoctorLogin = () => {
 
         {/* RIGHT LOGIN CARD */}
         <div className="auth-form-card login-card">
+          {/* Portal Selector Tabs */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "20px", background: "#f1f5f9", padding: "6px", borderRadius: "14px" }}>
+            <button
+              type="button"
+              onClick={() => handlePortalSwitch("admin")}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "none",
+                fontSize: "0.8rem",
+                fontWeight: "700",
+                cursor: "pointer",
+                transition: "all 0.2s",
+                background: activePortal === "admin" ? "#0D9488" : "transparent",
+                color: activePortal === "admin" ? "#ffffff" : "#64748b",
+                boxShadow: activePortal === "admin" ? "0 2px 6px rgba(13,148,136,0.3)" : "none"
+              }}
+            >
+              🏥 Admin Portal
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePortalSwitch("staff")}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "none",
+                fontSize: "0.8rem",
+                fontWeight: "700",
+                cursor: "pointer",
+                transition: "all 0.2s",
+                background: activePortal === "staff" ? "#0D9488" : "transparent",
+                color: activePortal === "staff" ? "#ffffff" : "#64748b",
+                boxShadow: activePortal === "staff" ? "0 2px 6px rgba(13,148,136,0.3)" : "none"
+              }}
+            >
+              👔 Staff Desk
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePortalSwitch("doctor")}
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "none",
+                fontSize: "0.8rem",
+                fontWeight: "700",
+                cursor: "pointer",
+                transition: "all 0.2s",
+                background: activePortal === "doctor" ? "#0D9488" : "transparent",
+                color: activePortal === "doctor" ? "#ffffff" : "#64748b",
+                boxShadow: activePortal === "doctor" ? "0 2px 6px rgba(13,148,136,0.3)" : "none"
+              }}
+            >
+              🩺 Doctor Portal
+            </button>
+          </div>
+
           <div className="auth-card-header">
-            <h2>Welcome Back</h2>
-            <p>Sign in to continue to your medical dashboard</p>
+            <h2>
+              {activePortal === "admin" ? "Hospital Admin Sign In" :
+               activePortal === "staff" ? "Staff Desk Sign In" :
+               "Doctor Portal Sign In"}
+            </h2>
+            <p>
+              {activePortal === "admin" ? "Sign in to manage hospital members & tenant operations" :
+               activePortal === "staff" ? "Sign in to manage walk-in patients & live queue" :
+               "Sign in to access your clinical workspace & consultations"}
+            </p>
           </div>
 
           {errorMsg && (

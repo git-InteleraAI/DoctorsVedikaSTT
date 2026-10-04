@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const API = import.meta.env.VITE_NODE_API_URL;
+const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
 
 const formatText = (val) => {
     if (val === null || val === undefined) return "";
