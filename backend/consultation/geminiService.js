@@ -309,28 +309,6 @@ function normalizeSummaryResponse(
         const lowerT = fullTranscriptText.toLowerCase();
         const existingNames = meds.map((m) => (typeof m === "string" ? m : (m?.name || "")).toLowerCase()).join(" ");
 
-        // Indic & English Paracetamol detection (e.g. "పారాసిప్మాల్", "పారాసిటమాల్", "paracet", "parasipmol")
-        if (/పారాసిప్మాల్|పారాసిటమాల్|paracet|parasipmol|dolo|crocin/i.test(lowerT) && !existingNames.includes("paracetamol") && !existingNames.includes("dolo") && !existingNames.includes("crocin")) {
-            meds.push({
-                name: "Paracetamol 650 mg",
-                dosage: "1 Tablet",
-                frequency: "1-0-1",
-                duration: "3 Days",
-                instructions: "Take after food for fever / body ache"
-            });
-        }
-
-        // Indic & English Pan 40 / Pantoprazole detection (e.g. "ప్యాన్", "పాన్", "pan tablet", "pantoprazole", "pantocid")
-        if (/ప్యాన్|పాన్|pan tablet|pantoprazole|pantocid|panto/i.test(lowerT) && !existingNames.includes("pan") && !existingNames.includes("panto")) {
-            meds.push({
-                name: "Pan 40 (Pantoprazole 40 mg)",
-                dosage: "1 Tablet",
-                frequency: "1-0-0",
-                duration: "5 Days",
-                instructions: "Take 30 mins before breakfast on empty stomach"
-            });
-        }
-
         return meds;
     })();
 
@@ -601,7 +579,8 @@ CLINICAL DOCUMENTATION GUIDELINES
    - CORRECT ALL MISHEARD PHARMACEUTICAL NAMES to standard clinical drug names.
 
 5. STRICT ANTI-HALLUCINATION & FACTUAL GROUNDING PROTOCOL:
-   - Extract symptoms, complaints, diagnoses, vitals, and treatments ONLY if explicitly spoken in the transcript or provided in prefilled intake data.
+   - Do not infer or add information that is not explicitly supported by the transcript. If information is absent, return null/Not mentioned.
+   - Extract symptoms, complaints, diagnoses, vitals, and treatments ONLY if explicitly spoken in the transcript or provided in explicitly recorded clinical intake data.
    - NEVER INVENT or hallucinate unmentioned symptoms (e.g. DO NOT output "vomiting", "chest pain", "diarrhea", or "shortness of breath" unless specifically spoken in the conversation).
    - RED FLAGS PROTOCOL: "red_flags" MUST be an empty array [] unless explicit red flags or emergency warning symptoms were specifically mentioned or warned by the doctor in the conversation. NEVER populate generic or default emergency symptoms (such as "chest pain", "shortness of breath", "severe abdominal pain", or "unexplained weight loss") into "red_flags" if they were not discussed.
    - SILENCE & MINIMAL TRANSCRIPT HANDLING: If the transcript contains only silence, background noise, or basic greetings (e.g. "Okay Doctor, thank you"), leave unmentioned fields as empty strings "" or empty arrays [].

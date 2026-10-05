@@ -3,8 +3,10 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 
 
+import { getApiBaseUrl } from "../utils/apiConfig";
+
 const PYTHON_WS_URL = import.meta.env.VITE_PYTHON_WS_URL;
-const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "";
+const NODE_API_URL = getApiBaseUrl();
 
 
 const PROCESSING_STEPS = [
@@ -83,7 +85,7 @@ const Consultation = () => {
     };
 
     useEffect(() => {
-        const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+        const NODE_API_URL = getApiBaseUrl();
         const token = localStorage.getItem("token") || localStorage.getItem("sb-access-token");
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -148,7 +150,7 @@ const Consultation = () => {
         const targetEncounterId = visitId || routeId || appointmentId;
         if (targetEncounterId) {
             const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token") || localStorage.getItem("sb-access-token");
-            const nodeApiBase = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+            const nodeApiBase = getApiBaseUrl();
 
             const fetchVisitInfo = () => {
                 fetch(`${nodeApiBase}/api/v1/queue/visit/${targetEncounterId}`, {
@@ -1159,7 +1161,7 @@ const Consultation = () => {
                 // Call backend start-recording endpoint for authoritative backend timestamp
                 const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token") || localStorage.getItem("sb-access-token");
                 const targetEncounterId = visitId || routeId || appointmentId;
-                const nodeApiBase = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+                const nodeApiBase = getApiBaseUrl();
 
                 if (targetEncounterId) {
                     fetch(`${nodeApiBase}/api/v1/queue/start-recording`, {

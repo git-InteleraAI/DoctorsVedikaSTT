@@ -2,13 +2,15 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import vedikaLogo from "../assets/vedika_logo.png";
 
+import { getApiBaseUrl } from "../utils/apiConfig";
+
 export default function AuthModal({ isOpen, onClose }) {
   const navigate = useNavigate();
 
   if (!isOpen) return null;
 
   const handleGoogleSignIn = () => {
-    const apiBase = import.meta.env.VITE_NODE_API_URL || "";
+    const apiBase = getApiBaseUrl();
     const redirectUrl = encodeURIComponent(window.location.origin + "/auth/callback");
     window.location.href = `${apiBase}/api/auth/google?redirect_to=${redirectUrl}`;
   };

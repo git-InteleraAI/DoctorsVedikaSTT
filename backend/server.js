@@ -39,7 +39,27 @@ process.on("uncaughtException", (err) => {
     console.error("[Process Resilience] Uncaught Exception:", err);
 });
 
-app.use(cors());
+const allowedCorsOrigins = [
+    "https://15-252-121-221.sslip.io",
+    "http://15-252-121-221.sslip.io",
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000"
+];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedCorsOrigins.includes(origin) || (origin && origin.endsWith(".sslip.io"))) {
+            callback(null, true);
+        } else {
+            callback(new Error("CORS policy origin not allowed"));
+        }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Portal-Context", "X-Requested-With"]
+}));
 app.use(express.json({ limit: "20mb" }));
 
 // =====================================================
@@ -971,9 +991,10 @@ app.get(
                 diagnosis: parsedDiagnosis,
                 medications: rx?.medicines || [],
                 prescription: {
-                    medicines: rx?.medicines || [],
-                    advice: rx?.advice || summaryObj.advice || "",
-                    follow_up_date: rx?.follow_up_date || summaryObj.follow_up || ""
+                    medicines: rx?.medicines || summaryObj.medications_discussed || [],
+                    advice: rx?.advice || summaryObj.advice || summaryObj.treatment_plan || "",
+                    follow_up_date: rx?.follow_up_date || note?.follow_up_date || summaryObj.follow_up || summaryObj.follow_up_date || "",
+                    follow_up_instructions: rx?.follow_up_instructions || note?.follow_up_instructions || summaryObj.follow_up_instructions || ""
                 }
             };
 

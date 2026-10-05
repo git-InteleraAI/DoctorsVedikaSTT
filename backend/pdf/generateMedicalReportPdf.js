@@ -197,7 +197,9 @@ function renderPdfToStream(patientRecord, stream) {
     const diffDiagnosis = getFirst(s.differential_diagnosis, s.differentialDiagnosis);
     const treatmentPlan = getFirst(s.treatment_plan, s.treatmentPlan);
     const advice = getFirst(patientRecord.prescription?.advice, s.advice, s.general_advice, s.generalAdvice);
-    const followUp = getFirst(patientRecord.prescription?.follow_up_date, s.follow_up, s.followUp);
+    const followUpDate = getFirst(patientRecord.prescription?.follow_up_date, s.follow_up_date, s.follow_up, s.followUp);
+    const followUpInst = getFirst(patientRecord.prescription?.follow_up_instructions, s.follow_up_instructions, s.followUpInstructions);
+    const followUp = [followUpDate, followUpInst].filter(hasValue).join(" — ");
     const doctorNotes = getFirst(s.doctor_notes, s.doctorNotes, s.notes, s.clinical_notes, s.clinicalNotes);
     const redFlags = getFirst(s.red_flags, s.redFlags);
 

@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
-import "../index.css";
+import { getApiBaseUrl } from "../utils/apiConfig";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = getApiBaseUrl();
 
 const Patients = () => {
     const navigate = useNavigate();
@@ -687,13 +687,17 @@ const Patients = () => {
                                                             <i className="fa-solid fa-file-medical"></i> View Record
                                                         </button>
                                                     </>
-                                                ) : (
+                                                ) : visit.visitStage === "waiting" ? (
                                                     <button
                                                         onClick={() => startConsultation(visit)}
                                                         style={{ background: "#08AEB8", color: "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
                                                     >
                                                         Start Consultation <i className="fa-solid fa-arrow-right" />
                                                     </button>
+                                                ) : (
+                                                    <span style={{ fontSize: "0.82rem", color: "#64748b", fontStyle: "italic", background: "#f1f5f9", padding: "6px 12px", borderRadius: "6px" }}>
+                                                        Requires Queue Check-In
+                                                    </span>
                                                 )}
                                                 <button
                                                     onClick={() => setDeleteModal({

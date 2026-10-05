@@ -4,9 +4,9 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
 import "./Appointments.css";
-import "../index.css";
+import { getApiBaseUrl } from "../utils/apiConfig";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = getApiBaseUrl();
 
 export default function Appointments() {
     const navigate = useNavigate();

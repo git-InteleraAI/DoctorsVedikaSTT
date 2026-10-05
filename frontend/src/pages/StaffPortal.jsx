@@ -2,11 +2,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
-import "../index.css";
+import { getApiBaseUrl, getApiV1Url } from "../utils/apiConfig";
 
-const API_BASE = import.meta.env.VITE_NODE_API_URL
-  ? `${import.meta.env.VITE_NODE_API_URL}/api/v1`
-  : "http://localhost:5000/api/v1";
+const API_BASE = getApiV1Url();
 
 export default function StaffPortal() {
   const navigate = useNavigate();
@@ -887,7 +885,7 @@ export default function StaffPortal() {
     }
     setPwdLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_NODE_API_URL || "http://localhost:5000"}/api/auth/change-password`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/auth/change-password`, {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify({ currentPassword: pwdCurrent, newPassword: pwdNew })

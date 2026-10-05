@@ -3,9 +3,9 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
 import vedikaLogo from "../assets/vedika_logo.png";
-import "../index.css";
+import { getApiV1Url } from "../utils/apiConfig";
 
-const API_BASE = import.meta.env.VITE_NODE_API_URL ? `${import.meta.env.VITE_NODE_API_URL}/api/v1` : "http://localhost:5000/api/v1";
+const API_BASE = getApiV1Url();
 
 export default function HospitalAdmin() {
     const navigate = useNavigate();

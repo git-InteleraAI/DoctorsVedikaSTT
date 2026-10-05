@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import "./ConsultationSummary.css";
+import { getApiBaseUrl } from "../utils/apiConfig";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = getApiBaseUrl();
 
 /*
 |--------------------------------------------------------------------------
@@ -64,8 +64,7 @@ const durationOptions = [
     "3 Months",
 ];
 
-const NODE_API_URL =
-    import.meta.env.VITE_NODE_API_URL;
+const NODE_API_URL = getApiBaseUrl();
 
 const FALLBACK_TEXT =
     "Not documented in this consultation.";

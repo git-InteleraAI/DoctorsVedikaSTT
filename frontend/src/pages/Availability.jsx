@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
-import "../index.css";
+import { getApiBaseUrl } from "../utils/apiConfig";
 
-const API = import.meta.env.VITE_NODE_API_URL || "http://localhost:5000";
+const API = getApiBaseUrl();
 
 const DAYS = [
     { key: "Monday", label: "Monday" },
