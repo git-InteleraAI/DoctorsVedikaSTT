@@ -520,55 +520,58 @@ router.get("/patients/:id/history", requirePermission("patients.view"), async (r
 router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
     try {
         const db = getSupabaseClient();
-        if (!db) {
-            return res.json({ success: true, doctors: [] });
-        }
+        if (!db) return res.json({ success: true, doctors: [] });
 
         const hospitalId = req.context.hospitalId;
-        if (!hospitalId) {
-            return res.json({ success: true, doctors: [] });
-        }
+        if (!hospitalId) return res.json({ success: true, doctors: [] });
 
-        // 1. Fetch active doctor memberships for this hospital
+        // 1. Fetch hospital members (case-insensitive role check / any status)
         const { data: members, error: memErr } = await db
             .from("hospital_members")
             .select("id, doctor_id, user_id, role, status")
-            .eq("hospital_id", hospitalId)
-            .eq("role", "doctor")
-            .eq("status", "active");
+            .eq("hospital_id", hospitalId);
 
-        if (memErr) {
-            console.warn("[Staff API /doctors] Member query error:", memErr.message);
-        }
+        if (memErr) console.warn("[Staff API /doctors] Member query error:", memErr.message);
 
-        if (!members || members.length === 0) {
-            return res.json({ success: true, doctors: [] });
-        }
+        const doctorMembers = (members || []).filter(m => {
+            const r = String(m.role || "").toLowerCase();
+            const s = String(m.status || "").toLowerCase();
+            return (r === "doctor" || r === "admin" || r === "owner" || !r) && (s === "active" || s === "" || s === "approved");
+        });
 
-        const docIdsFromMembers = members.map(m => m.doctor_id).filter(Boolean);
-        const userIdsFromMembers = members.map(m => m.user_id).filter(Boolean);
+        const docIdsFromMembers = doctorMembers.map(m => m.doctor_id).filter(Boolean);
+        const userIdsFromMembers = doctorMembers.map(m => m.user_id).filter(Boolean);
 
+        // 2. Fetch doctors directly linked to this hospital in doctors table
+        const { data: directDocs } = await db
+            .from("doctors")
+            .select("*")
+            .eq("hospital_id", hospitalId);
+
+        // 3. Fetch doctors matching member IDs if any (fixing PostgREST .or() syntax without quotes)
         let memberDocRows = [];
         if (docIdsFromMembers.length > 0 || userIdsFromMembers.length > 0) {
             let docQuery = db.from("doctors").select("*");
             if (docIdsFromMembers.length > 0 && userIdsFromMembers.length > 0) {
-                docQuery = docQuery.or(`doctor_id.in.(${docIdsFromMembers.map(id => `"${id}"`).join(",")}),user_id.in.(${userIdsFromMembers.map(id => `"${id}"`).join(",")})`);
+                const dIn = docIdsFromMembers.join(",");
+                const uIn = userIdsFromMembers.join(",");
+                docQuery = docQuery.or(`doctor_id.in.(${dIn}),user_id.in.(${uIn})`);
             } else if (docIdsFromMembers.length > 0) {
                 docQuery = docQuery.in("doctor_id", docIdsFromMembers);
             } else if (userIdsFromMembers.length > 0) {
                 docQuery = docQuery.in("user_id", userIdsFromMembers);
             }
             const { data: docData, error: docErr } = await docQuery;
-            if (docErr) {
-                console.warn("[Staff API /doctors] Doctors detail query error:", docErr.message);
-            }
+            if (docErr) console.warn("[Staff API /doctors] Doctors detail query error:", docErr.message);
             memberDocRows = docData || [];
         }
 
-        // Also fetch user details for display names
+        const allDocRows = [...(directDocs || []), ...memberDocRows];
+
+        // 4. Fetch related user details for names
         const allUserIds = [...new Set([
-            ...members.map(m => m.user_id),
-            ...memberDocRows.map(d => d.user_id)
+            ...(members || []).map(m => m.user_id),
+            ...allDocRows.map(d => d.user_id)
         ].filter(Boolean))];
 
         const { data: userRows } = allUserIds.length > 0
@@ -580,7 +583,7 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
 
         const uniqueDoctors = new Map();
 
-        memberDocRows.forEach(d => {
+        allDocRows.forEach(d => {
             const key = d.doctor_id || d.user_id || d.id;
             if (key && !uniqueDoctors.has(key)) {
                 const u = usersMap.get(d.user_id);
@@ -597,8 +600,8 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             }
         });
 
-        // Also add any active doctor members that might not have a record in doctors table yet
-        members.forEach(m => {
+        // 5. Fallback: Add any doctor members that were not in doctors table yet
+        doctorMembers.forEach(m => {
             const key = m.doctor_id || m.user_id || m.id;
             if (key && !uniqueDoctors.has(key)) {
                 const u = usersMap.get(m.user_id);
@@ -613,6 +616,8 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
                 });
             }
         });
+
+
 
         return res.json({
             success: true,

@@ -224,7 +224,9 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
 
             let docQuery = db.from("doctors").select("*");
             if (docIds.length > 0 && userIds.length > 0) {
-                docQuery = docQuery.or(`doctor_id.in.(${docIds.map(id => `"${id}"`).join(",")}),user_id.in.(${userIds.map(id => `"${id}"`).join(",")})`);
+                const dIn = docIds.join(",");
+                const uIn = userIds.join(",");
+                docQuery = docQuery.or(`doctor_id.in.(${dIn}),user_id.in.(${uIn})`);
             } else if (docIds.length > 0) {
                 docQuery = docQuery.in("doctor_id", docIds);
             } else if (userIds.length > 0) {
