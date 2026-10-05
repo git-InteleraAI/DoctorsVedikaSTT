@@ -672,7 +672,7 @@ const Patients = () => {
                                             </div>
 
                                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                                                {visit.status === 'completed' ? (
+                                                {(visit.status === 'completed' || visit.visitStage === 'completed' || visit.visitStage === 'exited' || visit.hasNotes || Boolean(visit.diagnosis || visit.notes)) ? (
                                                     <>
                                                         <button
                                                             onClick={() => window.open(`${API}/api/v1/clinical/notes/${encodeURIComponent(selectedPatient.userId)}/consultation-app-${visit.appointmentId}/pdf`, "_blank")}

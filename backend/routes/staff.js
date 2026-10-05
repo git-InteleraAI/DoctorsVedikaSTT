@@ -666,36 +666,48 @@ router.get("/queue", async (req, res) => {
             .eq("hospital_id", hospitalId)
             .or(`appointment_date.eq.${requestedDate},created_at.gte.${dayStartISO}`);
 
-        // 2. Fetch patient visits for target date & hospital
+        // 2. Fetch patient visits for target date & hospital safely
         const targetAppIds = (appointmentsData || []).map(a => a.id).filter(Boolean);
-        let visitsQuery = db
-            .from("patient_visits")
-            .select(`
-                id,
-                hospital_patient_id,
-                appointment_id,
-                doctor_id,
-                visit_stage,
-                chief_complaints,
-                intake_vitals,
-                checked_in_at,
-                consultation_started_at,
-                started_at,
-                consultation_completed_at,
-                completed_at,
-                created_at,
-                hospital_patient_records(id, hospital_patient_code, full_name, phone, gender, date_of_birth),
-                doctors(doctor_id, doctor_name, doctor_specialization)
-            `)
-            .eq("hospital_id", hospitalId);
 
+        const selectFields = `
+            id,
+            hospital_patient_id,
+            appointment_id,
+            doctor_id,
+            visit_stage,
+            chief_complaints,
+            intake_vitals,
+            checked_in_at,
+            consultation_started_at,
+            started_at,
+            consultation_completed_at,
+            completed_at,
+            created_at,
+            hospital_patient_records(id, hospital_patient_code, full_name, phone, gender, date_of_birth),
+            doctors(doctor_id, doctor_name, doctor_specialization)
+        `;
+
+        const { data: dateVisits } = await db
+            .from("patient_visits")
+            .select(selectFields)
+            .eq("hospital_id", hospitalId)
+            .gte("created_at", dayStartISO)
+            .order("created_at", { ascending: true });
+
+        let appVisits = [];
         if (targetAppIds.length > 0) {
-            visitsQuery = visitsQuery.or(`created_at.gte.${dayStartISO},appointment_id.in.(${targetAppIds.join(",")})`);
-        } else {
-            visitsQuery = visitsQuery.gte("created_at", dayStartISO);
+            const { data: aVisits } = await db
+                .from("patient_visits")
+                .select(selectFields)
+                .eq("hospital_id", hospitalId)
+                .in("appointment_id", targetAppIds);
+            appVisits = aVisits || [];
         }
 
-        const { data: visitsData } = await visitsQuery.order("created_at", { ascending: true });
+        const vMap = new Map();
+        (dateVisits || []).forEach(v => vMap.set(v.id, v));
+        (appVisits || []).forEach(v => vMap.set(v.id, v));
+        const visitsData = Array.from(vMap.values());
 
         // 3. Fetch clinical notes & prescriptions counts for delete eligibility check
         const appIds = [...new Set([

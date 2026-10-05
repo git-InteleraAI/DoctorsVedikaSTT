@@ -421,6 +421,7 @@ class PatientController {
             let appointments = [];
             let notes = [];
             let prescriptions = [];
+            let visitsList = [];
 
             if (db && matchedUuidList.length > 0) {
                 const uuidFilter = matchedUuidList.filter(isUuid);
@@ -445,19 +446,32 @@ class PatientController {
                         : `patient_id.in.(${quoted})`;
                     const { data: rxData } = await db.from("prescriptions").select("*").or(rxOrs);
                     if (rxData) prescriptions = rxData.map(r => decryptRecord("prescriptions", r));
+
+                    const pvOrs = quotedApps
+                        ? `hospital_patient_id.in.(${quoted}),appointment_id.in.(${quotedApps})`
+                        : `hospital_patient_id.in.(${quoted})`;
+                    const { data: pvData } = await db.from("patient_visits").select("appointment_id, hospital_patient_id, visit_stage").or(pvOrs);
+                    if (pvData) visitsList = pvData;
                 }
             }
 
             const formattedVisits = (appointments || []).map(app => {
                 const note = (notes || []).find(n => n.appointment_id === app.id || n.hospital_patient_id === app.hospital_patient_id) || {};
                 const rx = (prescriptions || []).find(r => r.appointment_id === app.id || r.hospital_patient_id === app.hospital_patient_id) || {};
+                const pVisit = (visitsList || []).find(v => (v.appointment_id && v.appointment_id === app.id) || (v.hospital_patient_id && v.hospital_patient_id === app.hospital_patient_id)) || {};
+
+                const hasNoteContent = Boolean(note.id || note.diagnosis || note.symptoms || note.notes || rx.id || rx.medicines);
+                const visitStage = pVisit.visit_stage || app.status || "scheduled";
+                const isCompleted = app.status === 'completed' || visitStage === 'completed' || visitStage === 'exited' || hasNoteContent;
 
                 return {
                     appointmentId: app.id,
                     date: app.appointment_date,
                     time: app.appointment_time,
                     type: app.appointment_type || "Consultation",
-                    status: app.status,
+                    status: isCompleted ? 'completed' : (app.status || 'scheduled'),
+                    visitStage: visitStage,
+                    hasNotes: hasNoteContent,
                     fee: req.doctor?.consultationFee || "500",
                     paymentStatus: app.payment_status || "pending",
                     reason: app.reason || "",
