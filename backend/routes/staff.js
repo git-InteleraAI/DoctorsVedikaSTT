@@ -26,6 +26,45 @@ const requireStaffRole = (req, res, next) => {
 router.use(requireStaffRole);
 
 /**
+ * GET /api/v1/staff/hospital-info
+ * Fetch dynamic hospital metadata for logged-in staff member
+ */
+router.get("/hospital-info", async (req, res) => {
+    try {
+        const db = getSupabaseClient();
+        const hospitalId = req.context.hospitalId;
+
+        if (!db || !hospitalId) {
+            return res.json({
+                success: true,
+                hospital: { id: null, name: "Doctors Vedika Hospital", code: "DV-HOSP" }
+            });
+        }
+
+        const { data: hosp } = await db
+            .from("hospitals")
+            .select("id, name, code, address, phone, email, logo_url, city, state")
+            .eq("id", hospitalId)
+            .maybeSingle();
+
+        return res.json({
+            success: true,
+            hospital: {
+                id: hosp?.id || hospitalId,
+                name: hosp?.name || "Doctors Vedika Hospital",
+                code: hosp?.code || "DV-HOSP",
+                address: hosp?.address || "",
+                phone: hosp?.phone || "",
+                email: hosp?.email || "",
+                logoUrl: hosp?.logo_url || null
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
  * GET /api/v1/staff/dashboard-stats
  * Staff Portal metrics overview: Today's Appointments, Waiting, In Consultation, Completed, Cancelled, Queue Count
  */
@@ -148,9 +187,9 @@ router.get("/appointments", requirePermission("appointments.create"), async (req
                 phone: decryptedHpr?.phone || "",
                 appointmentDate: app.appointment_date,
                 appointmentTime: app.appointment_time,
-                status: isCheckedIn ? (visitStage === "waiting" ? "checked_in" : visitStage) : app.status,
-                visitStage: visitStage,
-                isCheckedIn: isCheckedIn,
+                status: visitStage || app.status,
+                visitStage: visitStage || (app.status === "completed" ? "completed" : "scheduled"),
+                isCheckedIn: Boolean(visitStage && visitStage !== "scheduled" && visitStage !== "cancelled"),
                 source: app.source || "walk_in",
                 reason: app.reason || "",
                 hospitalPatientId: app.hospital_patient_id,
@@ -271,7 +310,7 @@ router.post("/appointments/:id/checkin", requirePermission("appointments.checkin
         // 4. Update appointments table status with fallback if DB check constraint fails
         const { error: appStatusErr } = await db
             .from("appointments")
-            .update({ status: "checked_in", updated_at: nowIso })
+            .update({ status: "confirmed", updated_at: nowIso })
             .eq("id", appRow.id);
 
         if (appStatusErr) {
@@ -346,27 +385,49 @@ router.get("/patients", requirePermission("patients.view"), async (req, res) => 
  */
 router.get("/patients/:id/history", requirePermission("patients.view"), async (req, res) => {
     try {
-        const hprId = req.params.id;
+        const rawId = req.params.id ? String(req.params.id).replace(/^v\./, "") : "";
         const db = getSupabaseClient();
+        const hospitalId = req.context.hospitalId;
 
         if (!db) return res.json({ success: true, hpr: null, visitHistory: [] });
 
-        const { data: hpr, error: hprErr } = await db
+        // 1. Fetch HPR by id or patient_id
+        let { data: hpr, error: hprErr } = await db
             .from("hospital_patient_records")
             .select("*")
-            .eq("id", hprId)
-            .eq("hospital_id", req.context.hospitalId)
-            .single();
+            .eq("hospital_id", hospitalId)
+            .or(`id.eq.${rawId},patient_id.eq.${rawId}`)
+            .maybeSingle();
 
-        if (hprErr || !hpr) {
+        // If not found by HPR id, try searching by patient_visits.id or appointment_id to find linked hospital_patient_id
+        if (!hpr) {
+            const { data: vRecord } = await db.from("patient_visits").select("hospital_patient_id").eq("id", rawId).maybeSingle();
+            const hId = vRecord?.hospital_patient_id;
+            if (hId) {
+                const { data: foundHpr } = await db.from("hospital_patient_records").select("*").eq("id", hId).eq("hospital_id", hospitalId).maybeSingle();
+                if (foundHpr) hpr = foundHpr;
+            }
+        }
+
+        if (!hpr) {
             return res.status(404).json({ success: false, message: "Hospital Patient Record not found." });
         }
+
+        // 2. Fetch all patient_visits for this HPR/Patient in this hospital
+        const visitConds = [`hospital_patient_id.eq.${hpr.id}`];
+        if (hpr.patient_id) visitConds.push(`patient_id.eq.${hpr.patient_id}`);
 
         const { data: visits, error: visitErr } = await db
             .from("patient_visits")
             .select(`
                 id,
+                appointment_id,
+                hospital_patient_id,
+                patient_id,
+                doctor_id,
                 visit_stage,
+                visit_type,
+                status,
                 chief_complaints,
                 intake_vitals,
                 checked_in_at,
@@ -374,25 +435,80 @@ router.get("/patients/:id/history", requirePermission("patients.view"), async (r
                 started_at,
                 consultation_completed_at,
                 completed_at,
-                exited_at,
                 created_at,
                 doctors(doctor_id, doctor_name, full_name, doctor_specialization)
             `)
-            .eq("hospital_patient_id", hprId)
-            .eq("hospital_id", req.context.hospitalId)
+            .or(visitConds.join(","))
+            .eq("hospital_id", hospitalId)
             .order("created_at", { ascending: false });
 
-        if (visitErr) throw visitErr;
+        if (visitErr) console.warn("[History Visits Fetch Warning]:", visitErr.message);
+
+        // 3. Fetch all appointments for this HPR/Patient in this hospital
+        const appConds = [`hospital_patient_id.eq.${hpr.id}`];
+        if (hpr.patient_id) appConds.push(`patient_id.eq.${hpr.patient_id}`);
+
+        const { data: appointments, error: appErr } = await db
+            .from("appointments")
+            .select(`
+                id,
+                appointment_date,
+                appointment_time,
+                status,
+                reason,
+                source,
+                created_at,
+                doctor_id,
+                doctors(doctor_id, doctor_name, full_name, doctor_specialization)
+            `)
+            .or(appConds.join(","))
+            .eq("hospital_id", hospitalId)
+            .order("created_at", { ascending: false });
+
+        if (appErr) console.warn("[History Appointments Fetch Warning]:", appErr.message);
+
+        // 4. Combine and deduplicate history items
+        const visitsByAppId = {};
+        const decVisits = (visits || []).map(v => {
+            const decV = decryptRecord("patient_visits", v);
+            if (v.appointment_id) visitsByAppId[v.appointment_id] = decV;
+            return decV;
+        });
+
+        const historyItems = [...decVisits];
+
+        (appointments || []).forEach(app => {
+            if (!visitsByAppId[app.id]) {
+                historyItems.push({
+                    id: app.id,
+                    appointment_id: app.id,
+                    hospital_patient_id: hpr.id,
+                    doctor_id: app.doctor_id,
+                    doctors: app.doctors,
+                    visit_stage: app.status === "cancelled" ? "cancelled" : (app.status === "completed" ? "completed" : "scheduled"),
+                    status: app.status,
+                    chief_complaints: app.reason || "Scheduled Appointment",
+                    intake_vitals: {},
+                    appointment_date: app.appointment_date,
+                    appointment_time: app.appointment_time,
+                    source: app.source || "appointment",
+                    created_at: app.created_at
+                });
+            }
+        });
+
+        // Sort combined history by created_at / date descending
+        historyItems.sort((a, b) => new Date(b.created_at || b.appointment_date) - new Date(a.created_at || a.appointment_date));
 
         const decHpr = decryptRecord("hospital_patient_records", hpr);
-        const decVisits = (visits || []).map(v => decryptRecord("patient_visits", v));
 
         return res.json({
             success: true,
             hpr: decHpr,
-            visitHistory: decVisits
+            visitHistory: historyItems
         });
     } catch (err) {
+        console.error("[GET Patient History Error]:", err);
         return res.status(500).json({ success: false, message: err.message });
     }
 });
@@ -409,6 +525,9 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         }
 
         const hospitalId = req.context.hospitalId;
+        if (!hospitalId) {
+            return res.json({ success: true, doctors: [] });
+        }
 
         // 1. Fetch active doctor memberships for this hospital
         const { data: members, error: memErr } = await db
@@ -418,66 +537,86 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             .eq("role", "doctor")
             .eq("status", "active");
 
-        let doctorsList = [];
-        if (members && members.length > 0) {
-            const docIds = members.map(m => m.doctor_id).filter(Boolean);
-            const userIds = members.map(m => m.user_id).filter(Boolean);
-
-            let docQuery = db.from("doctors").select("*");
-            if (docIds.length > 0 && userIds.length > 0) {
-                docQuery = docQuery.or(`doctor_id.in.(${docIds.map(id => `"${id}"`).join(",")}),user_id.in.(${userIds.map(id => `"${id}"`).join(",")})`);
-            } else if (docIds.length > 0) {
-                docQuery = docQuery.in("doctor_id", docIds);
-            } else if (userIds.length > 0) {
-                docQuery = docQuery.in("user_id", userIds);
-            }
-
-            const { data: docRows } = await docQuery;
-            const { data: userRows } = userIds.length > 0 ? await db.from("users").select("id, full_name, first_name, last_name").in("id", userIds) : { data: [] };
-
-            let doctorsMap = new Map();
-            (docRows || []).forEach(d => {
-                if (d.doctor_id) doctorsMap.set(d.doctor_id, d);
-                if (d.user_id) doctorsMap.set(d.user_id, d);
-            });
-            let usersMap = new Map();
-            (userRows || []).forEach(u => usersMap.set(u.id, u));
-
-            doctorsList = members.map(m => {
-                const d = doctorsMap.get(m.doctor_id) || doctorsMap.get(m.user_id);
-                const u = usersMap.get(m.user_id);
-                const rawName = d?.doctor_name || d?.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
-                const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                const specialization = (d?.doctor_specialization || d?.specialization || "General Physician").trim();
-
-                return {
-                    doctorId: m.doctor_id || m.user_id || m.id,
-                    fullName: doctorName,
-                    specialization: specialization,
-                    avatarUrl: d?.doctor_profile_photo || d?.avatar_url || null
-                };
-            });
+        if (memErr) {
+            console.warn("[Staff API /doctors] Member query error:", memErr.message);
         }
 
-        if (doctorsList.length === 0) {
-            const { data: allDocs } = await db.from("doctors").select("*");
-            if (allDocs && allDocs.length > 0) {
-                doctorsList = allDocs.map(d => {
-                    const rawName = d.doctor_name || d.full_name || "Hospital Doctor";
-                    const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                    return {
-                        doctorId: d.doctor_id || d.user_id || d.id,
-                        fullName: doctorName,
-                        specialization: (d.doctor_specialization || d.specialization || "General Physician").trim(),
-                        avatarUrl: d.doctor_profile_photo || d.avatar_url || null
-                    };
+        if (!members || members.length === 0) {
+            return res.json({ success: true, doctors: [] });
+        }
+
+        const docIdsFromMembers = members.map(m => m.doctor_id).filter(Boolean);
+        const userIdsFromMembers = members.map(m => m.user_id).filter(Boolean);
+
+        let memberDocRows = [];
+        if (docIdsFromMembers.length > 0 || userIdsFromMembers.length > 0) {
+            let docQuery = db.from("doctors").select("*");
+            if (docIdsFromMembers.length > 0 && userIdsFromMembers.length > 0) {
+                docQuery = docQuery.or(`doctor_id.in.(${docIdsFromMembers.map(id => `"${id}"`).join(",")}),user_id.in.(${userIdsFromMembers.map(id => `"${id}"`).join(",")})`);
+            } else if (docIdsFromMembers.length > 0) {
+                docQuery = docQuery.in("doctor_id", docIdsFromMembers);
+            } else if (userIdsFromMembers.length > 0) {
+                docQuery = docQuery.in("user_id", userIdsFromMembers);
+            }
+            const { data: docData, error: docErr } = await docQuery;
+            if (docErr) {
+                console.warn("[Staff API /doctors] Doctors detail query error:", docErr.message);
+            }
+            memberDocRows = docData || [];
+        }
+
+        // Also fetch user details for display names
+        const allUserIds = [...new Set([
+            ...members.map(m => m.user_id),
+            ...memberDocRows.map(d => d.user_id)
+        ].filter(Boolean))];
+
+        const { data: userRows } = allUserIds.length > 0
+            ? await db.from("users").select("id, full_name, first_name, last_name, email, phone").in("id", allUserIds)
+            : { data: [] };
+
+        const usersMap = new Map();
+        (userRows || []).forEach(u => usersMap.set(u.id, u));
+
+        const uniqueDoctors = new Map();
+
+        memberDocRows.forEach(d => {
+            const key = d.doctor_id || d.user_id || d.id;
+            if (key && !uniqueDoctors.has(key)) {
+                const u = usersMap.get(d.user_id);
+                const rawName = d.doctor_name || d.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
+                const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+                const spec = (d.doctor_specialization || d.specialization || "General Medicine").trim();
+                uniqueDoctors.set(key, {
+                    doctorId: d.doctor_id || d.user_id || d.id,
+                    fullName: doctorName,
+                    doctorName: doctorName.replace(/^Dr\.\s*/, ""),
+                    specialization: spec,
+                    avatarUrl: d.doctor_profile_photo || d.avatar_url || null
                 });
             }
-        }
+        });
+
+        // Also add any active doctor members that might not have a record in doctors table yet
+        members.forEach(m => {
+            const key = m.doctor_id || m.user_id || m.id;
+            if (key && !uniqueDoctors.has(key)) {
+                const u = usersMap.get(m.user_id);
+                const rawName = u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
+                const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+                uniqueDoctors.set(key, {
+                    doctorId: m.doctor_id || m.user_id || m.id,
+                    fullName: doctorName,
+                    doctorName: doctorName.replace(/^Dr\.\s*/, ""),
+                    specialization: "General Medicine",
+                    avatarUrl: null
+                });
+            }
+        });
 
         return res.json({
             success: true,
-            doctors: doctorsList
+            doctors: Array.from(uniqueDoctors.values())
         });
     } catch (err) {
         console.error("[Staff API Error /doctors]:", err);
@@ -523,7 +662,8 @@ router.get("/queue", async (req, res) => {
             .or(`appointment_date.eq.${requestedDate},created_at.gte.${dayStartISO}`);
 
         // 2. Fetch patient visits for target date & hospital
-        const { data: visitsData } = await db
+        const targetAppIds = (appointmentsData || []).map(a => a.id).filter(Boolean);
+        let visitsQuery = db
             .from("patient_visits")
             .select(`
                 id,
@@ -538,14 +678,19 @@ router.get("/queue", async (req, res) => {
                 started_at,
                 consultation_completed_at,
                 completed_at,
-                exited_at,
                 created_at,
                 hospital_patient_records(id, hospital_patient_code, full_name, phone, gender, date_of_birth),
                 doctors(doctor_id, doctor_name, doctor_specialization)
             `)
-            .eq("hospital_id", hospitalId)
-            .gte("created_at", dayStartISO)
-            .order("created_at", { ascending: true });
+            .eq("hospital_id", hospitalId);
+
+        if (targetAppIds.length > 0) {
+            visitsQuery = visitsQuery.or(`created_at.gte.${dayStartISO},appointment_id.in.(${targetAppIds.join(",")})`);
+        } else {
+            visitsQuery = visitsQuery.gte("created_at", dayStartISO);
+        }
+
+        const { data: visitsData } = await visitsQuery.order("created_at", { ascending: true });
 
         // 3. Fetch clinical notes & prescriptions counts for delete eligibility check
         const appIds = [...new Set([
@@ -579,7 +724,7 @@ router.get("/queue", async (req, res) => {
 
         // First process all appointments
         (appointmentsData || []).forEach((app) => {
-            const visit = visitsByAppId[app.id];
+            const visit = visitsByAppId[app.id] || (app.hospital_patient_id && visitsByHprId[app.hospital_patient_id] ? visitsByHprId[app.hospital_patient_id][0] : null);
             if (visit) processedVisits.add(visit.id);
 
             const decHpr = decryptRecord("hospital_patient_records", app.hospital_patient_records || visit?.hospital_patient_records);
@@ -764,6 +909,8 @@ router.patch("/visits/:id/assignment", async (req, res) => {
     }
 });
 
+const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
 /**
  * PATCH /api/v1/staff/visits/:id/vitals
  * Add or update intake vitals for a visit
@@ -772,7 +919,7 @@ router.patch("/visits/:id/assignment", async (req, res) => {
  */
 const updateVitalsHandler = async (req, res) => {
     try {
-        const visitId = req.params.id;
+        const rawId = req.params.id ? String(req.params.id).replace(/^v\./, "").trim() : "";
         const vitalsInput = req.body.vitals || req.body;
         const hospitalId = req.context.hospitalId;
 
@@ -783,19 +930,100 @@ const updateVitalsHandler = async (req, res) => {
         const db = getSupabaseClient();
         if (!db) return res.status(500).json({ success: false, message: "Database connection unavailable." });
 
-        // 1. Fetch visit record and enforce hospital isolation
-        const { data: visit, error: fetchErr } = await db
-            .from("patient_visits")
-            .select("id, hospital_id, hospital_patient_id, intake_vitals, consultation_started_at, started_at")
-            .eq("id", visitId)
-            .eq("hospital_id", hospitalId)
-            .single();
+        let visit = null;
 
-        if (fetchErr || !visit) {
+        // 1. If rawId is a valid full UUID, query directly using eq
+        if (isUuid(rawId)) {
+            const { data: vSingle } = await db
+                .from("patient_visits")
+                .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, consultation_started_at, started_at")
+                .or(`id.eq.${rawId},appointment_id.eq.${rawId}`)
+                .eq("hospital_id", hospitalId)
+                .maybeSingle();
+
+            if (vSingle) visit = vSingle;
+        }
+
+        // 2. If not found (or if rawId is a short/partial UUID or prefixed ID)
+        if (!visit) {
+            // Fetch recent visits for this hospital and match by partial ID prefix or hyphenless string
+            const { data: allVisits } = await db
+                .from("patient_visits")
+                .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, consultation_started_at, started_at")
+                .eq("hospital_id", hospitalId)
+                .order("created_at", { ascending: false })
+                .limit(100);
+
+            const targetClean = rawId.replace(/-/g, "").toLowerCase();
+            visit = (allVisits || []).find(v => {
+                const vIdClean = String(v.id || "").replace(/-/g, "").toLowerCase();
+                const appClean = String(v.appointment_id || "").replace(/-/g, "").toLowerCase();
+                const hprClean = String(v.hospital_patient_id || "").replace(/-/g, "").toLowerCase();
+                return (targetClean && (vIdClean.startsWith(targetClean) || appClean.startsWith(targetClean) || hprClean.startsWith(targetClean)));
+            });
+        }
+
+        // 3. If still no visit row found, check if rawId matches an appointment to auto-create visit
+        if (!visit) {
+            let appRow = null;
+            if (isUuid(rawId)) {
+                const { data: aRow } = await db
+                    .from("appointments")
+                    .select("*")
+                    .eq("id", rawId)
+                    .eq("hospital_id", hospitalId)
+                    .maybeSingle();
+                if (aRow) appRow = aRow;
+            }
+
+            if (!appRow) {
+                const { data: allApps } = await db
+                    .from("appointments")
+                    .select("*")
+                    .eq("hospital_id", hospitalId)
+                    .order("created_at", { ascending: false })
+                    .limit(100);
+
+                const targetClean = rawId.replace(/-/g, "").toLowerCase();
+                appRow = (allApps || []).find(a => {
+                    const aIdClean = String(a.id || "").replace(/-/g, "").toLowerCase();
+                    const hprClean = String(a.hospital_patient_id || "").replace(/-/g, "").toLowerCase();
+                    return (targetClean && (aIdClean.startsWith(targetClean) || hprClean.startsWith(targetClean)));
+                });
+            }
+
+            if (appRow) {
+                // Auto-create patient_visits row for this appointment
+                const newVisitData = {
+                    hospital_id: hospitalId,
+                    hospital_patient_id: appRow.hospital_patient_id,
+                    patient_id: appRow.patient_id,
+                    appointment_id: appRow.id,
+                    doctor_id: appRow.doctor_id,
+                    visit_stage: "scheduled",
+                    status: "scheduled",
+                    chief_complaints: appRow.reason || null,
+                    intake_vitals: vitalsInput,
+                    created_by: req.context.userId
+                };
+
+                const encVisit = encryptPayload("patient_visits", newVisitData);
+                const { data: createdVisit, error: createErr } = await db
+                    .from("patient_visits")
+                    .insert(encVisit)
+                    .select()
+                    .single();
+
+                if (createErr) throw createErr;
+                visit = createdVisit;
+            }
+        }
+
+        if (!visit) {
             return res.status(404).json({ success: false, message: "Visit record not found or access denied for your hospital." });
         }
 
-        // 2. Vitals Lock Condition: Reject staff vital updates if consultation has started
+        // 4. Vitals Lock Condition: Reject staff vital updates if consultation has started
         if (visit.consultation_started_at || visit.started_at) {
             return res.status(409).json({
                 success: false,
@@ -803,29 +1031,32 @@ const updateVitalsHandler = async (req, res) => {
             });
         }
 
-        // 3. Clean and merge vitals
-        const existingVitals = visit.intake_vitals || {};
+        // 5. Clean and merge vitals
+        const decVisit = decryptRecord("patient_visits", visit);
+        const existingVitals = decVisit.intake_vitals || {};
         const mergedVitals = {
             ...existingVitals,
             ...vitalsInput,
             updated_at: new Date().toISOString()
         };
 
-        // 3. Update patient_visits (existing visit record only)
+        // 6. Update patient_visits
+        const encMergedVitals = encryptPayload("patient_visits", { intake_vitals: mergedVitals });
+
         const { data: updatedVisit, error: updateErr } = await db
             .from("patient_visits")
             .update({
-                intake_vitals: mergedVitals,
+                intake_vitals: encMergedVitals.intake_vitals || mergedVitals,
                 updated_at: new Date().toISOString()
             })
-            .eq("id", visitId)
+            .eq("id", visit.id)
             .eq("hospital_id", hospitalId)
             .select()
             .single();
 
         if (updateErr) throw updateErr;
 
-        // 4. Update blood_group on hospital_patient_records if provided
+        // 7. Update blood_group on hospital_patient_records if provided
         const bloodGroup = vitalsInput.bloodGroup || vitalsInput.blood_group;
         if (bloodGroup && visit.hospital_patient_id) {
             await db
@@ -844,14 +1075,14 @@ const updateVitalsHandler = async (req, res) => {
             actorRole: req.context.role,
             action: "UPDATE_PATIENT_VITALS",
             resourceType: "patient_visits",
-            resourceId: visitId,
+            resourceId: visit.id,
             metadata: { vitals: mergedVitals }
         });
 
         return res.json({
             success: true,
             message: "Patient vitals updated successfully.",
-            visit: updatedVisit
+            visit: decryptRecord("patient_visits", updatedVisit)
         });
     } catch (err) {
         console.error("[Update Vitals Error]:", err);
@@ -861,6 +1092,8 @@ const updateVitalsHandler = async (req, res) => {
 
 router.patch("/visits/:id/vitals", updateVitalsHandler);
 router.put("/visits/:id/vitals", updateVitalsHandler);
+router.patch("/:id/vitals", updateVitalsHandler);
+router.put("/:id/vitals", updateVitalsHandler);
 
 /**
  * GET /api/v1/staff/patients/search
@@ -1032,7 +1265,7 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
         }
 
         // Determine visit stage based on actionType
-        const targetVisitStage = actionType === "register_only" ? "scheduled" : "checked_in";
+        const targetVisitStage = actionType === "register_only" ? "scheduled" : "waiting";
 
         // 3. Create Patient Visit with patient_id = NULL
         const visitData = {
@@ -1044,7 +1277,7 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             visit_stage: targetVisitStage,
             chief_complaints: chiefComplaints || null,
             intake_vitals: vitals || {},
-            checked_in_at: targetVisitStage === "checked_in" ? new Date().toISOString() : null,
+            checked_in_at: targetVisitStage === "waiting" ? new Date().toISOString() : null,
             created_by: req.context.userId
         };
 

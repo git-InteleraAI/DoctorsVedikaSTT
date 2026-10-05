@@ -261,10 +261,11 @@ class AuthService {
                 }
 
                 // 2. Query hospital_members
+                let foundHospitalId = null;
                 if (isUuid(targetId)) {
                     const { data: members } = await db
                         .from("hospital_members")
-                        .select("id, hospital_id, user_id, doctor_id, role, status")
+                        .select("id, hospital_id, user_id, doctor_id, role, status, hospitals(id, name)")
                         .eq("user_id", targetId)
                         .eq("status", "active");
 
@@ -277,6 +278,22 @@ class AuthService {
                         if (!userRole) {
                             userRole = members[0].role;
                         }
+                        foundHospitalId = members[0].hospital_id;
+                        const hosp = members[0].hospitals;
+                        if (hosp && hosp.name) {
+                            profile.hospitalName = hosp.name;
+                            profile.hospital_name = hosp.name;
+                        }
+                    }
+                }
+
+                // 3. Fallback Hospital Name query if not yet attached
+                if (!profile.hospitalName) {
+                    const targetHospId = foundHospitalId || profile.hospital_id || "00000000-0000-0000-0000-000000000001";
+                    const { data: hospData } = await db.from("hospitals").select("name").eq("id", targetHospId).maybeSingle();
+                    if (hospData && hospData.name) {
+                        profile.hospitalName = hospData.name;
+                        profile.hospital_name = hospData.name;
                     }
                 }
             } catch (err) {
@@ -1342,22 +1359,20 @@ class AuthService {
      */
 
     async getDoctorById(id) {
-        if (
-            isSupabaseConfigured &&
-            supabase
-        ) {
+        if (isSupabaseConfigured) {
+            const db = supabaseAdmin || supabase;
             const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-            let query = supabase.from("doctors").select("*");
+
+            let query = db.from("doctors").select("*");
             if (isUuid(id)) {
                 query = query.or(`doctor_id.eq.${id},user_id.eq.${id}`);
             } else {
                 query = query.eq("doctor_id", id);
             }
-            const { data: doctor, error } = await query.maybeSingle();
+            const { data: doctor } = await query.maybeSingle();
 
-            if (error || !doctor) {
+            if (!doctor) {
                 // Try fallback lookup in public.users table for staff / admin users
-                const db = supabaseAdmin || supabase;
                 let userQuery = db.from("users").select("*");
                 if (isUuid(id)) {
                     userQuery = userQuery.eq("id", id);
@@ -1366,18 +1381,39 @@ class AuthService {
                 }
 
                 const { data: userRow } = await userQuery.maybeSingle();
-                if (userRow) {
+                let finalUserRow = userRow;
+
+                // Fallback: Check Supabase Auth Admin if not in public.users yet
+                if (!finalUserRow && isUuid(id) && supabaseAdmin) {
+                    try {
+                        const { data: authUserData } = await supabaseAdmin.auth.admin.getUserById(id);
+                        if (authUserData?.user) {
+                            const u = authUserData.user;
+                            finalUserRow = {
+                                id: u.id,
+                                email: u.email,
+                                full_name: u.user_metadata?.full_name || u.email?.split('@')[0] || "User",
+                                role: u.user_metadata?.role || "admin",
+                                status: "active"
+                            };
+                        }
+                    } catch (authErr) {
+                        console.warn("[AuthService] Auth admin fallback warning:", authErr.message);
+                    }
+                }
+
+                if (finalUserRow) {
                     const fallbackDoc = {
-                        doctor_id: userRow.id,
-                        user_id: userRow.id,
-                        doctor_name: userRow.full_name || userRow.email?.split('@')[0],
-                        doctor_email: userRow.email,
-                        doctor_mobile: userRow.phone || "0000000000",
-                        doctor_is_active: userRow.status === 'active',
+                        doctor_id: finalUserRow.id,
+                        user_id: finalUserRow.id,
+                        doctor_name: finalUserRow.full_name || finalUserRow.email?.split('@')[0],
+                        doctor_email: finalUserRow.email,
+                        doctor_mobile: finalUserRow.phone || "0000000000",
+                        doctor_is_active: finalUserRow.status === 'active',
                         onboarding_completed: true
                     };
                     const formatted = this.formatDoctorProfile(fallbackDoc);
-                    return await this.enrichUserProfile(formatted, userRow.id, userRow.email);
+                    return await this.enrichUserProfile(formatted, finalUserRow.id, finalUserRow.email);
                 }
                 return null;
             }

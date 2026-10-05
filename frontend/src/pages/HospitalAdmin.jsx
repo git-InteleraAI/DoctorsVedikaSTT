@@ -522,7 +522,7 @@ export default function HospitalAdmin() {
     });
 
     const adminName = currentUser?.fullName || currentUser?.doctor_name || "Hospital Administrator";
-    const hospitalNameDisplay = stats.hospitalName || hospitalInfo?.name || "Doctors Vedika Main Hospital";
+    const hospitalNameDisplay = currentUser?.hospitalName || currentUser?.hospital_name || stats.hospitalName || hospitalInfo?.name || "Doctors Vedika Hospital";
 
     return (
         <DashboardLayout activePage="admin" searchPlaceholder="Search hospital doctors, staff members, profile...">
@@ -1541,7 +1541,7 @@ export default function HospitalAdmin() {
                                         <div>
                                             <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Hospital Name</div>
                                             <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0b1c2d", marginTop: "2px" }}>
-                                                {stats.hospitalName || "Doctors Vedika Main Hospital"}
+                                                {hospitalNameDisplay}
                                             </div>
                                         </div>
                                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>

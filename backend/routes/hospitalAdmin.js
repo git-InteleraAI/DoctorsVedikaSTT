@@ -222,9 +222,15 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             const docIds = members.map(m => m.doctor_id).filter(Boolean);
             const userIds = members.map(m => m.user_id).filter(Boolean);
 
-            const { data: docRows } = await db
-                .from("doctors")
-                .select("*");
+            let docQuery = db.from("doctors").select("*");
+            if (docIds.length > 0 && userIds.length > 0) {
+                docQuery = docQuery.or(`doctor_id.in.(${docIds.map(id => `"${id}"`).join(",")}),user_id.in.(${userIds.map(id => `"${id}"`).join(",")})`);
+            } else if (docIds.length > 0) {
+                docQuery = docQuery.in("doctor_id", docIds);
+            } else if (userIds.length > 0) {
+                docQuery = docQuery.in("user_id", userIds);
+            }
+            const { data: docRows } = await docQuery;
 
             const { data: userRows } = await db
                 .from("users")
@@ -409,6 +415,7 @@ router.post("/doctors", requirePermission("staff.invite"), async (req, res) => {
             // 4. Create public.doctors record
             const docPayload = {
                 user_id: authUserId,
+                hospital_id: hospitalId,
                 doctor_name: fullName,
                 doctor_email: normalizedEmail,
                 doctor_mobile: phone || "0000000000",
@@ -537,11 +544,11 @@ router.put("/doctors/:doctorId", requirePermission("staff.manage"), async (req, 
         // Update doctors table
         await db.from("doctors").update({
             doctor_name: fullName,
-            mobile_number: phone || null,
-            specialization: specialization || "General Physician",
-            qualification: qualification || null,
-            registration_number: registrationNumber || null
-        }).or(`doctor_id.eq.${targetDocId},id.eq.${targetDocId}`);
+            doctor_mobile: phone || null,
+            doctor_specialization: specialization || "General Physician",
+            doctor_qualification: qualification || null,
+            doctor_registration_number: registrationNumber || null
+        }).or(`doctor_id.eq.${targetDocId},user_id.eq.${targetDocId}`);
 
         // Update users table if user_id present
         if (targetUserId) {

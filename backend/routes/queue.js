@@ -42,7 +42,6 @@ router.get("/live", async (req, res) => {
                 started_at,
                 consultation_completed_at,
                 completed_at,
-                exited_at,
                 created_at,
                 hospital_patient_records(id, hospital_patient_code, full_name, phone, gender, date_of_birth),
                 doctors(doctor_id, doctor_name, doctor_specialization)
@@ -197,8 +196,12 @@ router.post("/transition", async (req, res) => {
 
             if (targetStage === "in_consultation") {
                 updatePayload.status = "in_progress";
-                // Do NOT set consultation_started_at or started_at here.
-                // Clinical consultation duration starts ONLY when doctor starts microphone recording.
+                if (!vRow.consultation_started_at) updatePayload.consultation_started_at = nowIso;
+                if (!vRow.started_at) updatePayload.started_at = nowIso;
+
+                if (vRow.appointment_id) {
+                    await db.from("appointments").update({ status: "in_progress", updated_at: nowIso }).eq("id", vRow.appointment_id);
+                }
             } else if (targetStage === "completed") {
                 updatePayload.status = "completed";
                 if (!vRow.consultation_completed_at) updatePayload.consultation_completed_at = nowIso;
@@ -405,7 +408,9 @@ router.get("/visit/:id", async (req, res) => {
                 hospital_patient_records(id, hospital_patient_code, full_name, first_name, last_name, phone, gender, date_of_birth, blood_group),
                 doctors(doctor_id, doctor_name, doctor_specialization)
             `)
-            .or(`id.eq.${visitId},appointment_id.eq.${visitId}`)
+            .or(`id.eq.${visitId},appointment_id.eq.${visitId},hospital_patient_id.eq.${visitId},patient_id.eq.${visitId}`)
+            .order("created_at", { ascending: false })
+            .limit(1)
             .maybeSingle();
 
         const { data: visit, error } = await query;

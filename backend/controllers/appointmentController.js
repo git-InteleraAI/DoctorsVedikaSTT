@@ -58,10 +58,25 @@ class AppointmentController {
                 return res.json({ success: true, appointments: [] });
             }
 
+            // Fetch related patient_visits to determine visit_stage
+            const appointmentIdsRaw = appointmentsDataRaw.map((a) => a.id).filter(Boolean);
+            let visitsMap = {};
+            if (appointmentIdsRaw.length > 0 && db) {
+                const { data: visitsData } = await db
+                    .from("patient_visits")
+                    .select("id, appointment_id, visit_stage, checked_in_at, consultation_started_at, consultation_completed_at, chief_complaints")
+                    .in("appointment_id", appointmentIdsRaw);
+                if (visitsData) {
+                    visitsData.forEach(v => { visitsMap[v.appointment_id] = decryptRecord("patient_visits", v); });
+                }
+            }
+
             // 2. Filter appointments by tab & date filter
             const appointmentsData = appointmentsDataRaw.filter((app) => {
                 const appDate = app.appointment_date;
                 const status = (app.status || "").toLowerCase();
+                const rawVisitStage = (visitsMap[app.id]?.visit_stage || "").toLowerCase();
+                const visitStage = rawVisitStage || (status === "cancelled" ? "cancelled" : (status === "completed" ? "completed" : "scheduled"));
 
                 // Specific Date Filter condition
                 if (dateFilter && dateFilter !== "all") {
@@ -80,20 +95,28 @@ class AppointmentController {
 
                 // Tab Filter condition
                 if (tab === "completed") {
-                    return status === "completed";
+                    return status === "completed" || visitStage === "completed" || visitStage === "exited";
                 } else if (tab === "pending") {
                     const isExplicitPending = status === "pending" || status === "pending_consultation";
                     const isPastConfirmed = status === "confirmed" && appDate < todayDateStr;
                     return isExplicitPending || isPastConfirmed;
                 } else if (tab === "confirmed" || tab === "upcoming") {
-                    const isConfirmedStatus = status === "confirmed";
+                    // Doctors must see ONLY patients whose current stage is Waiting (or in_consultation/checked_in)
+                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation";
+                    if (!isWaitingOrInConsult) return false;
+
+                    const isConfirmedStatus = status === "confirmed" || status === "scheduled";
                     if (dateFilter === "all") {
                         return isConfirmedStatus && appDate >= todayDateStr;
                     }
                     return isConfirmedStatus;
                 } else if (tab === "today") {
-                    return appDate === todayDateStr && status !== "cancelled";
+                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation";
+                    return appDate === todayDateStr && isWaitingOrInConsult && status !== "cancelled";
                 }
+                
+                // Default: filter out scheduled visits without check-in for doctor view
+                if (visitStage === "scheduled") return false;
                 return status !== "cancelled";
             });
 
@@ -142,7 +165,6 @@ class AppointmentController {
                 }
             }
 
-            let visitsMap = {};
             if (appointmentIds.length > 0 && db) {
                 const { data: visitsData } = await db
                     .from("patient_visits")

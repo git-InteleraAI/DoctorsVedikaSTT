@@ -136,6 +136,10 @@ class AuthService {
                 );
 
             if (response.status === 401) {
+                const cachedUser = this.getCurrentDoctor();
+                if (cachedUser) {
+                    return cachedUser;
+                }
                 this.logout();
                 return null;
             }

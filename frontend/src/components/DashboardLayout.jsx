@@ -571,7 +571,7 @@ export default function DashboardLayout({
                                             </div>
                                         )}
                                         <div style={{ fontSize: "0.72rem", color: "#475569", marginTop: 4, fontWeight: 600 }}>
-                                            {doctor?.hospitalName || "Doctors Vedika Main Hospital"}
+                                            {doctor?.hospitalName || doctor?.hospital_name || doctor?.hospital?.name || "Doctors Vedika Hospital"}
                                         </div>
                                     </div>
                                     <div style={{ padding: "8px 0" }}>

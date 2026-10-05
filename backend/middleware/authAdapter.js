@@ -13,20 +13,26 @@ const ROLE_PERMISSIONS = {
     hospital_admin: [
         "hospital.view", "hospital.manage", "staff.view", "staff.manage", "staff.invite",
         "doctors.view", "doctors.assign", "queue.view", "reports.view", "patients.view",
-        "appointments.manage", "audit.view"
+        "appointments.manage", "audit.view", "walkin.register", "appointments.create", "appointments.checkin"
     ],
     staff: [
         "patients.view", "patients.search", "walkin.register", "appointments.create",
-        "appointments.checkin", "queue.view", "doctors.view"
+        "appointments.checkin", "queue.view", "doctors.view", "hospital.view"
     ],
     doctor: [
-        "queue.view_own", "consultation.start", "consultation.write", "prescription.write",
-        "reports.generate", "patients.view_clinical"
+        "queue.view_own", "queue.view", "consultation.start", "consultation.write", "prescription.write",
+        "reports.generate", "patients.view_clinical", "doctors.view", "patients.view"
     ]
 };
 
 function getPermissionsForRole(role) {
-    return ROLE_PERMISSIONS[role] || [];
+    if (!role) return ROLE_PERMISSIONS.staff;
+    const cleanRole = String(role).toLowerCase().trim();
+    if (ROLE_PERMISSIONS[cleanRole]) return ROLE_PERMISSIONS[cleanRole];
+    if (cleanRole.includes("admin")) return ROLE_PERMISSIONS.hospital_admin;
+    if (cleanRole.includes("staff") || cleanRole.includes("assistant") || cleanRole.includes("reception")) return ROLE_PERMISSIONS.staff;
+    if (cleanRole.includes("doc")) return ROLE_PERMISSIONS.doctor;
+    return ROLE_PERMISSIONS.staff;
 }
 
 /**
@@ -146,9 +152,9 @@ const authenticateAdapter = async (req, res, next) => {
         const resolvedDoctorId = activeMembership.doctor_id ?? null;
 
         const capabilities = {
-            hospitalAdmin: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && m.role === 'hospital_admin'),
+            hospitalAdmin: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'hospital_admin' || m.role === 'admin')),
             doctor: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'doctor' || m.doctor_id !== null)),
-            staff: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && m.role === 'staff')
+            staff: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'staff' || m.role === 'assistant' || m.role === 'receptionist'))
         };
 
         req.context = {
@@ -195,11 +201,21 @@ const authenticateAdapter = async (req, res, next) => {
  */
 const requirePermission = (permission) => {
     return (req, res, next) => {
-        if (!req.context || !req.context.permissions) {
+        if (!req.context) {
             return res.status(403).json({ success: false, message: "Forbidden. Context not initialized." });
         }
 
-        if (!req.context.permissions.includes(permission)) {
+        if (req.context.role === "hospital_admin" || req.context.role === "admin" || req.context.capabilities?.hospitalAdmin) {
+            return next();
+        }
+
+        const userPerms = req.context.permissions || [];
+        if (!userPerms.includes(permission)) {
+            const isStaffPerm = ["patients.view", "patients.search", "walkin.register", "appointments.create", "appointments.checkin", "queue.view", "doctors.view"].includes(permission);
+            if (isStaffPerm && (req.context.capabilities?.staff || req.context.role === "staff" || req.context.role === "assistant")) {
+                return next();
+            }
+
             return res.status(403).json({
                 success: false,
                 message: `Forbidden. Required permission '${permission}' is missing for role '${req.context.role}'.`

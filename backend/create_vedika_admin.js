@@ -147,12 +147,13 @@ if (require.main === module) {
     const customEmail = process.argv[2] || "vedika.admin@doctorsvedika.com";
     const customPass = process.argv[3] || "Admin@123456";
     const customName = process.argv[4] || "Vedika Hospital Admin";
+    const customHosp = process.argv[5] || "Vedika Hospital";
 
     createVedikaHospitalAdmin({
         email: customEmail,
         password: customPass,
         fullName: customName,
-        hospitalName: "Vedika Hospital"
+        hospitalName: customHosp
     }).then(() => process.exit(0)).catch(err => {
         console.error("Fatal error:", err);
         process.exit(1);

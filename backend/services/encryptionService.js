@@ -150,6 +150,12 @@ const ENCRYPTED_FIELDS = {
         "severity",
         "current_medications",
         "additional_notes"
+    ],
+    appointments: [
+        "reason",
+        "notes",
+        "patient_name",
+        "patient_phone"
     ]
 };
 

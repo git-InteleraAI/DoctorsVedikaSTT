@@ -118,20 +118,19 @@ export default function StaffPortal() {
 
   // Tab counts calculation based on current doctor/spec filter
   const queueCounts = useMemo(() => {
-    let all = 0, scheduled = 0, checkedIn = 0, waiting = 0, inConsultation = 0, completed = 0, cancelled = 0;
+    let all = 0, scheduled = 0, waiting = 0, inConsultation = 0, completed = 0, cancelled = 0;
 
     filteredQueue.forEach(item => {
       all++;
       const stage = (item.visitStage || item.status || "").toLowerCase();
       if (stage === "scheduled" || stage === "pending" || stage === "confirmed") scheduled++;
-      else if (stage === "checked_in") checkedIn++;
-      else if (stage === "waiting") waiting++;
+      else if (stage === "waiting" || stage === "checked_in") waiting++;
       else if (stage === "in_consultation") inConsultation++;
       else if (stage === "completed" || stage === "exited") completed++;
       else if (stage === "cancelled") cancelled++;
     });
 
-    return { all, scheduled, checkedIn, waiting, inConsultation, completed, cancelled };
+    return { all, scheduled, waiting, inConsultation, completed, cancelled };
   }, [filteredQueue]);
 
   // Reusable unified dataset for active status tab and search text
@@ -140,8 +139,7 @@ export default function StaffPortal() {
       const stage = (item.visitStage || item.status || "").toLowerCase();
 
       if (activeQueueStatusTab === "scheduled" && !(stage === "scheduled" || stage === "pending" || stage === "confirmed")) return false;
-      if (activeQueueStatusTab === "checked_in" && stage !== "checked_in") return false;
-      if (activeQueueStatusTab === "waiting" && stage !== "waiting") return false;
+      if (activeQueueStatusTab === "waiting" && !(stage === "waiting" || stage === "checked_in")) return false;
       if (activeQueueStatusTab === "in_consultation" && stage !== "in_consultation") return false;
       if (activeQueueStatusTab === "completed" && !(stage === "completed" || stage === "exited")) return false;
       if (activeQueueStatusTab === "cancelled" && stage !== "cancelled") return false;
@@ -220,6 +218,11 @@ export default function StaffPortal() {
   const [selectedHprDetail, setSelectedHprDetail] = useState(null);
   const [showHprModal, setShowHprModal] = useState(false);
   const [hprHistory, setHprHistory] = useState([]);
+  const [showQuickScheduleForm, setShowQuickScheduleForm] = useState(false);
+  const [quickSchedDoctorId, setQuickSchedDoctorId] = useState("");
+  const [quickSchedReason, setQuickSchedReason] = useState("");
+  const [quickSchedActionType, setQuickSchedActionType] = useState("register_and_checkin");
+  const [isQuickScheduling, setIsQuickScheduling] = useState(false);
 
   // Permanent Conversion Modal State
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -237,6 +240,9 @@ export default function StaffPortal() {
   const [pwdConfirm, setPwdConfirm] = useState("");
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdMsg, setPwdMsg] = useState({ text: "", type: "" });
+
+  // Dynamic Hospital Information State
+  const [hospitalInfo, setHospitalInfo] = useState(null);
 
   const [message, setMessage] = useState({ text: "", type: "" });
   const [isLoading, setIsLoading] = useState(false);
@@ -302,10 +308,17 @@ export default function StaffPortal() {
     };
   }, [activeTab]);
 
+  useEffect(() => {
+    if (showWalkinModal) {
+      fetchDoctors();
+    }
+  }, [showWalkinModal]);
+
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
       await Promise.all([
+        fetchHospitalInfo(),
         fetchStats(),
         fetchDoctors(),
         fetchQueue(),
@@ -316,6 +329,18 @@ export default function StaffPortal() {
       console.warn("[StaffPortal] Data fetch warning:", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchHospitalInfo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/staff/hospital-info`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && data.hospital) {
+        setHospitalInfo(data.hospital);
+      }
+    } catch (err) {
+      console.warn("Fetch hospital info error:", err);
     }
   };
 
@@ -603,10 +628,6 @@ export default function StaffPortal() {
   };
 
   const handleOpenVitalsModal = (visit) => {
-    if (visit && (visit.consultationStartedAt || visit.consultation_started_at || visit.started_at)) {
-      setMessage({ text: "Vitals are locked — consultation in progress.", type: "error" });
-      return;
-    }
     setEditingVisit(visit);
     const existing = visit.intake_vitals || visit.vitals || {};
     setEditVitalsData({
@@ -628,7 +649,9 @@ export default function StaffPortal() {
     setIsSavingVitals(true);
     setMessage({ text: "", type: "" });
     try {
-      const res = await fetch(`${API_BASE}/staff/visits/${editingVisit.visitId || editingVisit.id}/vitals`, {
+      const targetId = editingVisit.visitId || editingVisit.appointmentId || editingVisit.id;
+      const cleanTargetId = targetId ? String(targetId).replace(/^v\./, "") : "";
+      const res = await fetch(`${API_BASE}/staff/visits/${cleanTargetId}/vitals`, {
         method: "PATCH",
         headers: getAuthHeaders(),
         body: JSON.stringify({ vitals: editVitalsData })
@@ -701,6 +724,32 @@ export default function StaffPortal() {
 
   const handleAppointmentCheckin = async (appointmentId) => {
     try {
+      // Immediate optimistic update so status badge changes to WAITING and Check In button disappears dynamically
+      const nowIso = new Date().toISOString();
+      setQueue(prevQueue => prevQueue.map(item => {
+        if (String(item.id) === String(appointmentId) || String(item.appointmentId) === String(appointmentId)) {
+          return {
+            ...item,
+            visitStage: "waiting",
+            checkedInAt: nowIso,
+            can_check_in: false
+          };
+        }
+        return item;
+      }));
+
+      setAppointments(prevAppts => prevAppts.map(app => {
+        if (String(app.id) === String(appointmentId)) {
+          return {
+            ...app,
+            status: "waiting",
+            visitStage: "waiting",
+            isCheckedIn: true
+          };
+        }
+        return app;
+      }));
+
       const res = await fetch(`${API_BASE}/staff/appointments/${appointmentId}/checkin`, {
         method: "POST",
         headers: getAuthHeaders(),
@@ -714,9 +763,13 @@ export default function StaffPortal() {
         fetchAppointments();
       } else {
         setMessage({ text: data.message || "Check-in failed.", type: "error" });
+        fetchQueue();
+        fetchAppointments();
       }
     } catch (err) {
       setMessage({ text: err.message, type: "error" });
+      fetchQueue();
+      fetchAppointments();
     }
   };
 
@@ -760,19 +813,64 @@ export default function StaffPortal() {
   };
 
   const handleViewPatientDetail = async (hpr) => {
-    setSelectedHprDetail(hpr);
+    const targetHpr = hpr || {};
+    setSelectedHprDetail(targetHpr);
     setShowHprModal(true);
+    setShowQuickScheduleForm(false);
+    setQuickSchedReason("");
+    setQuickSchedDoctorId(doctors[0]?.doctorId || "");
     setHprHistory([]);
     try {
-      const res = await fetch(`${API_BASE}/staff/patients/${hpr.id}/history`, {
+      const hprId = targetHpr.hprId || targetHpr.id;
+      const res = await fetch(`${API_BASE}/staff/patients/${hprId}/history`, {
         headers: getAuthHeaders()
       });
       const data = await res.json();
       if (data.success) {
         setHprHistory(data.visitHistory || []);
+        if (data.hpr) setSelectedHprDetail(data.hpr);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Fetch HPR History Error:", err);
+    }
+  };
+
+  const handleQuickScheduleSubmit = async (e) => {
+    e?.preventDefault();
+    if (!selectedHprDetail || !quickSchedDoctorId) {
+      setMessage({ text: "Please select an assigned doctor for the visit.", type: "error" });
+      return;
+    }
+    setIsQuickScheduling(true);
+    setMessage({ text: "", type: "" });
+    try {
+      const res = await fetch(`${API_BASE}/staff/patients/existing-walkin`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          selectedHprId: selectedHprDetail.id,
+          doctorId: quickSchedDoctorId,
+          chiefComplaints: quickSchedReason,
+          actionType: quickSchedActionType
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const statusText = quickSchedActionType === "register_only" ? "scheduled" : "registered & checked in to queue";
+        setMessage({ text: `Appointment for ${selectedHprDetail.full_name} ${statusText} successfully!`, type: "success" });
+        setShowQuickScheduleForm(false);
+        setQuickSchedReason("");
+        fetchQueue();
+        fetchAppointments();
+        fetchStats();
+        handleViewPatientDetail(selectedHprDetail);
+      } else {
+        setMessage({ text: data.message || "Failed to schedule appointment.", type: "error" });
+      }
+    } catch (err) {
+      setMessage({ text: err.message || "Connection error.", type: "error" });
+    } finally {
+      setIsQuickScheduling(false);
     }
   };
 
@@ -811,7 +909,7 @@ export default function StaffPortal() {
   };
 
   const staffName = currentUser?.fullName || currentUser?.doctor_name || "Ravi Kumar";
-  const hospitalName = currentUser?.hospitalName || "Doctors Vedika Main Hospital";
+  const hospitalName = currentUser?.hospitalName || currentUser?.hospital_name || hospitalInfo?.name || "Doctors Vedika Hospital";
 
   return (
     <DashboardLayout activePage="staff" searchPlaceholder="Search patients, appointments, phone numbers...">
@@ -1555,8 +1653,8 @@ export default function StaffPortal() {
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
                   {appointments.map(app => {
-                    const isChecked = app.status === "checked_in" || app.status === "in_consultation";
-                    const isComp = app.status === "completed";
+                    const isChecked = app.status === "waiting" || app.visitStage === "waiting" || app.status === "checked_in" || app.status === "in_consultation" || app.visitStage === "in_consultation";
+                    const isComp = app.status === "completed" || app.visitStage === "completed";
                     const isProcessed = isChecked || isComp || app.status === "cancelled" || app.status === "exited";
 
                     return (
@@ -1569,7 +1667,7 @@ export default function StaffPortal() {
                         {isProcessed ? (
                           <div style={{ marginTop: "16px", padding: "8px 12px", borderRadius: "8px", backgroundColor: isComp ? "#dcfce7" : "#fef3c7", color: isComp ? "#16a34a" : "#d97706", fontWeight: 700, fontSize: "0.85rem", textAlign: "center" }}>
                             <i className={`fa-solid ${isComp ? "fa-circle-check" : "fa-user-clock"}`} style={{ marginRight: "6px" }} />
-                            {isComp ? "Consultation Completed" : "Checked In to Queue"}
+                            {isComp ? "Consultation Completed" : (app.status === "in_consultation" || app.visitStage === "in_consultation" ? "In Consultation" : "Waiting in Queue")}
                           </div>
                         ) : (
                           <button
@@ -1600,7 +1698,7 @@ export default function StaffPortal() {
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <h2 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 800, color: "#0b1c2d" }}>Patient Queue</h2>
                   <span style={{ backgroundColor: "rgba(8,174,184,0.1)", color: "#08AEB8", padding: "4px 12px", borderRadius: "20px", fontSize: "0.78rem", fontWeight: 800 }}>
-                    <i className="fa-solid fa-hospital" style={{ marginRight: "6px" }} /> DV-MAIN Hospital Context
+                    <i className="fa-solid fa-hospital" style={{ marginRight: "6px" }} /> {hospitalInfo?.name || "Vedika Hospital Context"} ({hospitalInfo?.code || "HOSP"})
                   </span>
                 </div>
                 <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#64748b" }}>Manage patients across different stages of consultation</p>
@@ -1648,7 +1746,6 @@ export default function StaffPortal() {
                 {[
                   { key: "all", label: "All Patients", count: queueCounts.all, icon: "fa-users" },
                   { key: "scheduled", label: "Scheduled", count: queueCounts.scheduled, icon: "fa-calendar-check" },
-                  { key: "checked_in", label: "Checked In", count: queueCounts.checkedIn, icon: "fa-user-check" },
                   { key: "waiting", label: "Waiting", count: queueCounts.waiting, icon: "fa-clock" },
                   { key: "in_consultation", label: "In Consultation", count: queueCounts.inConsultation, icon: "fa-user-doctor" },
                   { key: "completed", label: "Completed", count: queueCounts.completed, icon: "fa-circle-check" },
@@ -1902,14 +1999,13 @@ export default function StaffPortal() {
                                   </button>
                                 )}
 
-                                {isCheckedIn && (
-                                  <button
-                                    onClick={() => handleAppointmentCheckin(item.appointmentId || item.id)}
-                                    style={{ backgroundColor: "#d97706", color: "#ffffff", border: "none", padding: "6px 12px", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}
-                                  >
-                                    Move to Waiting
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => handleOpenVitalsModal(item)}
+                                  style={{ backgroundColor: "rgba(8,174,184,0.1)", color: "#08AEB8", border: "1px solid rgba(8,174,184,0.3)", padding: "6px 10px", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}
+                                  title="View/Edit Patient Intake Vitals"
+                                >
+                                  <i className="fa-solid fa-heart-pulse" style={{ marginRight: "4px" }} /> Vitals
+                                </button>
 
                                 <button
                                   onClick={() => handleOpenPatientDetails(item)}
@@ -2032,11 +2128,11 @@ export default function StaffPortal() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <div>
                     <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Hospital Facility</div>
-                    <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0b1c2d", marginTop: "2px" }}>{hospitalName}</div>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0b1c2d", marginTop: "2px" }}>{hospitalInfo?.name || hospitalName || "Doctors Vedika Hospital"}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Facility Code</div>
-                    <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#08AEB8", marginTop: "2px" }}>DV-MAIN</div>
+                    <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#08AEB8", marginTop: "2px" }}>{hospitalInfo?.code || "DV-HOSP"}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Scope of Access</div>
@@ -2121,7 +2217,7 @@ export default function StaffPortal() {
                       <i className="fa-solid fa-hospital" style={{ color: "#08AEB8", marginRight: "6px" }} /> Strict Hospital Scoping
                     </div>
                     <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "#64748b", lineHeight: 1.5 }}>
-                      All patient records, queues, and appointments are strictly isolated to tenant context: <strong>DV-MAIN</strong>.
+                      All patient records, queues, and appointments are strictly isolated to tenant context: <strong>{hospitalInfo?.name || hospitalInfo?.code || "Vedika Hospital"}</strong>.
                     </p>
                   </div>
                   <div style={{ padding: "16px", borderRadius: "10px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0" }}>
@@ -2291,7 +2387,7 @@ export default function StaffPortal() {
                     onChange={(e) => setSelectedDoctorId(e.target.value)}
                     style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", outline: "none", backgroundColor: "#ffffff", fontWeight: 700 }}
                   >
-                    <option value="" disabled>Select Doctor...</option>
+                    <option value="" disabled>{doctors.length === 0 ? "Loading hospital doctors..." : "Select Doctor..."}</option>
                     {doctors.map(d => (
                       <option key={d.doctorId} value={d.doctorId}>{d.fullName} — {d.specialization}</option>
                     ))}
@@ -2393,7 +2489,7 @@ export default function StaffPortal() {
       ========================================================================= */}
       {showHprModal && selectedHprDetail && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(11, 28, 45, 0.6)", backdropFilter: "blur(6px)", zIndex: 4000, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "80px 20px 20px 20px", overflowY: "auto", boxSizing: "border-box" }}>
-          <div style={{ backgroundColor: "#ffffff", borderRadius: "18px", width: "100%", maxWidth: "640px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", border: "1px solid #e2e8f0", overflow: "hidden", maxHeight: "calc(100vh - 100px)", display: "flex", flexDirection: "column", margin: "0 auto" }}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "18px", width: "100%", maxWidth: "680px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", border: "1px solid #e2e8f0", overflow: "hidden", maxHeight: "calc(100vh - 80px)", display: "flex", flexDirection: "column", margin: "0 auto" }}>
             <div style={{ padding: "20px 24px", backgroundColor: "#0b1c2d", color: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -2402,7 +2498,9 @@ export default function StaffPortal() {
                     {selectedHprDetail.patient_id ? "Registered Patient" : "Temporary Walk-in"}
                   </span>
                 </div>
-                <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>HPR Code: {selectedHprDetail.hospital_patient_code} • Phone: {selectedHprDetail.phone || "—"}</span>
+                <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+                  HPR Code: {selectedHprDetail.hospital_patient_code || selectedHprDetail.patientCode || "—"} • Phone: {selectedHprDetail.phone || "—"} {selectedHprDetail.gender ? `• ${selectedHprDetail.gender}` : ""} {selectedHprDetail.date_of_birth ? `• DOB: ${selectedHprDetail.date_of_birth}` : ""}
+                </span>
               </div>
               <button onClick={() => setShowHprModal(false)} style={{ background: "none", border: "none", color: "#ffffff", fontSize: "1.2rem", cursor: "pointer" }}>
                 <i className="fa-solid fa-xmark" />
@@ -2426,31 +2524,184 @@ export default function StaffPortal() {
                 </div>
               )}
 
-              <h4 style={{ margin: 0, fontSize: "1rem", fontWeight: 800, color: "#0b1c2d" }}>Visit &amp; Appointment History</h4>
+              {/* Action Header & Schedule Appointment Button */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h4 style={{ margin: 0, fontSize: "1rem", fontWeight: 800, color: "#0b1c2d" }}>
+                  Visit &amp; Appointment History ({hprHistory.length})
+                </h4>
+                <button
+                  onClick={() => {
+                    setShowQuickScheduleForm(prev => !prev);
+                    if (!quickSchedDoctorId && doctors.length > 0) {
+                      setQuickSchedDoctorId(doctors[0].doctorId);
+                    }
+                  }}
+                  style={{
+                    backgroundColor: showQuickScheduleForm ? "#64748b" : "#08AEB8",
+                    color: "#ffffff",
+                    border: "none",
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    fontWeight: 800,
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px"
+                  }}
+                >
+                  <i className={`fa-solid ${showQuickScheduleForm ? "fa-xmark" : "fa-calendar-plus"}`} />
+                  {showQuickScheduleForm ? "Cancel Scheduling" : "Schedule New Visit"}
+                </button>
+              </div>
+
+              {/* Inline Quick Schedule Form for Existing Patient */}
+              {showQuickScheduleForm && (
+                <form
+                  onSubmit={handleQuickScheduleSubmit}
+                  style={{
+                    padding: "16px",
+                    borderRadius: "12px",
+                    border: "1px solid #08AEB8",
+                    backgroundColor: "#f0fdfa",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px"
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#0f766e", fontSize: "0.9rem" }}>
+                    📅 Schedule New Appointment / Book Visit for {selectedHprDetail.full_name}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        Assigned Doctor *
+                      </label>
+                      <select
+                        value={quickSchedDoctorId}
+                        onChange={(e) => setQuickSchedDoctorId(e.target.value)}
+                        required
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.82rem", outline: "none" }}
+                      >
+                        <option value="">-- Select Doctor --</option>
+                        {doctors.map(doc => (
+                          <option key={doc.doctorId} value={doc.doctorId}>
+                            Dr. {doc.doctorName} ({doc.specialization})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                        Action Mode
+                      </label>
+                      <select
+                        value={quickSchedActionType}
+                        onChange={(e) => setQuickSchedActionType(e.target.value)}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.82rem", outline: "none" }}
+                      >
+                        <option value="register_and_checkin">Check-in Now (Waiting Queue)</option>
+                        <option value="register_only">Schedule Appointment (Scheduled)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>
+                      Chief Complaints / Visit Reason
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Follow-up consultation, Fever, Routine checkup"
+                      value={quickSchedReason}
+                      onChange={(e) => setQuickSchedReason(e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.82rem", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "4px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickScheduleForm(false)}
+                      style={{ backgroundColor: "#e2e8f0", color: "#334155", border: "none", padding: "7px 14px", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isQuickScheduling}
+                      style={{ backgroundColor: "#08AEB8", color: "#ffffff", border: "none", padding: "7px 16px", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", opacity: isQuickScheduling ? 0.7 : 1 }}
+                    >
+                      {isQuickScheduling ? "Booking..." : "Confirm & Book Visit"}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Visit & Appointment History List */}
               {hprHistory.length === 0 ? (
-                <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8" }}>No past visits recorded.</div>
+                <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8", backgroundColor: "#f8fafc", borderRadius: "10px", border: "1px dashed #cbd5e1" }}>
+                  <i className="fa-solid fa-notes-medical" style={{ fontSize: "1.8rem", color: "#cbd5e1", marginBottom: "8px", display: "block" }} />
+                  No past visits or appointments recorded for this patient.
+                </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {hprHistory.map(v => (
-                    <div key={v.id} style={{ padding: "14px", borderRadius: "10px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ fontWeight: 800, color: "#08AEB8", fontSize: "0.85rem" }}>
-                          {new Date(v.created_at || v.checked_in_at).toLocaleDateString()}
-                        </span>
-                        <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "#16a34a" }}>
-                          {(v.visit_stage || "scheduled").toUpperCase()}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0b1c2d", marginTop: "4px" }}>
-                        Doctor: {v.doctors?.full_name || "Assigned Doctor"}
-                      </div>
-                      {v.chief_complaints && (
-                        <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "4px" }}>
-                          Reason: {v.chief_complaints}
+                  {hprHistory.map(v => {
+                    const stage = (v.visit_stage || v.status || "scheduled").toLowerCase();
+                    let stageBg = "#fef3c7";
+                    let stageColor = "#b45309";
+                    if (stage === "completed" || stage === "exited") {
+                      stageBg = "#dcfce7";
+                      stageColor = "#15803d";
+                    } else if (stage === "in_consultation" || stage === "waiting" || stage === "checked_in") {
+                      stageBg = "#e0f2fe";
+                      stageColor = "#0369a1";
+                    } else if (stage === "cancelled") {
+                      stageBg = "#fee2e2";
+                      stageColor = "#b91c1c";
+                    }
+
+                    const docName = v.doctors?.full_name || v.doctors?.doctor_name || v.doctorName || "Assigned Doctor";
+                    const docSpec = v.doctors?.doctor_specialization || v.specialization || "";
+                    const dateDisplay = formatReadableDate(v.created_at || v.appointment_date || v.checked_in_at);
+                    const vitals = v.intake_vitals || v.vitals || {};
+
+                    return (
+                      <div key={v.id} style={{ padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0", backgroundColor: "#f8fafc" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontWeight: 800, color: "#08AEB8", fontSize: "0.85rem" }}>
+                            📅 {dateDisplay} {v.appointment_time ? `• ${v.appointment_time}` : ""}
+                          </span>
+                          <span style={{ fontSize: "0.72rem", fontWeight: 800, padding: "3px 10px", borderRadius: "12px", backgroundColor: stageBg, color: stageColor }}>
+                            {stage.toUpperCase().replace("_", " ")}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  ))}
+
+                        <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0b1c2d", marginTop: "6px" }}>
+                          Doctor: Dr. {docName} {docSpec ? `(${docSpec})` : ""}
+                        </div>
+
+                        {v.chief_complaints && (
+                          <div style={{ fontSize: "0.8rem", color: "#475569", marginTop: "4px" }}>
+                            <strong>Reason/Complaints:</strong> {v.chief_complaints}
+                          </div>
+                        )}
+
+                        {/* Vitals Summary Pill Badges */}
+                        {(vitals.bp || vitals.pulse || vitals.temperature || vitals.spo2 || vitals.weight) && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                            {vitals.bp && <span style={{ fontSize: "0.72rem", backgroundColor: "#f1f5f9", color: "#334155", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>BP: {vitals.bp}</span>}
+                            {vitals.pulse && <span style={{ fontSize: "0.72rem", backgroundColor: "#f1f5f9", color: "#334155", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>Pulse: {vitals.pulse} bpm</span>}
+                            {vitals.temperature && <span style={{ fontSize: "0.72rem", backgroundColor: "#f1f5f9", color: "#334155", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>Temp: {vitals.temperature} °F</span>}
+                            {vitals.spo2 && <span style={{ fontSize: "0.72rem", backgroundColor: "#f1f5f9", color: "#334155", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>SpO2: {vitals.spo2}%</span>}
+                            {vitals.weight && <span style={{ fontSize: "0.72rem", backgroundColor: "#f1f5f9", color: "#334155", padding: "2px 8px", borderRadius: "6px", fontWeight: 600 }}>Weight: {vitals.weight} kg</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2823,9 +3074,21 @@ export default function StaffPortal() {
                         <div style={{ fontWeight: 700, color: "#334155" }}>{formatISTTime(selectedVisitDetails.visit?.consultationCompletedAt)}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>Waiting / Consult Duration</div>
+                        <div style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>Waiting Time</div>
                         <div style={{ fontWeight: 800, color: "#d97706" }}>
-                          {selectedVisitDetails.visit?.waitingDuration || selectedVisitDetails.visit?.consultationDuration || "--"}
+                          {selectedVisitDetails.visit?.checkedInAt ? calculateTimeDiff(selectedVisitDetails.visit?.checkedInAt, selectedVisitDetails.visit?.consultationStartedAt) : "--"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>Consultation Duration</div>
+                        <div style={{ fontWeight: 800, color: "#08AEB8" }}>
+                          {selectedVisitDetails.visit?.consultationStartedAt ? calculateTimeDiff(selectedVisitDetails.visit?.consultationStartedAt, selectedVisitDetails.visit?.consultationCompletedAt) : "--"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "0.74rem", color: "#64748b", fontWeight: 700 }}>Total Visit Duration</div>
+                        <div style={{ fontWeight: 800, color: "#16a34a" }}>
+                          {selectedVisitDetails.visit?.checkedInAt ? calculateTimeDiff(selectedVisitDetails.visit?.checkedInAt, selectedVisitDetails.visit?.consultationCompletedAt) : "--"}
                         </div>
                       </div>
                     </div>

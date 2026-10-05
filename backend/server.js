@@ -864,7 +864,7 @@ app.get(
                     const { data: vData } = await targetDb
                         .from("patient_visits")
                         .select("id, intake_vitals, chief_complaints, hospital_patient_records(date_of_birth, gender, full_name, hospital_patient_code)")
-                        .or(`id.eq.${targetVisitId},appointment_id.eq.${targetVisitId}`)
+                        .or(`id.eq.${targetVisitId},appointment_id.eq.${targetVisitId},hospital_patient_id.eq.${targetVisitId},patient_id.eq.${targetVisitId}`)
                         .limit(1)
                         .maybeSingle();
                     visitData = vData;
