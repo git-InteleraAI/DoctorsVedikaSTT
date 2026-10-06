@@ -262,7 +262,7 @@ router.post("/appointments/:id/checkin", requirePermission("appointments.checkin
 
         let appQuery = db.from("appointments").select("*").eq("id", appointmentId);
         if (hospitalId) {
-            appQuery = appQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+            appQuery = appQuery.eq("hospital_id", hospitalId);
         }
         const { data: foundApp } = await appQuery.maybeSingle();
 
@@ -272,7 +272,7 @@ router.post("/appointments/:id/checkin", requirePermission("appointments.checkin
             // Fallback: Check if appointmentId is actually a patient_visits record ID directly
             let visitQuery = db.from("patient_visits").select("*").eq("id", appointmentId);
             if (hospitalId) {
-                visitQuery = visitQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+                visitQuery = visitQuery.eq("hospital_id", hospitalId);
             }
             const { data: foundVisit } = await visitQuery.maybeSingle();
             if (foundVisit) {
@@ -820,23 +820,29 @@ router.get("/queue", async (req, res) => {
             `);
 
         if (hospitalId) {
-            appQuery = appQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+            appQuery = appQuery.eq("hospital_id", hospitalId);
         }
         appQuery = appQuery.order("created_at", { ascending: false }).limit(200);
 
         let { data: appointmentsData, error: appErr } = await appQuery;
-        if (appErr || !appointmentsData || appointmentsData.length === 0) {
-            console.warn("[Queue API] Appointments primary query fallback:", appErr?.message);
-            const { data: fallbackApps } = await db
+        if (appErr) {
+            console.warn("[Queue API] Appointments primary query fallback error:", appErr?.message);
+            let fallbackQuery = db
                 .from("appointments")
                 .select(`
                     id, doctor_id, patient_id, appointment_date, appointment_time, status, source, reason, hospital_id, hospital_patient_id, created_at,
                     doctors(doctor_id, doctor_name, doctor_specialization),
                     hospital_patient_records(id, hospital_patient_code, full_name, phone, gender, date_of_birth)
-                `)
+                `);
+            if (hospitalId) {
+                fallbackQuery = fallbackQuery.eq("hospital_id", hospitalId);
+            }
+            const { data: fallbackApps } = await fallbackQuery
                 .order("created_at", { ascending: false })
                 .limit(200);
             appointmentsData = fallbackApps || [];
+        } else if (!appointmentsData) {
+            appointmentsData = [];
         }
 
         // 2. Fetch patient visits for hospital
@@ -860,14 +866,20 @@ router.get("/queue", async (req, res) => {
 
         let visitQuery = db.from("patient_visits").select(selectFields);
         if (hospitalId) {
-            visitQuery = visitQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+            visitQuery = visitQuery.eq("hospital_id", hospitalId);
         }
         visitQuery = visitQuery.order("created_at", { ascending: false }).limit(200);
 
         let { data: visitsData, error: visitErr } = await visitQuery;
-        if (visitErr || !visitsData) {
-            const { data: fallbackVisits } = await db.from("patient_visits").select(selectFields).order("created_at", { ascending: false }).limit(200);
+        if (visitErr) {
+            let fallbackQuery = db.from("patient_visits").select(selectFields);
+            if (hospitalId) {
+                fallbackQuery = fallbackQuery.eq("hospital_id", hospitalId);
+            }
+            const { data: fallbackVisits } = await fallbackQuery.order("created_at", { ascending: false }).limit(200);
             visitsData = fallbackVisits || [];
+        } else if (!visitsData) {
+            visitsData = [];
         }
 
         // 3. Fetch clinical notes & prescriptions counts for delete eligibility check
@@ -1130,7 +1142,7 @@ const updateVitalsHandler = async (req, res) => {
                 .limit(100);
             
             if (hospitalId) {
-                vQuery = vQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+                vQuery = vQuery.eq("hospital_id", hospitalId);
             }
             const { data: allVisits } = await vQuery;
 
@@ -1163,7 +1175,7 @@ const updateVitalsHandler = async (req, res) => {
                     .limit(100);
 
                 if (hospitalId) {
-                    appQuery = appQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+                    appQuery = appQuery.eq("hospital_id", hospitalId);
                 }
                 const { data: allApps } = await appQuery;
 
