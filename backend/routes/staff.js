@@ -669,84 +669,59 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         }
 
         // -------------------------------------------------------------
-        // 5. Fetch doctors by doctor_id and user_id cleanly
+        // 5. Fetch doctors table records
         // -------------------------------------------------------------
-        let doctorsRaw = [];
-        if (doctorIds.length > 0) {
-            const { data: d1 } = await db
-                .from("doctors")
-                .select("doctor_id, user_id, doctor_name, doctor_specialization, doctor_profile_photo, doctor_is_active, doctor_verification_status")
-                .in("doctor_id", doctorIds);
-            if (d1) doctorsRaw.push(...d1);
-        }
-        if (userIds.length > 0) {
-            const { data: d2 } = await db
-                .from("doctors")
-                .select("doctor_id, user_id, doctor_name, doctor_specialization, doctor_profile_photo, doctor_is_active, doctor_verification_status")
-                .in("user_id", userIds);
-            if (d2) doctorsRaw.push(...d2);
+        const { data: allDoctorsRaw, error: docError } = await db
+            .from("doctors")
+            .select("doctor_id, user_id, doctor_name, doctor_specialization, doctor_profile_photo, doctor_is_active, doctor_verification_status");
+
+        if (docError) {
+            console.error("[STAFF DOCTORS] doctors table query failed:", docError);
         }
 
-        // Deduplicate raw doctors
-        const uniqueDocsMap = new Map();
-        doctorsRaw.forEach(d => {
-            const k = d.doctor_id || d.user_id;
-            if (k && !uniqueDocsMap.has(String(k))) {
-                uniqueDocsMap.set(String(k), d);
+        const doctorMap = new Map();
+        (allDoctorsRaw || []).forEach(doc => {
+            if (doc.doctor_is_active !== false) {
+                if (doc.doctor_id) doctorMap.set(String(doc.doctor_id), doc);
+                if (doc.user_id) doctorMap.set(String(doc.user_id), doc);
             }
         });
-        const doctors = Array.from(uniqueDocsMap.values());
-
-        // Filter out explicitly deactivated doctors
-        const activeDoctors = doctors.filter(d => d.doctor_is_active !== false);
 
         // -------------------------------------------------------------
         // 6. Format doctor objects matching exact frontend expectations
         // -------------------------------------------------------------
-        const doctorMap = new Map();
-        activeDoctors.forEach(doc => {
-            if (doc.doctor_id) doctorMap.set(String(doc.doctor_id), doc);
-            if (doc.user_id) doctorMap.set(String(doc.user_id), doc);
-        });
-
         const formattedDoctors = [];
         const seenKeys = new Set();
 
         doctorMembers.forEach(member => {
-            const key = String(member.doctor_id || member.user_id);
-            if (key && !seenKeys.has(key)) {
-                seenKeys.add(key);
-                const doc = doctorMap.get(String(member.doctor_id)) || doctorMap.get(String(member.user_id));
-                if (doc) {
-                    const rawName = doc.doctor_name?.trim() || "Hospital Doctor";
-                    const fullName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                    const resolvedId = doc.doctor_id || member.doctor_id || member.user_id;
+            const docKey = member.doctor_id ? String(member.doctor_id) : null;
+            const userKey = member.user_id ? String(member.user_id) : null;
 
-                    formattedDoctors.push({
-                        doctorId: resolvedId,
-                        fullName,
-                        doctorName: rawName.replace(/^Dr\.\s*/, ""),
-                        specialization: doc.doctor_specialization?.trim() || "General Medicine",
-                        avatarUrl: doc.doctor_profile_photo || null
-                    });
-                }
+            const doc = (docKey ? doctorMap.get(docKey) : null) || (userKey ? doctorMap.get(userKey) : null);
+            const primaryKey = docKey || userKey || (doc?.doctor_id ? String(doc.doctor_id) : null);
+
+            if (primaryKey && !seenKeys.has(primaryKey)) {
+                seenKeys.add(primaryKey);
+                const rawName = doc?.doctor_name?.trim() || "Hospital Doctor";
+                const fullName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+
+                formattedDoctors.push({
+                    doctorId: doc?.doctor_id || member.doctor_id || member.user_id,
+                    fullName,
+                    doctorName: rawName.replace(/^Dr\.\s*/, ""),
+                    specialization: doc?.doctor_specialization?.trim() || "General Medicine",
+                    avatarUrl: doc?.doctor_profile_photo || null
+                });
             }
         });
 
-        // Fallback: If formattedDoctors is empty but activeDoctors has records, format them directly
-        if (formattedDoctors.length === 0 && activeDoctors.length > 0) {
-            activeDoctors.forEach(doc => {
-                const rawName = doc.doctor_name?.trim() || "Hospital Doctor";
-                const fullName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                formattedDoctors.push({
-                    doctorId: doc.doctor_id || doc.user_id,
-                    fullName,
-                    doctorName: rawName.replace(/^Dr\.\s*/, ""),
-                    specialization: doc.doctor_specialization?.trim() || "General Medicine",
-                    avatarUrl: doc.doctor_profile_photo || null
-                });
-            });
-        }
+        console.log("[STAFF DOCTORS] returning formatted doctors count =", formattedDoctors.length);
+
+        return res.json({
+            success: true,
+            hospitalId,
+            doctors: formattedDoctors
+        });
 
         console.log(
             `[STAFF DOCTORS] doctors returned = ${formattedDoctors.length} for hospital ${hospitalId}`
