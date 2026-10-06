@@ -167,6 +167,12 @@ class AuthService {
                     }
                 };
 
+                const resolvedHospitalId = mergedDoctor?.hospitalId || mergedDoctor?.hospital_id;
+                if (resolvedHospitalId && resolvedHospitalId !== "null" && resolvedHospitalId !== "undefined") {
+                    localStorage.setItem("doctors_vedika_hospital_id", resolvedHospitalId);
+                    localStorage.setItem("hospital_id", resolvedHospitalId);
+                }
+
                 localStorage.setItem(
                     "doctors_vedika_user",
                     JSON.stringify(mergedDoctor)
@@ -356,10 +362,20 @@ class AuthService {
         localStorage.removeItem(
             "doctors_vedika_token"
         );
-
         localStorage.removeItem(
             "doctors_vedika_user"
         );
+        localStorage.removeItem(
+            "doctors_vedika_hospital_id"
+        );
+        localStorage.removeItem(
+            "hospital_id"
+        );
+        localStorage.removeItem(
+            "active_hospital_id"
+        );
+        localStorage.removeItem("token");
+        localStorage.removeItem("doctor_token");
     }
 
     async completeOnboarding(

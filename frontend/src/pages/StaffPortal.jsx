@@ -9,7 +9,7 @@ const API_BASE = getApiV1Url();
 export default function StaffPortal() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { doctor: currentUser, logout } = useAuth();
+  const { doctor: currentUser, logout, loading: authLoading } = useAuth();
 
   // -------------------------------------------------------------------------
   // URL Location-based Active Sub-Tab Resolution
@@ -298,6 +298,10 @@ export default function StaffPortal() {
   // Data Fetching Effects
   // -------------------------------------------------------------------------
   useEffect(() => {
+    if (authLoading || !currentUser) {
+      return;
+    }
+
     fetchAllData();
 
     // Fast 2-second polling for real-time queue & stage updates
@@ -319,14 +323,30 @@ export default function StaffPortal() {
       clearInterval(interval);
       window.removeEventListener("storage", handleStorageUpdate);
     };
-  }, [activeTab]);
+  }, [activeTab, authLoading, currentUser?.id, currentUser?.userId]);
 
   useEffect(() => {
-    if (showWalkinModal) {
-      const targetId = hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id");
-      fetchDoctors(targetId);
+    if (!showWalkinModal || authLoading || !currentUser) {
+      return;
     }
-  }, [showWalkinModal, hospitalInfo]);
+
+    const targetHospitalId =
+      hospitalInfo?.id ||
+      currentUser?.hospitalId ||
+      currentUser?.hospital_id ||
+      localStorage.getItem("doctors_vedika_hospital_id") ||
+      localStorage.getItem("hospital_id");
+
+    fetchDoctors(targetHospitalId);
+  }, [
+    showWalkinModal,
+    authLoading,
+    currentUser?.id,
+    currentUser?.userId,
+    currentUser?.hospitalId,
+    currentUser?.hospital_id,
+    hospitalInfo?.id
+  ]);
 
   // Ensure selected doctor in appointment modal is auto-populated as soon as doctors list updates
   useEffect(() => {
@@ -348,9 +368,9 @@ export default function StaffPortal() {
       await Promise.all([
         fetchStats(resolvedHospId),
         fetchDoctors(resolvedHospId),
-        fetchQueue(resolvedHospId),
+        fetchQueue(selectedQueueDate),
         fetchAppointments(resolvedHospId),
-        fetchPatients(resolvedHospId)
+        fetchPatients(patientSearch)
       ]);
     } catch (err) {
       console.warn("[StaffPortal] Data fetch warning:", err);
@@ -392,10 +412,17 @@ export default function StaffPortal() {
     }
   };
 
-  const fetchDoctors = async (overrideHospId) => {
+  const fetchDoctors = async (overrideHospId = null) => {
     setIsDoctorsLoading(true);
 
-    const targetHospId = overrideHospId || hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id") || localStorage.getItem("hospital_id");
+    const targetHospId =
+      overrideHospId ||
+      hospitalInfo?.id ||
+      currentUser?.hospitalId ||
+      currentUser?.hospital_id ||
+      localStorage.getItem("doctors_vedika_hospital_id") ||
+      localStorage.getItem("hospital_id");
+
     const headers = getAuthHeaders();
     if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
       headers["X-Hospital-Id"] = targetHospId;
@@ -427,7 +454,6 @@ export default function StaffPortal() {
 
       const data = await response.json();
       console.log("[STAFF DOCTORS] RESPONSE", data);
-      console.log("[STAFF DOCTORS] DOCTORS ARRAY", data?.doctors);
 
       if (!response.ok) {
         console.error(
@@ -435,51 +461,39 @@ export default function StaffPortal() {
           response.status,
           data
         );
-
-        if (!doctors || doctors.length === 0) {
-          setDoctors([]);
-          setSelectedDoctorId("");
-        }
         return;
       }
 
-      if (data.success && Array.isArray(data.doctors)) {
-        if (data.doctors.length > 0) {
-          setDoctors(data.doctors);
-        } else if (!doctors || doctors.length === 0) {
-          setDoctors([]);
-          setSelectedDoctorId("");
-          return;
-        }
-
-        const currentSelectionExists = data.doctors.some(
-          doctor =>
-            String(doctor.doctorId) ===
-            String(selectedDoctorId)
-        );
-
-        if (!currentSelectionExists) {
-          setSelectedDoctorId(data.doctors[0].doctorId);
-        }
-      } else {
+      if (!data.success || !Array.isArray(data.doctors)) {
         console.error(
           "[StaffPortal] Invalid doctor API response:",
           data
         );
-
-        setDoctors([]);
-        setSelectedDoctorId("");
+        return;
       }
 
+      const receivedDoctors = data.doctors;
+
+      if (receivedDoctors.length === 0) {
+        setDoctors([]);
+        setSelectedDoctorId("");
+        return;
+      }
+
+      setDoctors(receivedDoctors);
+
+      const selectedStillExists = receivedDoctors.some(
+        doctor => String(doctor.doctorId) === String(selectedDoctorId)
+      );
+
+      if (!selectedStillExists) {
+        setSelectedDoctorId(receivedDoctors[0].doctorId);
+      }
     } catch (error) {
       console.error(
         "[StaffPortal] Failed to load hospital doctors:",
         error
       );
-
-      setDoctors([]);
-      setSelectedDoctorId("");
-
     } finally {
       setIsDoctorsLoading(false);
     }
