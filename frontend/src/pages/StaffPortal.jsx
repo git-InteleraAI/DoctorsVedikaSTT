@@ -259,7 +259,6 @@ export default function StaffPortal() {
       localStorage.getItem("doctor_token");
     const storedHospitalId =
       localStorage.getItem("doctors_vedika_hospital_id") ||
-      localStorage.getItem("hospital_id") ||
       localStorage.getItem("active_hospital_id");
 
     const headers = {
@@ -270,7 +269,7 @@ export default function StaffPortal() {
       "Pragma": "no-cache"
     };
 
-    if (storedHospitalId && storedHospitalId !== "null" && storedHospitalId !== "undefined") {
+    if (storedHospitalId && storedHospitalId !== "null" && storedHospitalId !== "undefined" && storedHospitalId !== "00000000-0000-0000-0000-000000000001") {
       headers["X-Hospital-Id"] = storedHospitalId;
     }
 
