@@ -564,143 +564,194 @@ router.get("/patients/:id/history", requirePermission("patients.view"), async (r
 
 /**
  * GET /api/v1/staff/doctors
- * List active doctors strictly assigned to the current hospital via hospital_members
+ *
+ * V1 RULE:
+ * Return ONLY active doctors assigned to the authenticated
+ * staff user's current hospital through hospital_members.
+ *
+ * IMPORTANT:
+ * - req.context.hospitalId is resolved by authenticateAdapter.
+ * - Frontend hospital_id is NEVER trusted for authorization.
+ * - doctors.hospital_id is NOT used.
+ * - No global doctors query.
+ * - No fallback to all doctors.
+ * - If the hospital has no doctors, return [].
  */
 router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
     try {
         const db = getSupabaseClient();
-        if (!db) return res.json({ success: true, doctors: [] });
 
-        const hospitalId = req.context.hospitalId;
-        if (!hospitalId) return res.json({ success: true, doctors: [] });
+        if (!db) {
+            return res.status(500).json({
+                success: false,
+                message: "Database connection unavailable."
+            });
+        }
 
-        // 1. Query hospital_members strictly for current hospital_id and doctor role
-        const { data: members, error: memErr } = await db
-            .from("hospital_members")
-            .select("id, doctor_id, user_id, role, status")
-            .eq("hospital_id", hospitalId);
+        // -------------------------------------------------------------
+        // 1. Get the VERIFIED hospital context from authentication
+        // -------------------------------------------------------------
+        const hospitalId = req.context?.hospitalId;
 
-        if (memErr) console.warn("[Staff API /doctors] Hospital member query warning:", memErr.message);
-
-        const doctorMembers = (members || []).filter(m => {
-            const r = String(m.role || "").toLowerCase();
-            const s = String(m.status || "").toLowerCase();
-            const isDocRole = r === "doctor" || r === "doc" || Boolean(m.doctor_id);
-            const isActiveStatus = s !== "inactive" && s !== "suspended" && s !== "cancelled";
-            return isDocRole && isActiveStatus;
-        });
-
-        const docIdsFromMembers = [...new Set(doctorMembers.map(m => m.doctor_id).filter(Boolean))];
-        const userIdsFromMembers = [...new Set(doctorMembers.map(m => m.user_id).filter(Boolean))];
-
-        // 2. Fetch doctors directly linked to this hospital or member IDs
-        let doctorRowsMap = new Map();
-
-        // 2a. Direct hospital_id link on doctors table
-        const { data: directDocs } = await db
-            .from("doctors")
-            .select("*")
-            .eq("hospital_id", hospitalId);
-
-        (directDocs || []).forEach(d => {
-            const key = d.doctor_id || d.id;
-            if (key) doctorRowsMap.set(key, d);
-            if (d.user_id) doctorRowsMap.set(d.user_id, d);
-        });
-
-        // 2b. Doctor IDs or User IDs from hospital_members
-        if (docIdsFromMembers.length > 0 || userIdsFromMembers.length > 0) {
-            try {
-                let docQuery = db.from("doctors").select("*");
-                if (docIdsFromMembers.length > 0 && userIdsFromMembers.length > 0) {
-                    const dIn = docIdsFromMembers.map(id => `"${id}"`).join(",");
-                    const uIn = userIdsFromMembers.map(id => `"${id}"`).join(",");
-                    docQuery = docQuery.or(`doctor_id.in.(${dIn}),user_id.in.(${uIn})`);
-                } else if (docIdsFromMembers.length > 0) {
-                    docQuery = docQuery.in("doctor_id", docIdsFromMembers);
-                } else if (userIdsFromMembers.length > 0) {
-                    docQuery = docQuery.in("user_id", userIdsFromMembers);
+        if (!hospitalId) {
+            console.error(
+                "[Staff Doctors] Missing authenticated hospital context",
+                {
+                    userId: req.context?.userId,
+                    role: req.context?.role,
+                    membershipId: req.context?.membershipId
                 }
+            );
 
-                const { data: memberDocs, error: docErr } = await docQuery;
-                if (docErr) console.warn("[Staff API /doctors] Member doctors detail query warning:", docErr.message);
-
-                (memberDocs || []).forEach(d => {
-                    const key = d.doctor_id || d.id;
-                    if (key) doctorRowsMap.set(key, d);
-                    if (d.user_id) doctorRowsMap.set(d.user_id, d);
-                });
-            } catch (docErr) {
-                console.warn("[Staff API /doctors] Doctors detail query warning:", docErr.message);
-            }
+            return res.status(403).json({
+                success: false,
+                message: "No authenticated hospital context."
+            });
         }
 
-        // 3. Fetch related user details ONLY for user IDs belonging to this hospital
-        const allUserIds = [...new Set([
-            ...userIdsFromMembers,
-            ...Array.from(doctorRowsMap.values()).map(d => d.user_id)
-        ].filter(Boolean))];
+        console.log("[Staff Doctors] Resolving doctors for hospital:", hospitalId);
 
-        let usersMap = new Map();
-        if (allUserIds.length > 0) {
-            const formattedUserIds = allUserIds.map(id => `"${id}"`).join(",");
-            const { data: userRows } = await db
-                .from("users")
-                .select("id, full_name, first_name, last_name, email, phone")
-                .or(`id.in.(${formattedUserIds})`);
+        // -------------------------------------------------------------
+        // 2. Find ONLY active doctor memberships for this hospital
+        // -------------------------------------------------------------
+        const {
+            data: doctorMembers,
+            error: memberError
+        } = await db
+            .from("hospital_members")
+            .select("id, hospital_id, user_id, doctor_id, role, status")
+            .eq("hospital_id", hospitalId)
+            .eq("role", "doctor")
+            .eq("status", "active");
 
-            (userRows || []).forEach(u => usersMap.set(u.id, u));
+        if (memberError) {
+            console.error(
+                "[Staff Doctors] hospital_members query failed:",
+                memberError
+            );
+
+            return res.status(500).json({
+                success: false,
+                message: "Unable to load hospital doctor memberships."
+            });
         }
 
-        // 4. Format unique hospital doctors list
-        const uniqueDoctors = new Map();
+        // -------------------------------------------------------------
+        // 3. Extract doctor IDs from those hospital memberships
+        // -------------------------------------------------------------
+        const doctorIds = [
+            ...new Set(
+                (doctorMembers || [])
+                    .map(member => member.doctor_id)
+                    .filter(Boolean)
+            )
+        ];
 
-        doctorMembers.forEach(m => {
-            const d = doctorRowsMap.get(m.doctor_id) || doctorRowsMap.get(m.user_id);
-            const u = usersMap.get(m.user_id) || usersMap.get(d?.user_id);
-            const doctorIdKey = m.doctor_id || d?.doctor_id || m.user_id || d?.id;
+        console.log(
+            "[Staff Doctors] Active doctor memberships:",
+            doctorIds.length
+        );
 
-            if (doctorIdKey && !uniqueDoctors.has(doctorIdKey)) {
-                const rawName = d?.doctor_name || d?.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
-                const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                const spec = (d?.doctor_specialization || d?.specialization || "General Medicine").trim();
+        // -------------------------------------------------------------
+        // 4. IMPORTANT:
+        //    If this hospital has no doctors, STOP HERE.
+        //
+        //    NEVER query all doctors globally.
+        // -------------------------------------------------------------
+        if (doctorIds.length === 0) {
+            return res.json({
+                success: true,
+                hospitalId,
+                doctors: []
+            });
+        }
 
-                uniqueDoctors.set(doctorIdKey, {
-                    doctorId: doctorIdKey,
-                    fullName: doctorName,
-                    doctorName: doctorName.replace(/^Dr\.\s*/, ""),
-                    specialization: spec,
-                    avatarUrl: d?.doctor_profile_photo || d?.avatar_url || null
-                });
-            }
-        });
+        // -------------------------------------------------------------
+        // 5. Fetch ONLY doctors whose doctor_id belongs to the
+        //    hospital_members rows above.
+        // -------------------------------------------------------------
+        const {
+            data: doctors,
+            error: doctorsError
+        } = await db
+            .from("doctors")
+            .select(`
+                doctor_id,
+                user_id,
+                doctor_name,
+                doctor_specialization,
+                doctor_profile_photo,
+                doctor_is_active,
+                doctor_verification_status
+            `)
+            .in("doctor_id", doctorIds)
+            .eq("doctor_is_active", true);
 
-        doctorRowsMap.forEach((d) => {
-            const doctorIdKey = d.doctor_id || d.id || d.user_id;
-            if (doctorIdKey && !uniqueDoctors.has(doctorIdKey)) {
-                const u = usersMap.get(d.user_id);
-                const rawName = d.doctor_name || d.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
-                const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                const spec = (d.doctor_specialization || d.specialization || "General Medicine").trim();
+        if (doctorsError) {
+            console.error(
+                "[Staff Doctors] doctors query failed:",
+                doctorsError
+            );
 
-                uniqueDoctors.set(doctorIdKey, {
-                    doctorId: doctorIdKey,
-                    fullName: doctorName,
-                    doctorName: doctorName.replace(/^Dr\.\s*/, ""),
-                    specialization: spec,
-                    avatarUrl: d.doctor_profile_photo || d.avatar_url || null
-                });
-            }
-        });
+            return res.status(500).json({
+                success: false,
+                message: "Unable to load hospital doctors."
+            });
+        }
 
-        // Strict Hospital Isolation: Return ONLY doctors who belong to the current hospital. NO global fallbacks.
+        // -------------------------------------------------------------
+        // 6. Preserve membership order and remove duplicates
+        // -------------------------------------------------------------
+        const doctorMap = new Map(
+            (doctors || []).map(doctor => [
+                String(doctor.doctor_id),
+                doctor
+            ])
+        );
+
+        const formattedDoctors = doctorIds
+            .map(doctorId => doctorMap.get(String(doctorId)))
+            .filter(Boolean)
+            .map(doctor => {
+                const rawName =
+                    doctor.doctor_name?.trim() || "Hospital Doctor";
+
+                const fullName = rawName.startsWith("Dr.")
+                    ? rawName
+                    : `Dr. ${rawName}`;
+
+                return {
+                    doctorId: doctor.doctor_id,
+                    fullName,
+                    doctorName: rawName.replace(/^Dr\.\s*/, ""),
+                    specialization:
+                        doctor.doctor_specialization?.trim() ||
+                        "General Medicine",
+                    avatarUrl:
+                        doctor.doctor_profile_photo || null
+                };
+            });
+
+        console.log(
+            `[Staff Doctors] Returning ${formattedDoctors.length} doctor(s) for hospital ${hospitalId}`
+        );
+
+        // -------------------------------------------------------------
+        // 7. Return ONLY hospital-scoped doctors
+        // -------------------------------------------------------------
         return res.json({
             success: true,
-            doctors: Array.from(uniqueDoctors.values())
+            hospitalId,
+            doctors: formattedDoctors
         });
+
     } catch (err) {
-        console.error("[Staff API Error /doctors]:", err);
-        return res.status(500).json({ success: false, message: err.message });
+        console.error("[Staff Doctors] Unexpected error:", err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to load hospital doctors."
+        });
     }
 });
 

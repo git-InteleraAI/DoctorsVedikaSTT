@@ -369,19 +369,71 @@ export default function StaffPortal() {
 
   const fetchDoctors = async () => {
     setIsDoctorsLoading(true);
+
     try {
-      const res = await fetch(`${API_BASE}/staff/doctors?_t=${Date.now()}`, { headers: getAuthHeaders() });
-      const data = await res.json();
+      const response = await fetch(
+        `${API_BASE}/staff/doctors?_t=${Date.now()}`,
+        {
+          method: "GET",
+          headers: {
+            ...getAuthHeaders(),
+            "Accept": "application/json"
+          },
+          cache: "no-store"
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error(
+          "[StaffPortal] Doctor API failed:",
+          response.status,
+          data
+        );
+
+        setDoctors([]);
+        setSelectedDoctorId("");
+
+        return;
+      }
+
       if (data.success && Array.isArray(data.doctors)) {
         setDoctors(data.doctors);
-        if (data.doctors.length > 0) {
-          if (!selectedDoctorId || !data.doctors.some(d => String(d.doctorId) === String(selectedDoctorId))) {
-            setSelectedDoctorId(data.doctors[0].doctorId);
-          }
+
+        if (data.doctors.length === 0) {
+          setSelectedDoctorId("");
+          return;
         }
+
+        const currentSelectionExists = data.doctors.some(
+          doctor =>
+            String(doctor.doctorId) ===
+            String(selectedDoctorId)
+        );
+
+        if (!currentSelectionExists) {
+          setSelectedDoctorId(data.doctors[0].doctorId);
+        }
+      } else {
+        console.error(
+          "[StaffPortal] Invalid doctor API response:",
+          data
+        );
+
+        setDoctors([]);
+        setSelectedDoctorId("");
       }
-    } catch (err) {
-      console.warn("Fetch doctors error:", err);
+
+    } catch (error) {
+      console.error(
+        "[StaffPortal] Failed to load hospital doctors:",
+        error
+      );
+
+      setDoctors([]);
+      setSelectedDoctorId("");
+
     } finally {
       setIsDoctorsLoading(false);
     }
