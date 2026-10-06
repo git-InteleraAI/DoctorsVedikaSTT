@@ -323,9 +323,10 @@ export default function StaffPortal() {
 
   useEffect(() => {
     if (showWalkinModal) {
-      fetchDoctors();
+      const targetId = hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id");
+      fetchDoctors(targetId);
     }
-  }, [showWalkinModal]);
+  }, [showWalkinModal, hospitalInfo]);
 
   // Ensure selected doctor in appointment modal is auto-populated as soon as doctors list updates
   useEffect(() => {
@@ -378,8 +379,8 @@ export default function StaffPortal() {
 
   const fetchStats = async (overrideHospId) => {
     try {
+      const targetHospId = overrideHospId || hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id");
       const headers = getAuthHeaders();
-      const targetHospId = overrideHospId || localStorage.getItem("doctors_vedika_hospital_id");
       if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
         headers["X-Hospital-Id"] = targetHospId;
       }
@@ -394,8 +395,8 @@ export default function StaffPortal() {
   const fetchDoctors = async (overrideHospId) => {
     setIsDoctorsLoading(true);
 
+    const targetHospId = overrideHospId || hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id") || localStorage.getItem("hospital_id");
     const headers = getAuthHeaders();
-    const targetHospId = overrideHospId || localStorage.getItem("doctors_vedika_hospital_id");
     if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
       headers["X-Hospital-Id"] = targetHospId;
     }
@@ -435,15 +436,18 @@ export default function StaffPortal() {
           data
         );
 
-        setDoctors([]);
-        setSelectedDoctorId("");
+        if (!doctors || doctors.length === 0) {
+          setDoctors([]);
+          setSelectedDoctorId("");
+        }
         return;
       }
 
       if (data.success && Array.isArray(data.doctors)) {
-        setDoctors(data.doctors);
-
-        if (data.doctors.length === 0) {
+        if (data.doctors.length > 0) {
+          setDoctors(data.doctors);
+        } else if (!doctors || doctors.length === 0) {
+          setDoctors([]);
           setSelectedDoctorId("");
           return;
         }
