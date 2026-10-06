@@ -761,7 +761,7 @@ export default function StaffPortal() {
 
   const handleOpenVitalsModal = (visit) => {
     setEditingVisit(visit);
-    const existing = visit.intake_vitals || visit.vitals || {};
+    const existing = visit.intakeVitals || visit.intake_vitals || visit.vitals || {};
     setEditVitalsData({
       bp: existing.bp || existing.blood_pressure || existing.bloodPressure || "",
       pulse: existing.pulse || existing.heart_rate || existing.heartRate || "",
@@ -2091,6 +2091,27 @@ export default function StaffPortal() {
                                     <span>•</span>
                                     <span>{item.patientCode || item.hprCode || "Walk-in"}</span>
                                   </div>
+                                  {/* Display updated vitals pills directly under patient info */}
+                                  {(() => {
+                                    const vts = item.intakeVitals || item.intake_vitals || item.vitals || {};
+                                    const bp = vts.bp || vts.blood_pressure || vts.bloodPressure;
+                                    const pulse = vts.pulse || vts.heart_rate || vts.heartRate;
+                                    const temp = vts.temperature || vts.temp;
+                                    const spo2 = vts.spo2;
+                                    const weight = vts.weight;
+                                    if (bp || pulse || temp || spo2 || weight) {
+                                      return (
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
+                                          {bp && <span style={{ fontSize: "0.7rem", backgroundColor: "#e0f2fe", color: "#0369a1", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>BP: {bp}</span>}
+                                          {pulse && <span style={{ fontSize: "0.7rem", backgroundColor: "#fef3c7", color: "#b45309", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>Pulse: {pulse} bpm</span>}
+                                          {temp && <span style={{ fontSize: "0.7rem", backgroundColor: "#fee2e2", color: "#b91c1c", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>Temp: {temp}°F</span>}
+                                          {spo2 && <span style={{ fontSize: "0.7rem", backgroundColor: "#f0fdf4", color: "#15803d", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>SpO2: {spo2}%</span>}
+                                          {weight && <span style={{ fontSize: "0.7rem", backgroundColor: "#f3e8ff", color: "#6b21a8", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>Wt: {weight}kg</span>}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </div>
                             </td>
@@ -2131,13 +2152,28 @@ export default function StaffPortal() {
                                   </button>
                                 )}
 
-                                <button
-                                  onClick={() => handleOpenVitalsModal(item)}
-                                  style={{ backgroundColor: "rgba(8,174,184,0.1)", color: "#08AEB8", border: "1px solid rgba(8,174,184,0.3)", padding: "6px 10px", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}
-                                  title="View/Edit Patient Intake Vitals"
-                                >
-                                  <i className="fa-solid fa-heart-pulse" style={{ marginRight: "4px" }} /> Vitals
-                                </button>
+                                {(() => {
+                                  const vts = item.intakeVitals || item.intake_vitals || item.vitals || {};
+                                  const hasVitals = Boolean(vts.bp || vts.pulse || vts.temperature || vts.spo2 || vts.weight || vts.height || vts.bloodGroup);
+                                  return (
+                                    <button
+                                      onClick={() => handleOpenVitalsModal(item)}
+                                      style={{
+                                        backgroundColor: hasVitals ? "#ecfdf5" : "rgba(8,174,184,0.1)",
+                                        color: hasVitals ? "#047857" : "#08AEB8",
+                                        border: hasVitals ? "1px solid #a7f3d0" : "1px solid rgba(8,174,184,0.3)",
+                                        padding: "6px 10px",
+                                        borderRadius: "6px",
+                                        fontSize: "0.78rem",
+                                        fontWeight: 700,
+                                        cursor: "pointer"
+                                      }}
+                                      title="View/Edit Patient Intake Vitals"
+                                    >
+                                      <i className={`fa-solid ${hasVitals ? "fa-circle-check" : "fa-heart-pulse"}`} style={{ marginRight: "4px" }} /> Vitals
+                                    </button>
+                                  );
+                                })()}
 
                                 <button
                                   onClick={() => handleOpenPatientDetails(item)}
