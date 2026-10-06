@@ -56,8 +56,10 @@ export default function ProtectedRoute({ children }) {
   }
 
   if (!doctor) {
-    // Directly navigate to login page smoothly
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    const isStaffPath = location.pathname.startsWith("/staff");
+    const isAdminPath = location.pathname.startsWith("/admin") || location.pathname.startsWith("/hospital-admin");
+    const targetLogin = isStaffPath ? "/staff/login" : (isAdminPath ? "/admin/login" : "/login");
+    return <Navigate to={targetLogin} state={{ from: location.pathname }} replace />;
   }
 
   // Automatic portal redirection based on user role for Doctor routes

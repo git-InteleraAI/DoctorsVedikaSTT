@@ -292,11 +292,17 @@ export default function Sidebar({
      * ============================================================
      */
     const handleLogout = () => {
+        const p = window.location.pathname;
         if (logout) {
             logout();
         }
-
-        navigate("/login");
+        if (p.startsWith("/staff")) {
+            navigate("/staff/login");
+        } else if (p.startsWith("/admin") || p.startsWith("/hospital-admin")) {
+            navigate("/admin/login");
+        } else {
+            navigate("/login");
+        }
     };
 
     /*

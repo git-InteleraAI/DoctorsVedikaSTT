@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState, useMemo } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import authService from "../services/authService";
 import "./DoctorAuth.css";
@@ -15,12 +15,33 @@ import iconPassword from "../assets/password.png";
 
 const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
-  const [activePortal, setActivePortal] = useState(initialPortal);
+  const resolvedPortal = useMemo(() => {
+    const path = location.pathname;
+    if (path.includes("/staff")) return "staff";
+    if (path.includes("/admin")) return "admin";
+    const searchParams = new URLSearchParams(location.search);
+    const queryPortal = searchParams.get("portal");
+    if (queryPortal) return queryPortal;
+    const fromPath = location.state?.from;
+    if (fromPath?.includes("/staff")) return "staff";
+    if (fromPath?.includes("/admin")) return "admin";
+    const lastPortal = localStorage.getItem("doctors_vedika_last_portal");
+    if (lastPortal) return lastPortal;
+    return initialPortal || "doctor";
+  }, [initialPortal, location]);
+
+  const [activePortal, setActivePortal] = useState(resolvedPortal);
+
+  React.useEffect(() => {
+    setActivePortal(resolvedPortal);
+  }, [resolvedPortal]);
+
   const [formData, setFormData] = useState({
-    email: activePortal === "admin" ? "admin@doctorsvedika.com" : "",
-    password: activePortal === "admin" ? "Admin@123456" : "",
+    email: resolvedPortal === "admin" ? "admin@doctorsvedika.com" : "",
+    password: resolvedPortal === "admin" ? "Admin@123456" : "",
   });
 
   React.useEffect(() => {
@@ -31,7 +52,7 @@ const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
       let targetRoute = "/dashboard";
       if (role === "hospital_admin" || role === "admin") {
         targetRoute = "/admin";
-      } else if (role === "staff") {
+      } else if (role === "staff" || role === "assistant" || role === "reception_staff") {
         targetRoute = "/staff";
       }
       navigate(targetRoute, { replace: true });
@@ -46,6 +67,7 @@ const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
 
   const handlePortalSwitch = (portal) => {
     setActivePortal(portal);
+    localStorage.setItem("doctors_vedika_last_portal", portal);
     setErrorMsg("");
     setSuccessMsg("");
     if (portal === "admin") {
@@ -81,11 +103,15 @@ const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
         const role = userObj.role || (caps.staff ? "staff" : caps.hospitalAdmin ? "hospital_admin" : "doctor");
 
         let targetRoute = "/dashboard";
+        let usedPortal = "doctor";
         if (role === "hospital_admin" || role === "admin" || activePortal === "admin") {
           targetRoute = "/admin";
-        } else if (role === "staff" || activePortal === "staff") {
+          usedPortal = "admin";
+        } else if (role === "staff" || role === "assistant" || activePortal === "staff") {
           targetRoute = "/staff";
+          usedPortal = "staff";
         }
+        localStorage.setItem("doctors_vedika_last_portal", usedPortal);
 
         setLoading(false);
         navigate(targetRoute, { replace: true });
