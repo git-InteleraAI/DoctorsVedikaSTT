@@ -393,12 +393,48 @@ export default function Appointments() {
                 ) : (
                     <div className="appointments-list-container">
                         {filteredAppointments.map((app) => {
-                            const pId = app.patientId || app.patient?.id || app.patient_id;
-                            const pName = app.patientName || app.patient?.name || "Patient";
-                            const pCode = app.patientCode || app.patient_code || (pId ? `ID: ${pId.slice(0, 8)}` : "Walk-in");
-                            const pAvatar = app.patientAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(pName)}&background=01b6af&color=fff`;
+                            const pId = app.patientId || app.patient?.id || app.patient_id || app.hospital_patient_id || app.id;
+                            const pName = app.patientName || app.patient?.name || app.patient_name || "Walk-in Patient";
+                            const pCode = app.patientCode || app.patient_code || (app.hospital_patient_id ? `DV-P-${app.hospital_patient_id.slice(0, 6).toUpperCase()}` : `ID: ${String(pId).slice(0, 8)}`);
+                            const pAvatar = app.patientAvatar || app.profile_photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(pName)}&background=01b6af&color=fff`;
                             const status = (app.status || "confirmed").toLowerCase();
-                            const feeStatus = app.payment_status || app.feeStatus || "paid";
+                            const visitStage = (app.visitStage || app.visit_stage || "").toLowerCase();
+                            const feeStatus = app.payment_status || app.feeStatus || "pending";
+
+                            const handleStartConsultation = (appointmentItem) => {
+                                const encounterId = appointmentItem.visitId || appointmentItem.visit_id || appointmentItem.hospital_patient_id || appointmentItem.patientId || appointmentItem.patient_id || appointmentItem.id;
+                                const queryParams = new URLSearchParams();
+                                if (appointmentItem.id) queryParams.set("appointmentId", appointmentItem.id);
+                                if (appointmentItem.visitId || appointmentItem.visit_id) queryParams.set("visitId", appointmentItem.visitId || appointmentItem.visit_id);
+
+                                const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
+                                fetch(`${API}/api/v1/queue/transition`, {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                                    },
+                                    body: JSON.stringify({
+                                        visitId: encounterId,
+                                        targetStage: "in_consultation"
+                                    })
+                                }).catch((e) => console.warn("Transition notice:", e));
+
+                                navigate(`/consultation/${encodeURIComponent(encounterId)}?${queryParams.toString()}`, {
+                                    state: {
+                                        appointmentId: appointmentItem.id,
+                                        visitId: appointmentItem.visitId || appointmentItem.visit_id,
+                                        hospitalPatientId: appointmentItem.hospital_patient_id,
+                                        patientId: appointmentItem.patientId || appointmentItem.patient_id || null,
+                                        patient: appointmentItem,
+                                        symptoms: appointmentItem.symptoms || appointmentItem.reason,
+                                        duration: appointmentItem.duration,
+                                        severity: appointmentItem.severity,
+                                        current_medications: appointmentItem.current_medications || appointmentItem.currentMedications,
+                                        additional_notes: appointmentItem.additional_notes || appointmentItem.additionalNotes,
+                                    }
+                                });
+                            };
 
                             return (
                                 <div className="appointment-card" key={app.id || app.appointmentId}>
@@ -423,7 +459,7 @@ export default function Appointments() {
                                                 <div className="patient-demographics">
                                                     {app.patientAge || app.age ? `${app.patientAge || app.age} yrs` : "Age N/A"} •{" "}
                                                     {app.patientGender || app.gender || "Gender N/A"} •{" "}
-                                                    Blood: {app.bloodGroup || app.blood_group || "O+"}
+                                                    Blood: {app.bloodGroup || app.blood_group || "-"}
                                                 </div>
 
                                                 <div className="complaint-pill">
@@ -442,7 +478,7 @@ export default function Appointments() {
 
                                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                                 <span className={`fee-badge ${feeStatus === "paid" ? "paid" : "pending"}`}>
-                                                    {feeStatus === "paid" ? "₹200 Paid" : "₹200 Pending"}
+                                                    {feeStatus === "paid" ? `₹${app.consultationFee || 500} Paid` : `₹${app.consultationFee || 500} Pending`}
                                                 </span>
 
                                                 <span className={`status-badge ${status}`}>
@@ -474,21 +510,9 @@ export default function Appointments() {
                                                     Confirm
                                                 </button>
                                             )}
-
-
-
-                                            {/* {status !== "cancelled" && status !== "completed" && (
-                                                <button
-                                                    className="btn-action-danger"
-                                                    onClick={() => handleStatusUpdate(app.id, "cancelled")}
-                                                >
-                                                    <i className="fa-solid fa-ban"></i>
-                                                    Cancel
-                                                </button>
-                                            )} */}
                                         </div>
 
-                                        {status === "completed" ? (
+                                        {status === "completed" || visitStage === "completed" || visitStage === "exited" ? (
                                             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                                                 <button
                                                     className="btn-action-secondary"
@@ -501,42 +525,20 @@ export default function Appointments() {
                                                 <button
                                                     className="btn-start-consultation"
                                                     style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                                                    onClick={() => navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(app.id || "")}`, {
-                                                        state: {
-                                                            appointmentId: app.id,
-                                                            patient: app,
-                                                            symptoms: app.symptoms || app.reason,
-                                                            duration: app.duration,
-                                                            severity: app.severity,
-                                                            current_medications: app.current_medications || app.currentMedications,
-                                                            additional_notes: app.additional_notes || app.additionalNotes,
-                                                        }
-                                                    })}
+                                                    onClick={() => handleStartConsultation(app)}
                                                 >
                                                     <span>View Consultation</span>
                                                     <i className="fa-solid fa-file-medical"></i>
                                                 </button>
                                             </div>
-                                        ) : pId ? (
+                                        ) : (
                                             <button
                                                 className="btn-start-consultation"
-                                                onClick={() => navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(app.id || "")}`, {
-                                                    state: {
-                                                        appointmentId: app.id,
-                                                        patient: app,
-                                                        symptoms: app.symptoms || app.reason,
-                                                        duration: app.duration,
-                                                        severity: app.severity,
-                                                        current_medications: app.current_medications || app.currentMedications,
-                                                        additional_notes: app.additional_notes || app.additionalNotes,
-                                                    }
-                                                })}
+                                                onClick={() => handleStartConsultation(app)}
                                             >
-                                                <span>Start Consultation</span>
+                                                <span>{visitStage === "in_consultation" ? "In Consultation" : "Start Consultation"}</span>
                                                 <i className="fa-solid fa-arrow-right"></i>
                                             </button>
-                                        ) : (
-                                            <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>No Patient Record Linked</span>
                                         )}
                                     </div>
                                 </div>
@@ -560,7 +562,7 @@ export default function Appointments() {
                         <div className="modal-body">
                             <div>
                                 <strong style={{ color: "#082b68", display: "block", marginBottom: 4 }}>Patient Name:</strong>
-                                <span>{selectedAppointment.patientName || selectedAppointment.patient?.name || "Unknown"}</span>
+                                <span>{selectedAppointment.patientName || selectedAppointment.patient_name || selectedAppointment.patient?.name || "Unknown"}</span>
                             </div>
 
                             <div>
@@ -589,42 +591,54 @@ export default function Appointments() {
                                 Close
                             </button>
 
-                            {(selectedAppointment.patientId || selectedAppointment.patient?.id) && (
-                                String(selectedAppointment.status || "").toLowerCase() === "completed" ? (
-                                    <button
-                                        className="btn-start-consultation"
-                                        style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                                        onClick={() => {
-                                            const pId = selectedAppointment.patientId || selectedAppointment.patient?.id;
-                                            setSelectedAppointment(null);
-                                            navigate(`/patients/${encodeURIComponent(pId)}`);
-                                        }}
-                                    >
-                                        View Patient Record <i className="fa-solid fa-arrow-right"></i>
-                                    </button>
-                                ) : (
-                                    <button
-                                        className="btn-start-consultation"
-                                        onClick={() => {
-                                            const pId = selectedAppointment.patientId || selectedAppointment.patient?.id;
-                                            const aptId = selectedAppointment.id;
-                                            setSelectedAppointment(null);
-                                            navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(aptId)}`, {
-                                                state: {
-                                                    appointmentId: aptId,
-                                                    patient: selectedAppointment,
-                                                    symptoms: selectedAppointment.symptoms || selectedAppointment.reason,
-                                                    duration: selectedAppointment.duration,
-                                                    severity: selectedAppointment.severity,
-                                                    current_medications: selectedAppointment.current_medications || selectedAppointment.currentMedications,
-                                                    additional_notes: selectedAppointment.additional_notes || selectedAppointment.additionalNotes,
-                                                }
-                                            });
-                                        }}
-                                    >
-                                        Start Consultation <i className="fa-solid fa-arrow-right"></i>
-                                    </button>
-                                )
+                            {String(selectedAppointment.status || "").toLowerCase() === "completed" ? (
+                                <button
+                                    className="btn-start-consultation"
+                                    style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
+                                    onClick={() => {
+                                        const targetPId = selectedAppointment.patientId || selectedAppointment.patient_id || selectedAppointment.hospital_patient_id || selectedAppointment.id;
+                                        setSelectedAppointment(null);
+                                        navigate(`/patients/${encodeURIComponent(targetPId)}`);
+                                    }}
+                                >
+                                    View Patient Record <i className="fa-solid fa-arrow-right"></i>
+                                </button>
+                            ) : (
+                                <button
+                                    className="btn-start-consultation"
+                                    onClick={() => {
+                                        const targetPId = selectedAppointment.patientId || selectedAppointment.patient_id || selectedAppointment.hospital_patient_id || selectedAppointment.id;
+                                        const aptId = selectedAppointment.id;
+                                        setSelectedAppointment(null);
+
+                                        const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
+                                        fetch(`${API}/api/v1/queue/transition`, {
+                                            method: "POST",
+                                            headers: {
+                                                "Content-Type": "application/json",
+                                                ...(token ? { Authorization: `Bearer ${token}` } : {})
+                                            },
+                                            body: JSON.stringify({
+                                                visitId: selectedAppointment.visitId || selectedAppointment.visit_id || targetPId,
+                                                targetStage: "in_consultation"
+                                            })
+                                        }).catch((e) => console.warn("Transition notice:", e));
+
+                                        navigate(`/consultation/${encodeURIComponent(targetPId)}?appointmentId=${encodeURIComponent(aptId)}`, {
+                                            state: {
+                                                appointmentId: aptId,
+                                                patient: selectedAppointment,
+                                                symptoms: selectedAppointment.symptoms || selectedAppointment.reason,
+                                                duration: selectedAppointment.duration,
+                                                severity: selectedAppointment.severity,
+                                                current_medications: selectedAppointment.current_medications || selectedAppointment.currentMedications,
+                                                additional_notes: selectedAppointment.additional_notes || selectedAppointment.additionalNotes,
+                                            }
+                                        });
+                                    }}
+                                >
+                                    Start Consultation <i className="fa-solid fa-arrow-right"></i>
+                                </button>
                             )}
                         </div>
                     </div>

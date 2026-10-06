@@ -289,11 +289,27 @@ const Patients = () => {
     };
 
     const startConsultation = (visit) => {
-        navigate(`/consultation/${selectedPatient.userId}?appointmentId=${visit.appointmentId}`, {
+        const pId = selectedPatient?.userId || selectedPatient?.id || visit.hospital_patient_id || visit.appointmentId;
+        const encounterId = visit.visitId || visit.appointmentId || pId;
+        const token = getToken();
+
+        fetch(`${API}/api/v1/queue/transition`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+                visitId: encounterId,
+                targetStage: "in_consultation"
+            })
+        }).catch((e) => console.warn("Transition notice:", e));
+
+        navigate(`/consultation/${encodeURIComponent(pId)}?appointmentId=${encodeURIComponent(visit.appointmentId)}`, {
             state: {
                 appointmentId: visit.appointmentId,
                 patient: selectedPatient,
-                doctorId: doctor.id,
+                doctorId: doctor?.id,
             }
         });
     };
@@ -687,12 +703,12 @@ const Patients = () => {
                                                             <i className="fa-solid fa-file-medical"></i> View Record
                                                         </button>
                                                     </>
-                                                ) : visit.visitStage === "waiting" ? (
+                                                ) : (visit.visitStage === "waiting" || visit.visitStage === "checked_in" || visit.visitStage === "in_consultation" || (visit.status === "confirmed" && visit.visitStage !== "completed" && visit.visitStage !== "cancelled")) ? (
                                                     <button
                                                         onClick={() => startConsultation(visit)}
                                                         style={{ background: "#08AEB8", color: "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
                                                     >
-                                                        Start Consultation <i className="fa-solid fa-arrow-right" />
+                                                        {visit.visitStage === "in_consultation" ? "In Consultation" : "Start Consultation"} <i className="fa-solid fa-arrow-right" />
                                                     </button>
                                                 ) : (
                                                     <span style={{ fontSize: "0.82rem", color: "#64748b", fontStyle: "italic", background: "#f1f5f9", padding: "6px 12px", borderRadius: "6px" }}>

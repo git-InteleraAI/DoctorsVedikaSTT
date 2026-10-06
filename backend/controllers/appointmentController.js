@@ -67,7 +67,14 @@ class AppointmentController {
                     .select("id, appointment_id, visit_stage, checked_in_at, consultation_started_at, consultation_completed_at, chief_complaints")
                     .in("appointment_id", appointmentIdsRaw);
                 if (visitsData) {
-                    visitsData.forEach(v => { visitsMap[v.appointment_id] = decryptRecord("patient_visits", v); });
+                    const stagePriority = { in_consultation: 4, waiting: 3, checked_in: 3, completed: 2, scheduled: 1, cancelled: 0 };
+                    visitsData.forEach(v => {
+                        const decV = decryptRecord("patient_visits", v);
+                        const existing = visitsMap[v.appointment_id];
+                        if (!existing || (stagePriority[decV.visit_stage] || 0) >= (stagePriority[existing.visit_stage] || 0)) {
+                            visitsMap[v.appointment_id] = decV;
+                        }
+                    });
                 }
             }
 
@@ -76,7 +83,7 @@ class AppointmentController {
                 const appDate = app.appointment_date;
                 const status = (app.status || "").toLowerCase();
                 const rawVisitStage = (visitsMap[app.id]?.visit_stage || "").toLowerCase();
-                const visitStage = rawVisitStage || (status === "cancelled" ? "cancelled" : (status === "completed" ? "completed" : "scheduled"));
+                const visitStage = rawVisitStage || (status === "cancelled" ? "cancelled" : (status === "completed" ? "completed" : (status === "confirmed" ? "waiting" : "scheduled")));
 
                 // Specific Date Filter condition
                 if (dateFilter && dateFilter !== "all") {
@@ -98,11 +105,11 @@ class AppointmentController {
                     return status === "completed" || visitStage === "completed" || visitStage === "exited";
                 } else if (tab === "pending") {
                     const isExplicitPending = status === "pending" || status === "pending_consultation";
-                    const isPastConfirmed = status === "confirmed" && appDate < todayDateStr;
+                    const isPastConfirmed = status === "confirmed" && appDate < todayDateStr && visitStage !== "waiting" && visitStage !== "in_consultation";
                     return isExplicitPending || isPastConfirmed;
                 } else if (tab === "confirmed" || tab === "upcoming") {
-                    // Doctors must see ONLY patients whose current stage is Waiting (or in_consultation/checked_in)
-                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation";
+                    // Doctors must see ONLY patients whose current stage is Waiting (or in_consultation/checked_in/confirmed)
+                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation" || status === "confirmed";
                     if (!isWaitingOrInConsult) return false;
 
                     const isConfirmedStatus = status === "confirmed" || status === "scheduled";
@@ -111,7 +118,7 @@ class AppointmentController {
                     }
                     return isConfirmedStatus;
                 } else if (tab === "today") {
-                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation";
+                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation" || status === "confirmed";
                     return appDate === todayDateStr && isWaitingOrInConsult && status !== "cancelled";
                 }
                 
@@ -171,7 +178,14 @@ class AppointmentController {
                     .select("id, appointment_id, visit_stage, checked_in_at, consultation_started_at, consultation_completed_at, chief_complaints")
                     .in("appointment_id", appointmentIds);
                 if (visitsData) {
-                    visitsData.forEach(v => { visitsMap[v.appointment_id] = decryptRecord("patient_visits", v); });
+                    const stagePriority = { in_consultation: 4, waiting: 3, checked_in: 3, completed: 2, scheduled: 1, cancelled: 0 };
+                    visitsData.forEach(v => {
+                        const decV = decryptRecord("patient_visits", v);
+                        const existing = visitsMap[v.appointment_id];
+                        if (!existing || (stagePriority[decV.visit_stage] || 0) >= (stagePriority[existing.visit_stage] || 0)) {
+                            visitsMap[v.appointment_id] = decV;
+                        }
+                    });
                 }
             }
 
@@ -208,9 +222,13 @@ class AppointmentController {
 
                 const name = patient.full_name || (patient.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || hpr.full_name || app.patient_name || "Walk-in Patient";
 
+                const resolvedVisitStage = visit.visit_stage || (app.status === "confirmed" ? "waiting" : "scheduled");
+
                 return {
                     id: app.id,
-                    patientId: patient.user_id || patient.id || app.patient_id || null,
+                    visitId: visit.id || null,
+                    visit_id: visit.id || null,
+                    patientId: patient.user_id || patient.id || app.patient_id || app.hospital_patient_id || app.id,
                     hospital_patient_id: app.hospital_patient_id || null,
                     patientCode: patient.patient_code || hpr.hospital_patient_code || (hpr.id ? `DV-P-${hpr.id.slice(0, 6).toUpperCase()}` : ""),
                     patientName: name,
@@ -224,7 +242,8 @@ class AppointmentController {
                     appointment_date: app.appointment_date,
                     time: app.appointment_time,
                     appointment_time: app.appointment_time,
-                    visitStage: visit.visit_stage || "scheduled",
+                    visitStage: resolvedVisitStage,
+                    visit_stage: resolvedVisitStage,
                     checkedInAt: visit.checked_in_at || null,
                     startedAt: visit.consultation_started_at || null,
                     completedAt: visit.consultation_completed_at || null,

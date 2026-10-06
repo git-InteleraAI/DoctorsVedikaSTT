@@ -998,9 +998,8 @@ const updateVitalsHandler = async (req, res) => {
         if (isUuid(rawId)) {
             const { data: vSingle } = await db
                 .from("patient_visits")
-                .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, consultation_started_at, started_at")
+                .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, visit_stage, consultation_started_at, started_at")
                 .or(`id.eq.${rawId},appointment_id.eq.${rawId}`)
-                .eq("hospital_id", hospitalId)
                 .maybeSingle();
 
             if (vSingle) visit = vSingle;
@@ -1008,13 +1007,16 @@ const updateVitalsHandler = async (req, res) => {
 
         // 2. If not found (or if rawId is a short/partial UUID or prefixed ID)
         if (!visit) {
-            // Fetch recent visits for this hospital and match by partial ID prefix or hyphenless string
-            const { data: allVisits } = await db
+            let vQuery = db
                 .from("patient_visits")
-                .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, consultation_started_at, started_at")
-                .eq("hospital_id", hospitalId)
+                .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, visit_stage, consultation_started_at, started_at")
                 .order("created_at", { ascending: false })
                 .limit(100);
+            
+            if (hospitalId) {
+                vQuery = vQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+            }
+            const { data: allVisits } = await vQuery;
 
             const targetClean = rawId.replace(/-/g, "").toLowerCase();
             visit = (allVisits || []).find(v => {
@@ -1025,7 +1027,7 @@ const updateVitalsHandler = async (req, res) => {
             });
         }
 
-        // 3. If still no visit row found, check if rawId matches an appointment to auto-create visit
+        // 3. If still no visit row found, check if rawId matches an appointment to auto-create visit ONLY IF no visit exists for that appointment
         if (!visit) {
             let appRow = null;
             if (isUuid(rawId)) {
@@ -1033,18 +1035,21 @@ const updateVitalsHandler = async (req, res) => {
                     .from("appointments")
                     .select("*")
                     .eq("id", rawId)
-                    .eq("hospital_id", hospitalId)
                     .maybeSingle();
                 if (aRow) appRow = aRow;
             }
 
             if (!appRow) {
-                const { data: allApps } = await db
+                let appQuery = db
                     .from("appointments")
                     .select("*")
-                    .eq("hospital_id", hospitalId)
                     .order("created_at", { ascending: false })
                     .limit(100);
+
+                if (hospitalId) {
+                    appQuery = appQuery.or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
+                }
+                const { data: allApps } = await appQuery;
 
                 const targetClean = rawId.replace(/-/g, "").toLowerCase();
                 appRow = (allApps || []).find(a => {
@@ -1055,29 +1060,41 @@ const updateVitalsHandler = async (req, res) => {
             }
 
             if (appRow) {
-                // Auto-create patient_visits row for this appointment
-                const newVisitData = {
-                    hospital_id: hospitalId,
-                    hospital_patient_id: appRow.hospital_patient_id,
-                    patient_id: appRow.patient_id,
-                    appointment_id: appRow.id,
-                    doctor_id: appRow.doctor_id,
-                    visit_stage: (appRow.status === "waiting" || appRow.status === "checked_in" || appRow.visit_stage === "waiting") ? "waiting" : (appRow.visit_stage || "scheduled"),
-                    status: appRow.status || "scheduled",
-                    chief_complaints: appRow.reason || null,
-                    intake_vitals: vitalsInput,
-                    created_by: req.context.userId
-                };
-
-                const encVisit = encryptPayload("patient_visits", newVisitData);
-                const { data: createdVisit, error: createErr } = await db
+                // Check if a visit row ALREADY exists for this appointment
+                const { data: existingAppVisit } = await db
                     .from("patient_visits")
-                    .insert(encVisit)
-                    .select()
-                    .single();
+                    .select("id, hospital_id, hospital_patient_id, appointment_id, intake_vitals, visit_stage, consultation_started_at, started_at")
+                    .eq("appointment_id", appRow.id)
+                    .maybeSingle();
 
-                if (createErr) throw createErr;
-                visit = createdVisit;
+                if (existingAppVisit) {
+                    visit = existingAppVisit;
+                } else {
+                    // Auto-create patient_visits row for this appointment, ensuring visit_stage is "waiting" if confirmed/checked_in
+                    const isWaitingStage = appRow.status === "confirmed" || appRow.status === "waiting" || appRow.status === "checked_in" || appRow.checked_in_at;
+                    const newVisitData = {
+                        hospital_id: hospitalId || appRow.hospital_id,
+                        hospital_patient_id: appRow.hospital_patient_id,
+                        patient_id: appRow.patient_id,
+                        appointment_id: appRow.id,
+                        doctor_id: appRow.doctor_id,
+                        visit_stage: isWaitingStage ? "waiting" : (appRow.visit_stage || "scheduled"),
+                        status: appRow.status || "scheduled",
+                        chief_complaints: appRow.reason || null,
+                        intake_vitals: vitalsInput,
+                        created_by: req.context?.userId || null
+                    };
+
+                    const encVisit = encryptPayload("patient_visits", newVisitData);
+                    const { data: createdVisit, error: createErr } = await db
+                        .from("patient_visits")
+                        .insert(encVisit)
+                        .select()
+                        .single();
+
+                    if (createErr) throw createErr;
+                    visit = createdVisit;
+                }
             }
         }
 
@@ -1102,7 +1119,7 @@ const updateVitalsHandler = async (req, res) => {
             updated_at: new Date().toISOString()
         };
 
-        // 6. Update patient_visits
+        // 6. Update patient_visits ONLY - preserve visit_stage, appointment_id, status
         const encMergedVitals = encryptPayload("patient_visits", { intake_vitals: mergedVitals });
 
         const { data: updatedVisit, error: updateErr } = await db
@@ -1112,7 +1129,6 @@ const updateVitalsHandler = async (req, res) => {
                 updated_at: new Date().toISOString()
             })
             .eq("id", visit.id)
-            .eq("hospital_id", hospitalId)
             .select()
             .single();
 
