@@ -257,14 +257,24 @@ export default function StaffPortal() {
       localStorage.getItem("doctors_vedika_token") ||
       localStorage.getItem("token") ||
       localStorage.getItem("doctor_token");
+    const storedHospitalId =
+      localStorage.getItem("doctors_vedika_hospital_id") ||
+      localStorage.getItem("hospital_id") ||
+      localStorage.getItem("active_hospital_id");
 
-    return {
+    const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       "X-Portal-Context": "staff",
       "Cache-Control": "no-cache",
       "Pragma": "no-cache"
     };
+
+    if (storedHospitalId && storedHospitalId !== "null" && storedHospitalId !== "undefined") {
+      headers["X-Hospital-Id"] = storedHospitalId;
+    }
+
+    return headers;
   };
 
   const calculateTimeDiff = (startIso, endIso) => {
@@ -330,8 +340,11 @@ export default function StaffPortal() {
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
+      // 1. Resolve and verify authenticated hospital context first
+      await fetchHospitalInfo();
+
+      // 2. Fetch remaining portal data with verified hospital context header
       await Promise.all([
-        fetchHospitalInfo(),
         fetchStats(),
         fetchDoctors(),
         fetchQueue(),
@@ -351,10 +364,16 @@ export default function StaffPortal() {
       const data = await res.json();
       if (data.success && data.hospital) {
         setHospitalInfo(data.hospital);
+        if (data.hospital.id) {
+          localStorage.setItem("doctors_vedika_hospital_id", data.hospital.id);
+          localStorage.setItem("hospital_id", data.hospital.id);
+        }
+        return data.hospital;
       }
     } catch (err) {
       console.warn("Fetch hospital info error:", err);
     }
+    return null;
   };
 
   const fetchStats = async () => {

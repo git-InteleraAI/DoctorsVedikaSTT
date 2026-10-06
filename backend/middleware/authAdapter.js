@@ -150,7 +150,8 @@ const authenticateAdapter = async (req, res, next) => {
         }
 
         // 3. Resolve Hospital Context from X-Hospital-Id Header & X-Portal-Context Header
-        const requestedHospitalId = req.headers["x-hospital-id"];
+        const rawRequestedHospitalId = req.headers["x-hospital-id"];
+        const requestedHospitalId = (rawRequestedHospitalId && rawRequestedHospitalId !== "null" && rawRequestedHospitalId !== "undefined") ? String(rawRequestedHospitalId).trim() : null;
         const portalContext = req.headers["x-portal-context"] || (req.originalUrl?.includes("/hospital-admin") ? "hospital_admin" : req.originalUrl?.includes("/staff") ? "staff" : null);
 
         if (requestedHospitalId) {
@@ -165,6 +166,8 @@ const authenticateAdapter = async (req, res, next) => {
                     requestedHospitalId
                 });
             }
+        } else if (allMemberships.length === 1) {
+            activeMembership = allMemberships[0];
         } else if (portalContext) {
             activeMembership = allMemberships.find(m => m.role === portalContext) || allMemberships[0];
         } else {

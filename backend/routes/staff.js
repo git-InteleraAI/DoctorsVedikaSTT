@@ -639,13 +639,27 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         // -------------------------------------------------------------
         // 3. Extract doctor IDs from those hospital memberships
         // -------------------------------------------------------------
-        const doctorIds = [
+        let doctorIds = [
             ...new Set(
                 (doctorMembers || [])
                     .map(member => member.doctor_id)
                     .filter(Boolean)
             )
         ];
+
+        // Fallback: If doctor_id is missing on hospital_members, resolve via user_id
+        if (doctorIds.length === 0 && doctorMembers && doctorMembers.length > 0) {
+            const userIds = [...new Set(doctorMembers.map(m => m.user_id).filter(Boolean))];
+            if (userIds.length > 0) {
+                const { data: userDocs } = await db
+                    .from("doctors")
+                    .select("doctor_id")
+                    .in("user_id", userIds);
+                if (userDocs && userDocs.length > 0) {
+                    doctorIds = [...new Set(userDocs.map(d => d.doctor_id).filter(Boolean))];
+                }
+            }
+        }
 
         console.log(
             "[Staff Doctors] Active doctor memberships:",
