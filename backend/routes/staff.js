@@ -585,77 +585,110 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         const doctorMembers = (members || []).filter(m => {
             const r = String(m.role || "").toLowerCase();
             const s = String(m.status || "").toLowerCase();
-            return (r === "doctor" || r === "admin" || r === "owner" || !r) && (s === "active" || s === "" || s === "approved");
+            const isDocRole = r === "doctor" || r === "doc" || Boolean(m.doctor_id);
+            const isActiveStatus = s !== "inactive" && s !== "suspended" && s !== "cancelled";
+            return isDocRole && isActiveStatus;
         });
 
-        const docIdsFromMembers = doctorMembers.map(m => m.doctor_id).filter(Boolean);
-        const userIdsFromMembers = doctorMembers.map(m => m.user_id).filter(Boolean);
+        const docIdsFromMembers = [...new Set(doctorMembers.map(m => m.doctor_id).filter(Boolean))];
+        const userIdsFromMembers = [...new Set(doctorMembers.map(m => m.user_id).filter(Boolean))];
 
         // 2. Fetch doctors directly linked to this hospital or member IDs
-        let memberDocRows = [];
+        let doctorRowsMap = new Map();
+
+        // 2a. Direct hospital_id link on doctors table
+        const { data: directDocs } = await db
+            .from("doctors")
+            .select("*")
+            .eq("hospital_id", hospitalId);
+
+        (directDocs || []).forEach(d => {
+            const key = d.doctor_id || d.id;
+            if (key) doctorRowsMap.set(key, d);
+            if (d.user_id) doctorRowsMap.set(d.user_id, d);
+        });
+
+        // 2b. Doctor IDs or User IDs from hospital_members
         if (docIdsFromMembers.length > 0 || userIdsFromMembers.length > 0) {
             try {
-                if (docIdsFromMembers.length > 0) {
-                    const { data: dData } = await db.from("doctors").select("*").in("doctor_id", docIdsFromMembers);
-                    if (dData) memberDocRows.push(...dData);
+                let docQuery = db.from("doctors").select("*");
+                if (docIdsFromMembers.length > 0 && userIdsFromMembers.length > 0) {
+                    const dIn = docIdsFromMembers.map(id => `"${id}"`).join(",");
+                    const uIn = userIdsFromMembers.map(id => `"${id}"`).join(",");
+                    docQuery = docQuery.or(`doctor_id.in.(${dIn}),user_id.in.(${uIn})`);
+                } else if (docIdsFromMembers.length > 0) {
+                    docQuery = docQuery.in("doctor_id", docIdsFromMembers);
+                } else if (userIdsFromMembers.length > 0) {
+                    docQuery = docQuery.in("user_id", userIdsFromMembers);
                 }
-                if (userIdsFromMembers.length > 0) {
-                    const { data: uData } = await db.from("doctors").select("*").in("user_id", userIdsFromMembers);
-                    if (uData) memberDocRows.push(...uData);
-                }
+
+                const { data: memberDocs, error: docErr } = await docQuery;
+                if (docErr) console.warn("[Staff API /doctors] Member doctors detail query warning:", docErr.message);
+
+                (memberDocs || []).forEach(d => {
+                    const key = d.doctor_id || d.id;
+                    if (key) doctorRowsMap.set(key, d);
+                    if (d.user_id) doctorRowsMap.set(d.user_id, d);
+                });
             } catch (docErr) {
                 console.warn("[Staff API /doctors] Doctors detail query warning:", docErr.message);
             }
         }
 
-        const { data: directDocs } = await db.from("doctors").select("*").eq("hospital_id", hospitalId);
-
-        const allDocRows = [...(directDocs || []), ...memberDocRows];
-
         // 3. Fetch related user details ONLY for user IDs belonging to this hospital
         const allUserIds = [...new Set([
             ...userIdsFromMembers,
-            ...allDocRows.map(d => d.user_id)
+            ...Array.from(doctorRowsMap.values()).map(d => d.user_id)
         ].filter(Boolean))];
 
-        const { data: userRows } = allUserIds.length > 0
-            ? await db.from("users").select("id, full_name, first_name, last_name, email, phone").in("id", allUserIds)
-            : { data: [] };
+        let usersMap = new Map();
+        if (allUserIds.length > 0) {
+            const formattedUserIds = allUserIds.map(id => `"${id}"`).join(",");
+            const { data: userRows } = await db
+                .from("users")
+                .select("id, full_name, first_name, last_name, email, phone")
+                .or(`id.in.(${formattedUserIds})`);
 
-        const usersMap = new Map();
-        (userRows || []).forEach(u => usersMap.set(u.id, u));
+            (userRows || []).forEach(u => usersMap.set(u.id, u));
+        }
 
+        // 4. Format unique hospital doctors list
         const uniqueDoctors = new Map();
 
-        allDocRows.forEach(d => {
-            const key = d.doctor_id || d.user_id || d.id;
-            if (key && !uniqueDoctors.has(key)) {
-                const u = usersMap.get(d.user_id);
-                const rawName = d.doctor_name || d.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
+        doctorMembers.forEach(m => {
+            const d = doctorRowsMap.get(m.doctor_id) || doctorRowsMap.get(m.user_id);
+            const u = usersMap.get(m.user_id) || usersMap.get(d?.user_id);
+            const doctorIdKey = m.doctor_id || d?.doctor_id || m.user_id || d?.id;
+
+            if (doctorIdKey && !uniqueDoctors.has(doctorIdKey)) {
+                const rawName = d?.doctor_name || d?.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
                 const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                const spec = (d.doctor_specialization || d.specialization || "General Medicine").trim();
-                uniqueDoctors.set(key, {
-                    doctorId: d.doctor_id || d.user_id || d.id,
+                const spec = (d?.doctor_specialization || d?.specialization || "General Medicine").trim();
+
+                uniqueDoctors.set(doctorIdKey, {
+                    doctorId: doctorIdKey,
                     fullName: doctorName,
                     doctorName: doctorName.replace(/^Dr\.\s*/, ""),
                     specialization: spec,
-                    avatarUrl: d.doctor_profile_photo || d.avatar_url || null
+                    avatarUrl: d?.doctor_profile_photo || d?.avatar_url || null
                 });
             }
         });
 
-        doctorMembers.forEach(m => {
-            const key = m.doctor_id || m.user_id || m.id;
-            if (key && !uniqueDoctors.has(key)) {
-                const u = usersMap.get(m.user_id);
-                const rawName = u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
+        doctorRowsMap.forEach((d) => {
+            const doctorIdKey = d.doctor_id || d.id || d.user_id;
+            if (doctorIdKey && !uniqueDoctors.has(doctorIdKey)) {
+                const u = usersMap.get(d.user_id);
+                const rawName = d.doctor_name || d.full_name || u?.full_name || (u?.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : null) || "Hospital Doctor";
                 const doctorName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
-                uniqueDoctors.set(key, {
-                    doctorId: m.doctor_id || m.user_id || m.id,
+                const spec = (d.doctor_specialization || d.specialization || "General Medicine").trim();
+
+                uniqueDoctors.set(doctorIdKey, {
+                    doctorId: doctorIdKey,
                     fullName: doctorName,
                     doctorName: doctorName.replace(/^Dr\.\s*/, ""),
-                    specialization: "General Medicine",
-                    avatarUrl: null
+                    specialization: spec,
+                    avatarUrl: d.doctor_profile_photo || d.avatar_url || null
                 });
             }
         });

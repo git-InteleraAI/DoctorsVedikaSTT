@@ -39,6 +39,7 @@ export default function StaffPortal() {
   });
 
   const [doctors, setDoctors] = useState([]);
+  const [isDoctorsLoading, setIsDoctorsLoading] = useState(false);
   const [queue, setQueue] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -367,10 +368,11 @@ export default function StaffPortal() {
   };
 
   const fetchDoctors = async () => {
+    setIsDoctorsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/staff/doctors?_t=${Date.now()}`, { headers: getAuthHeaders() });
       const data = await res.json();
-      if (data.success && data.doctors) {
+      if (data.success && Array.isArray(data.doctors)) {
         setDoctors(data.doctors);
         if (data.doctors.length > 0) {
           if (!selectedDoctorId || !data.doctors.some(d => String(d.doctorId) === String(selectedDoctorId))) {
@@ -380,6 +382,8 @@ export default function StaffPortal() {
       }
     } catch (err) {
       console.warn("Fetch doctors error:", err);
+    } finally {
+      setIsDoctorsLoading(false);
     }
   };
 
@@ -2403,7 +2407,7 @@ export default function StaffPortal() {
                     onChange={(e) => setSelectedDoctorId(e.target.value)}
                     style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", outline: "none", backgroundColor: "#ffffff", fontWeight: 700 }}
                   >
-                    <option value="" disabled>{doctors.length === 0 ? "Loading hospital doctors..." : "Select Doctor..."}</option>
+                    <option value="" disabled>{isDoctorsLoading ? "Loading hospital doctors..." : doctors.length === 0 ? "No active doctors assigned to this hospital" : "Select Doctor..."}</option>
                     {doctors.map(d => (
                       <option key={d.doctorId} value={d.doctorId}>{d.fullName} — {d.specialization}</option>
                     ))}
