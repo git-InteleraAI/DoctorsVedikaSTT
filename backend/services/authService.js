@@ -229,12 +229,13 @@ class AuthService {
      * ============================================================
      */
 
-    async enrichUserProfile(profile, userId, email) {
+    async enrichUserProfile(profile, userId, email, portal) {
         if (!profile) return profile;
         const db = supabaseAdmin || supabase;
 
         let targetId = userId || profile.id || profile.userId;
         let targetEmail = (email || profile.email || "").trim().toLowerCase();
+        let targetPortal = String(portal || profile.portal || "").toLowerCase().trim();
 
         let userRole = null;
         let staffRole = null;
@@ -302,12 +303,12 @@ class AuthService {
         }
 
         // Evaluate roles and capabilities
-        if (targetEmail.includes("staff") || targetEmail === "swetha@gmail.com" || userRole === "staff" || capabilities.staff) {
+        if (targetPortal === "staff" || targetEmail.includes("staff") || targetEmail === "swetha@gmail.com" || userRole === "staff" || capabilities.staff) {
             profile.role = "staff";
             profile.staff_role = staffRole || "Reception / Front Desk";
             profile.hospitalRole = staffRole || "Reception Staff";
             capabilities.staff = true;
-        } else if (targetEmail.includes("admin") || userRole === "hospital_admin" || userRole === "admin" || capabilities.hospitalAdmin) {
+        } else if (targetPortal === "admin" || targetEmail.includes("admin") || userRole === "hospital_admin" || userRole === "admin" || capabilities.hospitalAdmin) {
             profile.role = "hospital_admin";
             profile.hospitalRole = "Hospital Administrator";
             capabilities.hospitalAdmin = true;
@@ -318,6 +319,7 @@ class AuthService {
         }
 
         profile.capabilities = capabilities;
+        return profile;
         return profile;
     }
 
@@ -1358,7 +1360,7 @@ class AuthService {
      * ============================================================
      */
 
-    async getDoctorById(id) {
+    async getDoctorById(id, portal = null) {
         if (isSupabaseConfigured) {
             const db = supabaseAdmin || supabase;
             const isUuid = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
@@ -1439,13 +1441,13 @@ class AuthService {
                         onboarding_completed: true
                     };
                     const formatted = this.formatDoctorProfile(fallbackDoc);
-                    return await this.enrichUserProfile(formatted, finalUserRow.id, finalUserRow.email);
+                    return await this.enrichUserProfile(formatted, finalUserRow.id, finalUserRow.email, portal);
                 }
                 return null;
             }
 
             const formatted = this.formatDoctorProfile(doctor);
-            return await this.enrichUserProfile(formatted, doctor.user_id || doctor.doctor_id, doctor.doctor_email);
+            return await this.enrichUserProfile(formatted, doctor.user_id || doctor.doctor_id, doctor.doctor_email, portal);
         }
 
         const doctor =

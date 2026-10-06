@@ -248,6 +248,9 @@ export default function StaffPortal() {
   // -------------------------------------------------------------------------
   // Authorization Headers Helper
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Authorization Headers Helper
+  // -------------------------------------------------------------------------
   const getAuthHeaders = () => {
     const token =
       localStorage.getItem("doctors_vedika_token") ||
@@ -257,7 +260,9 @@ export default function StaffPortal() {
     return {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      "X-Portal-Context": "staff"
+      "X-Portal-Context": "staff",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache"
     };
   };
 
@@ -312,6 +317,15 @@ export default function StaffPortal() {
     }
   }, [showWalkinModal]);
 
+  // Ensure selected doctor in appointment modal is auto-populated as soon as doctors list updates
+  useEffect(() => {
+    if (doctors && doctors.length > 0) {
+      if (!selectedDoctorId || !doctors.some(d => String(d.doctorId) === String(selectedDoctorId))) {
+        setSelectedDoctorId(doctors[0].doctorId);
+      }
+    }
+  }, [doctors]);
+
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
@@ -332,7 +346,7 @@ export default function StaffPortal() {
 
   const fetchHospitalInfo = async () => {
     try {
-      const res = await fetch(`${API_BASE}/staff/hospital-info`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/staff/hospital-info?_t=${Date.now()}`, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && data.hospital) {
         setHospitalInfo(data.hospital);
@@ -344,7 +358,7 @@ export default function StaffPortal() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_BASE}/staff/dashboard-stats`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/staff/dashboard-stats?_t=${Date.now()}`, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && data.stats) setStats(data.stats);
     } catch (err) {
@@ -354,12 +368,14 @@ export default function StaffPortal() {
 
   const fetchDoctors = async () => {
     try {
-      const res = await fetch(`${API_BASE}/staff/doctors`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/staff/doctors?_t=${Date.now()}`, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && data.doctors) {
         setDoctors(data.doctors);
-        if (data.doctors.length > 0 && !selectedDoctorId) {
-          setSelectedDoctorId(data.doctors[0].doctorId);
+        if (data.doctors.length > 0) {
+          if (!selectedDoctorId || !data.doctors.some(d => String(d.doctorId) === String(selectedDoctorId))) {
+            setSelectedDoctorId(data.doctors[0].doctorId);
+          }
         }
       }
     } catch (err) {
@@ -369,7 +385,8 @@ export default function StaffPortal() {
 
   const fetchQueue = async (targetDate = selectedQueueDate) => {
     try {
-      const url = `${API_BASE}/staff/queue${targetDate ? `?date=${encodeURIComponent(targetDate)}` : ""}`;
+      const sep = targetDate ? "&" : "?";
+      const url = `${API_BASE}/staff/queue${targetDate ? `?date=${encodeURIComponent(targetDate)}` : ""}${sep}_t=${Date.now()}`;
       const res = await fetch(url, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && data.queue) {
@@ -502,7 +519,7 @@ export default function StaffPortal() {
 
   const fetchAppointments = async () => {
     try {
-      const res = await fetch(`${API_BASE}/staff/appointments`, { headers: getAuthHeaders() });
+      const res = await fetch(`${API_BASE}/staff/appointments?_t=${Date.now()}`, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && data.appointments) {
         setAppointments(data.appointments);
@@ -514,7 +531,8 @@ export default function StaffPortal() {
 
   const fetchPatients = async (searchTerm = "") => {
     try {
-      const url = `${API_BASE}/staff/patients${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ""}`;
+      const sep = searchTerm ? "&" : "?";
+      const url = `${API_BASE}/staff/patients${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ""}${sep}_t=${Date.now()}`;
       const res = await fetch(url, { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && data.patients) {

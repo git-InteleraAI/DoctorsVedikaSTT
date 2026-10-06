@@ -111,12 +111,35 @@ const authenticateAdapter = async (req, res, next) => {
         // Default Primary Legacy Hospital fallback if no DB memberships recorded yet
         if (allMemberships.length === 0) {
             const legacyHospitalId = "00000000-0000-0000-0000-000000000001";
+            let detectedRole = req.headers["x-portal-context"] || (req.originalUrl?.includes("/staff") ? "staff" : req.originalUrl?.includes("/hospital-admin") ? "hospital_admin" : "staff");
+
+            if (supabaseAdmin) {
+                try {
+                    const { data: userRecord } = await supabaseAdmin
+                        .from("users")
+                        .select("role, email")
+                        .eq("id", userId)
+                        .maybeSingle();
+
+                    if (userRecord && userRecord.role) {
+                        detectedRole = String(userRecord.role).toLowerCase();
+                    } else if (userRecord && userRecord.email) {
+                        const em = userRecord.email.toLowerCase();
+                        if (em.includes("staff") || em.includes("swetha") || em.includes("reception")) {
+                            detectedRole = "staff";
+                        }
+                    }
+                } catch (e) {
+                    console.warn("[AuthAdapter] User role lookup fallback warning:", e.message);
+                }
+            }
+
             allMemberships = [{
                 id: `legacy-${userId}`,
                 hospital_id: legacyHospitalId,
                 user_id: userId,
-                doctor_id: userId,
-                role: "doctor",
+                doctor_id: (detectedRole === "doctor" || detectedRole === "doc") ? userId : null,
+                role: detectedRole,
                 status: "active",
                 hospitals: {
                     id: legacyHospitalId,
@@ -128,7 +151,7 @@ const authenticateAdapter = async (req, res, next) => {
 
         // 3. Resolve Hospital Context from X-Hospital-Id Header & X-Portal-Context Header
         const requestedHospitalId = req.headers["x-hospital-id"];
-        const portalContext = req.headers["x-portal-context"] || (req.originalUrl?.includes("/hospital-admin") ? "hospital_admin" : null);
+        const portalContext = req.headers["x-portal-context"] || (req.originalUrl?.includes("/hospital-admin") ? "hospital_admin" : req.originalUrl?.includes("/staff") ? "staff" : null);
 
         if (requestedHospitalId) {
             activeMembership = allMemberships.find(m => m.hospital_id === requestedHospitalId && (portalContext ? m.role === portalContext : true));
@@ -149,20 +172,25 @@ const authenticateAdapter = async (req, res, next) => {
         }
 
         // 4. Construct req.context with explicit clean capabilities
-        const resolvedDoctorId = activeMembership.doctor_id ?? null;
+        const refererIsStaff = req.headers.referer && req.headers.referer.includes("/staff");
+        const isStaffPortalReq = req.headers["x-portal-context"] === "staff" || (req.originalUrl && req.originalUrl.includes("/staff")) || refererIsStaff;
+
+        const effectiveRole = isStaffPortalReq ? "staff" : activeMembership.role;
 
         const capabilities = {
             hospitalAdmin: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'hospital_admin' || m.role === 'admin')),
             doctor: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'doctor' || m.doctor_id !== null)),
-            staff: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'staff' || m.role === 'assistant' || m.role === 'receptionist'))
+            staff: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'staff' || m.role === 'assistant' || m.role === 'receptionist')) || isStaffPortalReq || effectiveRole === "staff" || effectiveRole === "reception_staff" || effectiveRole === "assistant"
         };
+
+        const resolvedDoctorId = activeMembership.doctor_id ?? userId;
 
         req.context = {
             userId,
             authType,
             hospitalId: activeMembership.hospital_id,
             hospitalName: activeMembership.hospitals?.name || "Doctors Vedika Main Hospital",
-            role: activeMembership.role,
+            role: effectiveRole,
             doctorId: resolvedDoctorId,
             membershipId: activeMembership.id,
             capabilities,
@@ -171,19 +199,20 @@ const authenticateAdapter = async (req, res, next) => {
                 hospitalName: m.hospitals?.name,
                 role: m.role
             })),
-            permissions: getPermissionsForRole(activeMembership.role)
+            permissions: getPermissionsForRole(effectiveRole)
         };
 
-        // Attach backward-compatible req.doctor for existing endpoints
-        if (req.context.doctorId) {
-            req.doctor = {
-                id: req.context.doctorId,
-                doctor_id: req.context.doctorId,
-                userId: req.context.userId,
-                role: req.context.role,
-                hospitalId: req.context.hospitalId
-            };
-        }
+        // Always attach req.doctor for user identity endpoints like /api/auth/me
+        req.doctor = {
+            id: resolvedDoctorId,
+            doctor_id: resolvedDoctorId,
+            userId,
+            role: effectiveRole,
+            hospitalRole: effectiveRole === "staff" ? "Reception Staff" : effectiveRole === "hospital_admin" ? "Hospital Administrator" : "Doctor",
+            hospitalId: activeMembership.hospital_id,
+            capabilities,
+            permissions: req.context.permissions
+        };
 
         next();
     } catch (err) {

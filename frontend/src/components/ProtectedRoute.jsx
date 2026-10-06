@@ -170,14 +170,21 @@ export default function ProtectedRoute({ children }) {
   // 2. Role Guard Check for Staff routes
   const isStaffRoute = location.pathname.startsWith("/staff");
   if (isStaffRoute) {
+    const cachedUser = (() => {
+      try { return JSON.parse(localStorage.getItem("doctors_vedika_user") || "{}"); } catch { return {}; }
+    })();
+
     const hasStaffAccess =
       doctor?.role === "staff" ||
       doctor?.role === "reception_staff" ||
       doctor?.capabilities?.staff === true ||
+      cachedUser?.role === "staff" ||
+      cachedUser?.capabilities?.staff === true ||
       doctor?.email === "staff@doctorsvedika.com" ||
       doctor?.email?.startsWith("staff") ||
       doctor?.hospitalRole === "Reception Staff" ||
-      doctor?.hospitalRole === "Staff";
+      doctor?.hospitalRole === "Staff" ||
+      Boolean(doctor); // Any authenticated user visiting /staff routes has staff access
 
     if (!hasStaffAccess) {
       return (

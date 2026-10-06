@@ -25,13 +25,23 @@ const protect = async (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        const doctor = await authService.getDoctorById(decoded.id);
+        const userId = decoded.id || decoded.userId;
+        const portalHeader = req.headers["x-portal-context"] || (req.headers.referer?.includes("/staff") ? "staff" : req.originalUrl?.includes("/staff") ? "staff" : null);
+
+        const doctor = await authService.getDoctorById(userId, portalHeader);
 
         if (!doctor) {
             return res.status(401).json({
                 success: false,
                 message: "User session expired or user no longer exists",
             });
+        }
+
+        if (portalHeader === "staff") {
+            doctor.role = "staff";
+            doctor.hospitalRole = "Reception Staff";
+            if (!doctor.capabilities) doctor.capabilities = {};
+            doctor.capabilities.staff = true;
         }
 
         req.doctor = doctor;

@@ -117,27 +117,25 @@ class AuthService {
     }
 
     async fetchProfile() {
-        const token =
-            this.getToken();
-
+        const token = this.getToken();
         if (!token) {
             return null;
         }
 
-        try {
-            const response =
-                await fetch(
-                    `${API_BASE_URL}/api/auth/me`,
-                    {
-                        headers: {
-                            Authorization:
-                                `Bearer ${token}`,
-                        },
-                    }
-                );
+        const cachedUser = this.getCurrentDoctor();
+        const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+        const isStaffPortal = currentPath.startsWith("/staff") || cachedUser?.role === "staff" || cachedUser?.capabilities?.staff === true;
+        const contextHeader = isStaffPortal ? "staff" : (cachedUser?.role === "hospital_admin" ? "hospital_admin" : "doctor");
 
-            if (response.status === 401) {
-                const cachedUser = this.getCurrentDoctor();
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "X-Portal-Context": contextHeader
+                },
+            });
+
+            if (response.status === 401 || response.status === 403) {
                 if (cachedUser) {
                     return cachedUser;
                 }
@@ -146,26 +144,34 @@ class AuthService {
             }
 
             if (!response.ok) {
-                return this.getCurrentDoctor();
+                return cachedUser;
             }
 
-            const data =
-                await response.json();
+            const data = await response.json();
 
             if (data?.doctor) {
+                const mergedDoctor = {
+                    ...cachedUser,
+                    ...data.doctor,
+                    role: isStaffPortal ? "staff" : (data.doctor.role || cachedUser?.role || "doctor"),
+                    capabilities: {
+                        ...(cachedUser?.capabilities || {}),
+                        ...(data.doctor.capabilities || {}),
+                        staff: isStaffPortal || data.doctor.capabilities?.staff || cachedUser?.capabilities?.staff || false
+                    }
+                };
+
                 localStorage.setItem(
                     "doctors_vedika_user",
-                    JSON.stringify(
-                        data.doctor
-                    )
+                    JSON.stringify(mergedDoctor)
                 );
-                return data.doctor;
+                return mergedDoctor;
             } else {
-                return this.getCurrentDoctor();
+                return cachedUser;
             }
         } catch (err) {
             console.warn("[AuthService] fetchProfile network/parse error:", err.message);
-            return this.getCurrentDoctor();
+            return cachedUser;
         }
     }
 
