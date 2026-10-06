@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { createClient } = require("@supabase/supabase-js");
 const { authenticateAdapter, requirePermission } = require("../middleware/authAdapter");
 const { logAuditEvent } = require("../middleware/auditLogger");
 const { supabaseAdmin } = require("../config/supabase");
@@ -7,6 +8,31 @@ const { encryptPayload, decryptRecord } = require("../services/encryptionService
 
 function getSupabaseClient() {
     return supabaseAdmin;
+}
+
+/**
+ * Create a fresh server-only Supabase service-role client.
+ * Prevents request/session/header state from affecting critical hospital-scoped lookups.
+ */
+function getFreshServiceClient() {
+    const url = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !serviceKey) {
+        return null;
+    }
+
+    return createClient(
+        url,
+        serviceKey,
+        {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            }
+        }
+    );
 }
 
 // Protect all staff routes
@@ -615,15 +641,28 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         console.log("[STAFF DOCTORS] resolved hospitalId =", hospitalId);
 
         // -------------------------------------------------------------
-        // 2. Find ONLY active doctor memberships for this hospital
+        // 2. Load ACTIVE DOCTOR memberships for this hospital
         // -------------------------------------------------------------
-        const {
-            data: rawMembers,
-            error: memberError
-        } = await db
-            .from("hospital_members")
-            .select("id, hospital_id, user_id, doctor_id, role, status")
-            .eq("hospital_id", hospitalId);
+        const membershipFields = "id, hospital_id, user_id, doctor_id, role, status";
+
+        async function loadDoctorMemberships(client) {
+            const { data: rawMembers, error } = await client
+                .from("hospital_members")
+                .select(membershipFields)
+                .eq("hospital_id", hospitalId);
+
+            if (error) return { data: [], error };
+
+            const doctorMembers = (rawMembers || []).filter(m => {
+                const isDoctor = String(m.role || "").toLowerCase().includes("doc") || Boolean(m.doctor_id);
+                const isActive = !m.status || String(m.status).toLowerCase() === "active";
+                return isDoctor && isActive;
+            });
+
+            return { data: doctorMembers, error: null };
+        }
+
+        let { data: doctorMembers, error: memberError } = await loadDoctorMemberships(db);
 
         if (memberError) {
             console.error(
@@ -637,29 +676,31 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             });
         }
 
-        // Filter active doctor memberships in JS (resilient to string case)
-        const doctorMembers = (rawMembers || []).filter(m => {
-            const isDoctor = String(m.role || "").toLowerCase().includes("doc") || Boolean(m.doctor_id);
-            const isActive = !m.status || String(m.status).toLowerCase() === "active";
-            return isDoctor && isActive;
-        });
+        console.log("[STAFF DOCTORS] first membership read =", doctorMembers.length);
 
-        console.log("[STAFF DOCTORS] doctor membership count =", doctorMembers.length);
+        // Zero-read verification protection using fresh stateless service client
+        if (doctorMembers.length === 0) {
+            console.warn("[STAFF DOCTORS] First membership read returned 0. Verifying with fresh client...");
+            const verificationClient = getFreshServiceClient();
+            if (verificationClient) {
+                const verificationResult = await loadDoctorMemberships(verificationClient);
+                if (verificationResult.error) {
+                    console.error("[STAFF DOCTORS] verification query failed:", verificationResult.error);
+                } else {
+                    console.log("[STAFF DOCTORS] verification membership read =", verificationResult.data.length);
+                    if (verificationResult.data.length > 0) {
+                        doctorMembers = verificationResult.data;
+                    }
+                }
+            }
+        }
 
-        // -------------------------------------------------------------
-        // 3. Extract doctor IDs and user IDs from those memberships
-        // -------------------------------------------------------------
+        console.log("[STAFF DOCTORS] confirmed active doctor membership count =", doctorMembers.length);
+
         const doctorIds = [...new Set(doctorMembers.map(m => m.doctor_id).filter(Boolean))];
         const userIds = [...new Set(doctorMembers.map(m => m.user_id).filter(Boolean))];
 
-        console.log("[STAFF DOCTORS] doctor IDs =", doctorIds, "user IDs =", userIds);
-
-        // -------------------------------------------------------------
-        // 4. IMPORTANT:
-        //    If this hospital has no doctors, STOP HERE.
-        //    NEVER query all doctors globally.
-        // -------------------------------------------------------------
-        if (doctorIds.length === 0 && userIds.length === 0) {
+        if (doctorMembers.length === 0) {
             console.log("[STAFF DOCTORS] Zero active doctor memberships for hospital:", hospitalId);
             return res.json({
                 success: true,
