@@ -588,10 +588,12 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             });
         }
 
-        // -------------------------------------------------------------
-        // 1. Get the VERIFIED hospital context from authentication
-        // -------------------------------------------------------------
-        const hospitalId = req.context?.hospitalId;
+        const rawHeaderHospId = req.headers["x-hospital-id"];
+        const validHeaderHospId = (rawHeaderHospId && rawHeaderHospId !== "null" && rawHeaderHospId !== "undefined") ? String(rawHeaderHospId).trim() : null;
+        const rawQueryHospId = req.query.hospitalId;
+        const validQueryHospId = (rawQueryHospId && rawQueryHospId !== "null" && rawQueryHospId !== "undefined") ? String(rawQueryHospId).trim() : null;
+
+        const hospitalId = validHeaderHospId || validQueryHospId || req.context?.hospitalId;
 
         if (!hospitalId) {
             console.error(
