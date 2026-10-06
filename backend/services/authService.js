@@ -280,6 +280,8 @@ class AuthService {
                             userRole = members[0].role;
                         }
                         foundHospitalId = members[0].hospital_id;
+                        profile.hospitalId = foundHospitalId;
+                        profile.hospital_id = foundHospitalId;
                         const hosp = members[0].hospitals;
                         if (hosp && hosp.name) {
                             profile.hospitalName = hosp.name;

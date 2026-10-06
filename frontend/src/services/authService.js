@@ -111,6 +111,12 @@ class AuthService {
                     data.doctor
                 )
             );
+
+            const hospId = data.doctor?.hospitalId || data.doctor?.hospital_id;
+            if (hospId && hospId !== "null" && hospId !== "undefined") {
+                localStorage.setItem("doctors_vedika_hospital_id", hospId);
+                localStorage.setItem("hospital_id", hospId);
+            }
         }
 
         return data;
