@@ -667,49 +667,36 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         }
 
         // -------------------------------------------------------------
-        // 5. Fetch ONLY doctors whose doctor_id or user_id belongs to the memberships
+        // 5. Fetch doctors by doctor_id and user_id cleanly
         // -------------------------------------------------------------
-        let docQuery = db
-            .from("doctors")
-            .select(`
-                doctor_id,
-                user_id,
-                doctor_name,
-                doctor_specialization,
-                doctor_profile_photo,
-                doctor_is_active,
-                doctor_verification_status
-            `);
-
-        if (doctorIds.length > 0 && userIds.length > 0) {
-            const formattedDocIds = doctorIds.map(id => `"${id}"`).join(",");
-            const formattedUserIds = userIds.map(id => `"${id}"`).join(",");
-            docQuery = docQuery.or(`doctor_id.in.(${formattedDocIds}),user_id.in.(${formattedUserIds})`);
-        } else if (doctorIds.length > 0) {
-            docQuery = docQuery.in("doctor_id", doctorIds);
-        } else {
-            docQuery = docQuery.in("user_id", userIds);
+        let doctorsRaw = [];
+        if (doctorIds.length > 0) {
+            const { data: d1 } = await db
+                .from("doctors")
+                .select("doctor_id, user_id, doctor_name, doctor_specialization, doctor_profile_photo, doctor_is_active, doctor_verification_status")
+                .in("doctor_id", doctorIds);
+            if (d1) doctorsRaw.push(...d1);
+        }
+        if (userIds.length > 0) {
+            const { data: d2 } = await db
+                .from("doctors")
+                .select("doctor_id, user_id, doctor_name, doctor_specialization, doctor_profile_photo, doctor_is_active, doctor_verification_status")
+                .in("user_id", userIds);
+            if (d2) doctorsRaw.push(...d2);
         }
 
-        const {
-            data: doctors,
-            error: doctorsError
-        } = await docQuery;
-
-        if (doctorsError) {
-            console.error(
-                "[STAFF DOCTORS] doctors query failed:",
-                doctorsError
-            );
-
-            return res.status(500).json({
-                success: false,
-                message: "Unable to load hospital doctors."
-            });
-        }
+        // Deduplicate raw doctors
+        const uniqueDocsMap = new Map();
+        doctorsRaw.forEach(d => {
+            const k = d.doctor_id || d.user_id;
+            if (k && !uniqueDocsMap.has(String(k))) {
+                uniqueDocsMap.set(String(k), d);
+            }
+        });
+        const doctors = Array.from(uniqueDocsMap.values());
 
         // Filter out explicitly deactivated doctors
-        const activeDoctors = (doctors || []).filter(d => d.doctor_is_active !== false);
+        const activeDoctors = doctors.filter(d => d.doctor_is_active !== false);
 
         // -------------------------------------------------------------
         // 6. Format doctor objects matching exact frontend expectations
