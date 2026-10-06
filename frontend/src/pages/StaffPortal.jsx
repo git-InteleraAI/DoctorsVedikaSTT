@@ -389,20 +389,34 @@ export default function StaffPortal() {
   const fetchDoctors = async () => {
     setIsDoctorsLoading(true);
 
+    const headers = getAuthHeaders();
+    console.log("[STAFF DOCTORS] request", {
+      url: `${API_BASE}/staff/doctors`,
+      hospitalId: localStorage.getItem("doctors_vedika_hospital_id"),
+      headers: {
+        hasAuthorization: !!headers.Authorization,
+        hospitalId: headers["X-Hospital-Id"]
+      }
+    });
+
     try {
       const response = await fetch(
         `${API_BASE}/staff/doctors?_t=${Date.now()}`,
         {
           method: "GET",
           headers: {
-            ...getAuthHeaders(),
+            ...headers,
             "Accept": "application/json"
           },
           cache: "no-store"
         }
       );
 
+      console.log("[STAFF DOCTORS] HTTP", response.status);
+
       const data = await response.json();
+      console.log("[STAFF DOCTORS] RESPONSE", data);
+      console.log("[STAFF DOCTORS] DOCTORS ARRAY", data?.doctors);
 
       if (!response.ok) {
         console.error(
@@ -413,7 +427,6 @@ export default function StaffPortal() {
 
         setDoctors([]);
         setSelectedDoctorId("");
-
         return;
       }
 

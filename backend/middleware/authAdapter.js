@@ -100,11 +100,15 @@ const authenticateAdapter = async (req, res, next) => {
             const { data: members, error: memErr } = await supabaseAdmin
                 .from("hospital_members")
                 .select("id, hospital_id, user_id, doctor_id, role, status, hospitals(id, name, code)")
-                .eq("user_id", userId)
-                .eq("status", "active");
+                .eq("user_id", userId);
 
             if (!memErr && members && members.length > 0) {
-                allMemberships = members;
+                const activeMembers = members.filter(m => !m.status || String(m.status).toLowerCase() === "active");
+                if (activeMembers.length > 0) {
+                    allMemberships = activeMembers;
+                } else {
+                    allMemberships = members;
+                }
             }
         }
 

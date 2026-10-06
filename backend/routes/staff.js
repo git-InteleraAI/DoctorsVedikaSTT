@@ -609,24 +609,23 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             });
         }
 
-        console.log("[Staff Doctors] Resolving doctors for hospital:", hospitalId);
+        console.log("[STAFF DOCTORS] authenticated userId =", req.context?.userId);
+        console.log("[STAFF DOCTORS] resolved hospitalId =", hospitalId);
 
         // -------------------------------------------------------------
         // 2. Find ONLY active doctor memberships for this hospital
         // -------------------------------------------------------------
         const {
-            data: doctorMembers,
+            data: rawMembers,
             error: memberError
         } = await db
             .from("hospital_members")
             .select("id, hospital_id, user_id, doctor_id, role, status")
-            .eq("hospital_id", hospitalId)
-            .eq("role", "doctor")
-            .eq("status", "active");
+            .eq("hospital_id", hospitalId);
 
         if (memberError) {
             console.error(
-                "[Staff Doctors] hospital_members query failed:",
+                "[STAFF DOCTORS] hospital_members query failed:",
                 memberError
             );
 
@@ -636,43 +635,30 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             });
         }
 
-        // -------------------------------------------------------------
-        // 3. Extract doctor IDs from those hospital memberships
-        // -------------------------------------------------------------
-        let doctorIds = [
-            ...new Set(
-                (doctorMembers || [])
-                    .map(member => member.doctor_id)
-                    .filter(Boolean)
-            )
-        ];
+        // Filter active doctor memberships in JS (resilient to string case)
+        const doctorMembers = (rawMembers || []).filter(m => {
+            const isDoctor = String(m.role || "").toLowerCase().includes("doc") || Boolean(m.doctor_id);
+            const isActive = !m.status || String(m.status).toLowerCase() === "active";
+            return isDoctor && isActive;
+        });
 
-        // Fallback: If doctor_id is missing on hospital_members, resolve via user_id
-        if (doctorIds.length === 0 && doctorMembers && doctorMembers.length > 0) {
-            const userIds = [...new Set(doctorMembers.map(m => m.user_id).filter(Boolean))];
-            if (userIds.length > 0) {
-                const { data: userDocs } = await db
-                    .from("doctors")
-                    .select("doctor_id")
-                    .in("user_id", userIds);
-                if (userDocs && userDocs.length > 0) {
-                    doctorIds = [...new Set(userDocs.map(d => d.doctor_id).filter(Boolean))];
-                }
-            }
-        }
+        console.log("[STAFF DOCTORS] doctor membership count =", doctorMembers.length);
 
-        console.log(
-            "[Staff Doctors] Active doctor memberships:",
-            doctorIds.length
-        );
+        // -------------------------------------------------------------
+        // 3. Extract doctor IDs and user IDs from those memberships
+        // -------------------------------------------------------------
+        const doctorIds = [...new Set(doctorMembers.map(m => m.doctor_id).filter(Boolean))];
+        const userIds = [...new Set(doctorMembers.map(m => m.user_id).filter(Boolean))];
+
+        console.log("[STAFF DOCTORS] doctor IDs =", doctorIds, "user IDs =", userIds);
 
         // -------------------------------------------------------------
         // 4. IMPORTANT:
         //    If this hospital has no doctors, STOP HERE.
-        //
         //    NEVER query all doctors globally.
         // -------------------------------------------------------------
-        if (doctorIds.length === 0) {
+        if (doctorIds.length === 0 && userIds.length === 0) {
+            console.log("[STAFF DOCTORS] Zero active doctor memberships for hospital:", hospitalId);
             return res.json({
                 success: true,
                 hospitalId,
@@ -681,13 +667,9 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         }
 
         // -------------------------------------------------------------
-        // 5. Fetch ONLY doctors whose doctor_id belongs to the
-        //    hospital_members rows above.
+        // 5. Fetch ONLY doctors whose doctor_id or user_id belongs to the memberships
         // -------------------------------------------------------------
-        const {
-            data: doctors,
-            error: doctorsError
-        } = await db
+        let docQuery = db
             .from("doctors")
             .select(`
                 doctor_id,
@@ -697,13 +679,26 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
                 doctor_profile_photo,
                 doctor_is_active,
                 doctor_verification_status
-            `)
-            .in("doctor_id", doctorIds)
-            .eq("doctor_is_active", true);
+            `);
+
+        if (doctorIds.length > 0 && userIds.length > 0) {
+            const formattedDocIds = doctorIds.map(id => `"${id}"`).join(",");
+            const formattedUserIds = userIds.map(id => `"${id}"`).join(",");
+            docQuery = docQuery.or(`doctor_id.in.(${formattedDocIds}),user_id.in.(${formattedUserIds})`);
+        } else if (doctorIds.length > 0) {
+            docQuery = docQuery.in("doctor_id", doctorIds);
+        } else {
+            docQuery = docQuery.in("user_id", userIds);
+        }
+
+        const {
+            data: doctors,
+            error: doctorsError
+        } = await docQuery;
 
         if (doctorsError) {
             console.error(
-                "[Staff Doctors] doctors query failed:",
+                "[STAFF DOCTORS] doctors query failed:",
                 doctorsError
             );
 
@@ -713,41 +708,59 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             });
         }
 
+        // Filter out explicitly deactivated doctors
+        const activeDoctors = (doctors || []).filter(d => d.doctor_is_active !== false);
+
         // -------------------------------------------------------------
-        // 6. Preserve membership order and remove duplicates
+        // 6. Format doctor objects matching exact frontend expectations
         // -------------------------------------------------------------
-        const doctorMap = new Map(
-            (doctors || []).map(doctor => [
-                String(doctor.doctor_id),
-                doctor
-            ])
-        );
+        const doctorMap = new Map();
+        activeDoctors.forEach(doc => {
+            if (doc.doctor_id) doctorMap.set(String(doc.doctor_id), doc);
+            if (doc.user_id) doctorMap.set(String(doc.user_id), doc);
+        });
 
-        const formattedDoctors = doctorIds
-            .map(doctorId => doctorMap.get(String(doctorId)))
-            .filter(Boolean)
-            .map(doctor => {
-                const rawName =
-                    doctor.doctor_name?.trim() || "Hospital Doctor";
+        const formattedDoctors = [];
+        const seenKeys = new Set();
 
-                const fullName = rawName.startsWith("Dr.")
-                    ? rawName
-                    : `Dr. ${rawName}`;
+        doctorMembers.forEach(member => {
+            const key = String(member.doctor_id || member.user_id);
+            if (key && !seenKeys.has(key)) {
+                seenKeys.add(key);
+                const doc = doctorMap.get(String(member.doctor_id)) || doctorMap.get(String(member.user_id));
+                if (doc) {
+                    const rawName = doc.doctor_name?.trim() || "Hospital Doctor";
+                    const fullName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+                    const resolvedId = doc.doctor_id || member.doctor_id || member.user_id;
 
-                return {
-                    doctorId: doctor.doctor_id,
+                    formattedDoctors.push({
+                        doctorId: resolvedId,
+                        fullName,
+                        doctorName: rawName.replace(/^Dr\.\s*/, ""),
+                        specialization: doc.doctor_specialization?.trim() || "General Medicine",
+                        avatarUrl: doc.doctor_profile_photo || null
+                    });
+                }
+            }
+        });
+
+        // Fallback: If formattedDoctors is empty but activeDoctors has records, format them directly
+        if (formattedDoctors.length === 0 && activeDoctors.length > 0) {
+            activeDoctors.forEach(doc => {
+                const rawName = doc.doctor_name?.trim() || "Hospital Doctor";
+                const fullName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
+                formattedDoctors.push({
+                    doctorId: doc.doctor_id || doc.user_id,
                     fullName,
                     doctorName: rawName.replace(/^Dr\.\s*/, ""),
-                    specialization:
-                        doctor.doctor_specialization?.trim() ||
-                        "General Medicine",
-                    avatarUrl:
-                        doctor.doctor_profile_photo || null
-                };
+                    specialization: doc.doctor_specialization?.trim() || "General Medicine",
+                    avatarUrl: doc.doctor_profile_photo || null
+                });
             });
+        }
 
         console.log(
-            `[Staff Doctors] Returning ${formattedDoctors.length} doctor(s) for hospital ${hospitalId}`
+            `[STAFF DOCTORS] doctors returned = ${formattedDoctors.length} for hospital ${hospitalId}`
         );
 
         // -------------------------------------------------------------
@@ -760,7 +773,7 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
         });
 
     } catch (err) {
-        console.error("[Staff Doctors] Unexpected error:", err);
+        console.error("[STAFF DOCTORS] Unexpected error:", err);
 
         return res.status(500).json({
             success: false,
