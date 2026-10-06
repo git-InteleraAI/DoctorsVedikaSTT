@@ -340,15 +340,16 @@ export default function StaffPortal() {
     setIsLoading(true);
     try {
       // 1. Resolve and verify authenticated hospital context first
-      await fetchHospitalInfo();
+      const hosp = await fetchHospitalInfo();
+      const resolvedHospId = hosp?.id || localStorage.getItem("doctors_vedika_hospital_id");
 
       // 2. Fetch remaining portal data with verified hospital context header
       await Promise.all([
-        fetchStats(),
-        fetchDoctors(),
-        fetchQueue(),
-        fetchAppointments(),
-        fetchPatients()
+        fetchStats(resolvedHospId),
+        fetchDoctors(resolvedHospId),
+        fetchQueue(resolvedHospId),
+        fetchAppointments(resolvedHospId),
+        fetchPatients(resolvedHospId)
       ]);
     } catch (err) {
       console.warn("[StaffPortal] Data fetch warning:", err);
@@ -375,9 +376,14 @@ export default function StaffPortal() {
     return null;
   };
 
-  const fetchStats = async () => {
+  const fetchStats = async (overrideHospId) => {
     try {
-      const res = await fetch(`${API_BASE}/staff/dashboard-stats?_t=${Date.now()}`, { headers: getAuthHeaders() });
+      const headers = getAuthHeaders();
+      const targetHospId = overrideHospId || localStorage.getItem("doctors_vedika_hospital_id");
+      if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
+        headers["X-Hospital-Id"] = targetHospId;
+      }
+      const res = await fetch(`${API_BASE}/staff/dashboard-stats?_t=${Date.now()}`, { headers });
       const data = await res.json();
       if (data.success && data.stats) setStats(data.stats);
     } catch (err) {
@@ -385,13 +391,18 @@ export default function StaffPortal() {
     }
   };
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = async (overrideHospId) => {
     setIsDoctorsLoading(true);
 
     const headers = getAuthHeaders();
+    const targetHospId = overrideHospId || localStorage.getItem("doctors_vedika_hospital_id");
+    if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
+      headers["X-Hospital-Id"] = targetHospId;
+    }
+
     console.log("[STAFF DOCTORS] request", {
       url: `${API_BASE}/staff/doctors`,
-      hospitalId: localStorage.getItem("doctors_vedika_hospital_id"),
+      hospitalId: targetHospId,
       headers: {
         hasAuthorization: !!headers.Authorization,
         hospitalId: headers["X-Hospital-Id"]

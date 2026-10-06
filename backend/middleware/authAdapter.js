@@ -161,8 +161,18 @@ const authenticateAdapter = async (req, res, next) => {
         const isLegacyId = requestedHospitalId === "00000000-0000-0000-0000-000000000001";
         const hasRealMemberships = allMemberships.some(m => m.hospital_id && m.hospital_id !== "00000000-0000-0000-0000-000000000001");
 
+        const isStaffRoleMatch = (roleStr) => {
+            const r = String(roleStr || "").toLowerCase();
+            return r === "staff" || r === "assistant" || r === "receptionist" || r === "reception_staff";
+        };
+
+        const isAdminRoleMatch = (roleStr) => {
+            const r = String(roleStr || "").toLowerCase();
+            return r === "hospital_admin" || r === "admin";
+        };
+
         if (requestedHospitalId && (!isLegacyId || !hasRealMemberships)) {
-            activeMembership = allMemberships.find(m => m.hospital_id === requestedHospitalId && (portalContext ? m.role === portalContext : true));
+            activeMembership = allMemberships.find(m => m.hospital_id === requestedHospitalId && (portalContext === "staff" ? isStaffRoleMatch(m.role) : portalContext === "hospital_admin" ? isAdminRoleMatch(m.role) : true));
             if (!activeMembership) {
                 activeMembership = allMemberships.find(m => m.hospital_id === requestedHospitalId);
             }
@@ -177,7 +187,7 @@ const authenticateAdapter = async (req, res, next) => {
             const realMemberships = allMemberships.filter(m => m.hospital_id && m.hospital_id !== "00000000-0000-0000-0000-000000000001");
             const pool = realMemberships.length > 0 ? realMemberships : allMemberships;
             if (portalContext) {
-                activeMembership = pool.find(m => m.role === portalContext) || pool[0];
+                activeMembership = pool.find(m => portalContext === "staff" ? isStaffRoleMatch(m.role) : portalContext === "hospital_admin" ? isAdminRoleMatch(m.role) : m.role === portalContext) || pool[0];
             } else {
                 activeMembership = pool[0];
             }
