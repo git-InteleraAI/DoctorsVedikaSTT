@@ -144,6 +144,16 @@ router.post("/transition", async (req, res) => {
                 if (!error && data && data.success === true) {
                     rpcSuccess = true;
                     rpcResult = data;
+                    if (targetStage === "completed" || targetStage === "exited") {
+                        try {
+                            const appTargetId = appointmentId || targetId;
+                            if (isUuid(appTargetId)) {
+                                await db.from("appointments").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", appTargetId);
+                            }
+                        } catch (appSyncErr) {
+                            console.warn("[Queue Transition] RPC appointment sync notice:", appSyncErr.message);
+                        }
+                    }
                 }
             } catch (rpcErr) {
                 console.warn("[Queue Transition RPC Notice]:", rpcErr.message);
