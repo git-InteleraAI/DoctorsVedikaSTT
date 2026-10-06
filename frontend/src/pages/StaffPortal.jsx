@@ -2103,10 +2103,10 @@ export default function StaffPortal() {
                                       return (
                                         <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
                                           {bp && <span style={{ fontSize: "0.7rem", backgroundColor: "#e0f2fe", color: "#0369a1", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>BP: {bp}</span>}
-                                          {pulse && <span style={{ fontSize: "0.7rem", backgroundColor: "#fef3c7", color: "#b45309", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>Pulse: {pulse} bpm</span>}
-                                          {temp && <span style={{ fontSize: "0.7rem", backgroundColor: "#fee2e2", color: "#b91c1c", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>Temp: {temp}°F</span>}
-                                          {spo2 && <span style={{ fontSize: "0.7rem", backgroundColor: "#f0fdf4", color: "#15803d", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>SpO2: {spo2}%</span>}
-                                          {weight && <span style={{ fontSize: "0.7rem", backgroundColor: "#f3e8ff", color: "#6b21a8", padding: "1px 6px", borderRadius: "4px", fontWeight 700 }}>Wt: {weight}kg</span>}
+                                          {pulse && <span style={{ fontSize: "0.7rem", backgroundColor: "#fef3c7", color: "#b45309", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>Pulse: {pulse} bpm</span>}
+                                          {temp && <span style={{ fontSize: "0.7rem", backgroundColor: "#fee2e2", color: "#b91c1c", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>Temp: {temp}°F</span>}
+                                          {spo2 && <span style={{ fontSize: "0.7rem", backgroundColor: "#f0fdf4", color: "#15803d", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>SpO2: {spo2}%</span>}
+                                          {weight && <span style={{ fontSize: "0.7rem", backgroundColor: "#f3e8ff", color: "#6b21a8", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>Wt: {weight}kg</span>}
                                         </div>
                                       );
                                     }
