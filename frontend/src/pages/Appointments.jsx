@@ -160,10 +160,15 @@ export default function Appointments() {
     // Filter appointments locally by search query and active tab
     const filteredAppointments = useMemo(() => {
         return appointments.filter((app) => {
+            const rawStatus = (app.status || "").toLowerCase();
+            const rawVisitStage = (app.visitStage || app.visit_stage || "").toLowerCase();
+            const isCompleted = rawStatus === "completed" || rawVisitStage === "completed" || rawVisitStage === "exited";
+            const effectiveStatus = isCompleted ? "completed" : rawStatus;
+
             // Tab filter
-            if (activeTab === "confirmed" && (app.status || "").toLowerCase() !== "confirmed") return false;
-            if (activeTab === "pending" && (app.status || "").toLowerCase() !== "pending") return false;
-            if (activeTab === "completed" && (app.status || "").toLowerCase() !== "completed") return false;
+            if (activeTab === "confirmed" && (isCompleted || effectiveStatus !== "confirmed")) return false;
+            if (activeTab === "pending" && (isCompleted || effectiveStatus !== "pending")) return false;
+            if (activeTab === "completed" && !isCompleted) return false;
             if (activeTab === "cancelled" && (app.status || "").toLowerCase() !== "cancelled") return false;
 
             // Search query filter
@@ -397,12 +402,43 @@ export default function Appointments() {
                             const pName = app.patientName || app.patient?.name || app.patient_name || "Walk-in Patient";
                             const pCode = app.patientCode || app.patient_code || (app.hospital_patient_id ? `DV-P-${app.hospital_patient_id.slice(0, 6).toUpperCase()}` : `ID: ${String(pId).slice(0, 8)}`);
                             const pAvatar = app.patientAvatar || app.profile_photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(pName)}&background=01b6af&color=fff`;
-                            const status = (app.status || "confirmed").toLowerCase();
+                            const rawStatus = (app.status || "confirmed").toLowerCase();
                             const visitStage = (app.visitStage || app.visit_stage || "").toLowerCase();
+                            const isCompleted = rawStatus === "completed" || visitStage === "completed" || visitStage === "exited";
+                            const status = isCompleted ? "completed" : rawStatus;
                             const feeStatus = app.payment_status || app.feeStatus || "pending";
+
+                            const handleViewSummary = (appointmentItem) => {
+                                const encounterId = appointmentItem.visitId || appointmentItem.visit_id || appointmentItem.hospital_patient_id || appointmentItem.patientId || appointmentItem.patient_id || appointmentItem.id;
+                                const queryParams = new URLSearchParams();
+                                if (appointmentItem.id) queryParams.set("appointmentId", appointmentItem.id);
+                                if (appointmentItem.visitId || appointmentItem.visit_id) queryParams.set("visitId", appointmentItem.visitId || appointmentItem.visit_id);
+                                if (appointmentItem.patientId || appointmentItem.patient_id) queryParams.set("patientId", appointmentItem.patientId || appointmentItem.patient_id);
+
+                                navigate(`/consultation/${encodeURIComponent(encounterId)}/summary?${queryParams.toString()}`, {
+                                    state: {
+                                        appointmentId: appointmentItem.id,
+                                        visitId: appointmentItem.visitId || appointmentItem.visit_id,
+                                        hospitalPatientId: appointmentItem.hospital_patient_id,
+                                        patientId: appointmentItem.patientId || appointmentItem.patient_id || null,
+                                        patient: appointmentItem,
+                                        consultationCompleted: true,
+                                    }
+                                });
+                            };
 
                             const handleStartConsultation = (appointmentItem) => {
                                 const encounterId = appointmentItem.visitId || appointmentItem.visit_id || appointmentItem.hospital_patient_id || appointmentItem.patientId || appointmentItem.patient_id || appointmentItem.id;
+                                
+                                const isItemCompleted = (appointmentItem.status || "").toLowerCase() === "completed" || 
+                                    (appointmentItem.visitStage || appointmentItem.visit_stage || "").toLowerCase() === "completed" || 
+                                    (appointmentItem.visitStage || appointmentItem.visit_stage || "").toLowerCase() === "exited";
+
+                                if (isItemCompleted) {
+                                    handleViewSummary(appointmentItem);
+                                    return;
+                                }
+
                                 const queryParams = new URLSearchParams();
                                 if (appointmentItem.id) queryParams.set("appointmentId", appointmentItem.id);
                                 if (appointmentItem.visitId || appointmentItem.visit_id) queryParams.set("visitId", appointmentItem.visitId || appointmentItem.visit_id);
@@ -523,12 +559,16 @@ export default function Appointments() {
                                                     Patient Record
                                                 </button>
                                                 <button
-                                                    className="btn-start-consultation"
-                                                    style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}
-                                                    onClick={() => handleStartConsultation(app)}
+                                                    className="btn-action-secondary"
+                                                    style={{ color: "#01b6af", borderColor: "#01b6af", fontWeight: 700 }}
+                                                    onClick={() => {
+                                                        const consId = app.visitId || app.visit_id || app.id;
+                                                        const pdfTarget = `${API}/api/v1/clinical/notes/${encodeURIComponent(pId)}/${encodeURIComponent(consId)}/pdf`;
+                                                        window.open(pdfTarget, "_blank", "noopener,noreferrer");
+                                                    }}
                                                 >
-                                                    <span>View Consultation</span>
-                                                    <i className="fa-solid fa-file-medical"></i>
+                                                    <i className="fa-solid fa-file-pdf"></i>
+                                                    View PDF
                                                 </button>
                                             </div>
                                         ) : (

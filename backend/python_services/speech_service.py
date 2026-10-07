@@ -1772,12 +1772,13 @@ async def live_transcription(
                                     "speech_warning",
 
                                 "message":
-                                    "Temporary transcription "
-                                    "delay. Continuing "
-                                    "consultation.",
+                                    f"Temporary transcription delay ({error}). Continuing consultation.",
 
                                 "provider":
                                     "sarvam",
+
+                                "error":
+                                    str(error),
                             })
 
                         except Exception:

@@ -271,16 +271,40 @@ class AuthService {
                         .eq("status", "active");
 
                     if (members && members.length > 0) {
+                        const isStaffRoleMatch = (roleStr) => {
+                            const r = String(roleStr || "").toLowerCase();
+                            return r === "staff" || r === "assistant" || r === "receptionist" || r === "reception_staff";
+                        };
+                        const isAdminRoleMatch = (roleStr) => {
+                            const r = String(roleStr || "").toLowerCase();
+                            return r === "hospital_admin" || r === "admin";
+                        };
+
                         members.forEach(m => {
-                            if (m.role === "hospital_admin" || m.role === "admin") capabilities.hospitalAdmin = true;
-                            if (m.role === "staff") capabilities.staff = true;
+                            if (isAdminRoleMatch(m.role)) capabilities.hospitalAdmin = true;
+                            if (isStaffRoleMatch(m.role)) capabilities.staff = true;
                             if (m.role === "doctor" || m.doctor_id !== null) capabilities.doctor = true;
                         });
+
+                        const realMembers = members.filter(m => m.hospital_id && m.hospital_id !== "00000000-0000-0000-0000-000000000001");
+                        const pool = realMembers.length > 0 ? realMembers : members;
+
+                        const staffMatch = pool.find(m => isStaffRoleMatch(m.role));
+                        const adminMatch = pool.find(m => isAdminRoleMatch(m.role));
+
+                        const selectedMember = (targetPortal === "staff" && staffMatch)
+                            ? staffMatch
+                            : (targetPortal === "admin" && adminMatch)
+                            ? adminMatch
+                            : (staffMatch || pool[0]);
+
                         if (!userRole) {
-                            userRole = members[0].role;
+                            userRole = selectedMember.role;
                         }
-                        foundHospitalId = members[0].hospital_id;
-                        const hosp = members[0].hospitals;
+                        foundHospitalId = selectedMember.hospital_id;
+                        profile.hospitalId = foundHospitalId;
+                        profile.hospital_id = foundHospitalId;
+                        const hosp = selectedMember.hospitals;
                         if (hosp && hosp.name) {
                             profile.hospitalName = hosp.name;
                             profile.hospital_name = hosp.name;
@@ -692,7 +716,7 @@ class AuthService {
             }
 
             const formattedProfile = this.formatDoctorProfile(doctor);
-            const enrichedProfile = await this.enrichUserProfile(formattedProfile, authData.user.id, normalizedEmail);
+            const enrichedProfile = await this.enrichUserProfile(formattedProfile, authData.user.id, normalizedEmail, portal);
 
             // Strict Portal Role Guard Check
             if (portal) {

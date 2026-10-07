@@ -613,7 +613,18 @@ export default function DashboardLayout({
                                         </button>
                                         <div style={{ margin: "4px 0", height: 1, background: "#f1f5f9" }} />
                                         <button
-                                            onClick={() => { setProfileMenuOpen(false); logout && logout(); }}
+                                            onClick={() => {
+                                                setProfileMenuOpen(false);
+                                                const p = window.location.pathname;
+                                                logout && logout();
+                                                if (p.startsWith("/staff")) {
+                                                    navigate("/staff/login");
+                                                } else if (p.startsWith("/admin") || p.startsWith("/hospital-admin")) {
+                                                    navigate("/admin/login");
+                                                } else {
+                                                    navigate("/login");
+                                                }
+                                            }}
                                             style={{ width: "100%", textAlign: "left", padding: "12px 20px", background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", color: "#ef4444", display: "flex", alignItems: "center", gap: 12 }}
                                             onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.05)"; }}
                                             onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}

@@ -162,6 +162,20 @@ const Consultation = () => {
                     .then(data => {
                         if (data?.success && data?.visit) {
                             const v = data.visit;
+                            const stage = (v.visit_stage || "").toLowerCase();
+                            const vStatus = (v.status || "").toLowerCase();
+                            if (stage === "completed" || stage === "exited" || vStatus === "completed") {
+                                console.log("[Consultation] Visit is completed. Redirecting to consultation summary...");
+                                navigate(`/consultation/${encodeURIComponent(targetEncounterId)}/summary?${searchParams.toString()}`, {
+                                    replace: true,
+                                    state: {
+                                        ...location.state,
+                                        consultationCompleted: true,
+                                    }
+                                });
+                                return;
+                            }
+
                             const hpr = v.hospital_patient_records || {};
                             const iv = v.intake_vitals || {};
 

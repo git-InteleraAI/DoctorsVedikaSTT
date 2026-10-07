@@ -84,6 +84,7 @@ class AppointmentController {
                 const status = (app.status || "").toLowerCase();
                 const rawVisitStage = (visitsMap[app.id]?.visit_stage || "").toLowerCase();
                 const visitStage = rawVisitStage || (status === "cancelled" ? "cancelled" : (status === "completed" ? "completed" : (status === "confirmed" ? "waiting" : "scheduled")));
+                const isCompleted = status === "completed" || visitStage === "completed" || visitStage === "exited";
 
                 // Specific Date Filter condition
                 if (dateFilter && dateFilter !== "all") {
@@ -102,12 +103,16 @@ class AppointmentController {
 
                 // Tab Filter condition
                 if (tab === "completed") {
-                    return status === "completed" || visitStage === "completed" || visitStage === "exited";
+                    return isCompleted;
                 } else if (tab === "pending") {
+                    if (isCompleted) return false;
                     const isExplicitPending = status === "pending" || status === "pending_consultation";
                     const isPastConfirmed = status === "confirmed" && appDate < todayDateStr && visitStage !== "waiting" && visitStage !== "in_consultation";
                     return isExplicitPending || isPastConfirmed;
                 } else if (tab === "confirmed" || tab === "upcoming") {
+                    if (isCompleted || status === "cancelled" || visitStage === "cancelled") {
+                        return false;
+                    }
                     // Doctors must see ONLY patients whose current stage is Waiting (or in_consultation/checked_in/confirmed)
                     const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation" || status === "confirmed";
                     if (!isWaitingOrInConsult) return false;
@@ -118,13 +123,15 @@ class AppointmentController {
                     }
                     return isConfirmedStatus;
                 } else if (tab === "today") {
+                    if (isCompleted || status === "cancelled" || visitStage === "cancelled") return false;
                     const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation" || status === "confirmed";
-                    return appDate === todayDateStr && isWaitingOrInConsult && status !== "cancelled";
+                    return appDate === todayDateStr && isWaitingOrInConsult;
                 }
                 
-                // Default: filter out scheduled visits without check-in for doctor view
+                // Default: filter out completed & cancelled visits from default view
+                if (isCompleted || status === "cancelled" || visitStage === "cancelled") return false;
                 if (visitStage === "scheduled") return false;
-                return status !== "cancelled";
+                return true;
             });
 
             if (!appointmentsData || appointmentsData.length === 0) {
@@ -223,6 +230,8 @@ class AppointmentController {
                 const name = patient.full_name || (patient.first_name ? `${patient.first_name} ${patient.last_name || ""}`.trim() : "") || hpr.full_name || app.patient_name || "Walk-in Patient";
 
                 const resolvedVisitStage = visit.visit_stage || (app.status === "confirmed" ? "waiting" : "scheduled");
+                const isCompletedVisit = resolvedVisitStage === "completed" || resolvedVisitStage === "exited" || (app.status || "").toLowerCase() === "completed";
+                const resolvedStatus = isCompletedVisit ? "completed" : app.status;
 
                 return {
                     id: app.id,
@@ -248,7 +257,7 @@ class AppointmentController {
                     startedAt: visit.consultation_started_at || null,
                     completedAt: visit.consultation_completed_at || null,
                     type: app.appointment_type || "Consultation",
-                    status: app.status,
+                    status: resolvedStatus,
                     reason: visit.chief_complaints || sym.symptoms || app.reason || app.notes || "",
                     symptoms: visit.chief_complaints || sym.symptoms || app.reason || "",
                     duration: sym.duration || "",
@@ -615,14 +624,31 @@ class AppointmentController {
                 apps = inMemoryAppointments.filter(a => doctorIds.includes(a.doctor_id));
             }
 
-            const todayAppsRaw = apps.filter(a => a.appointment_date === todayStr && (a.status || "").toLowerCase() === "confirmed");
-            const tomorrowAppsRaw = apps.filter(a => a.appointment_date === tomorrowStr && (a.status || "").toLowerCase() === "confirmed");
-            const pendingAppsRaw = apps.filter(a => {
+            // Fetch visit stages for accurate status metrics
+            const appIds = apps.map(a => a.id).filter(Boolean);
+            let visitsMap = {};
+            if (appIds.length > 0 && db) {
+                const { data: vData } = await db.from("patient_visits").select("appointment_id, visit_stage").in("appointment_id", appIds);
+                if (vData) {
+                    vData.forEach(v => { visitsMap[v.appointment_id] = v.visit_stage; });
+                }
+            }
+
+            const getEffectiveStatus = (a) => {
+                const stage = (visitsMap[a.id] || "").toLowerCase();
                 const s = (a.status || "").toLowerCase();
+                if (stage === "completed" || stage === "exited" || s === "completed") return "completed";
+                return s;
+            };
+
+            const todayAppsRaw = apps.filter(a => a.appointment_date === todayStr && getEffectiveStatus(a) === "confirmed");
+            const tomorrowAppsRaw = apps.filter(a => a.appointment_date === tomorrowStr && getEffectiveStatus(a) === "confirmed");
+            const pendingAppsRaw = apps.filter(a => {
+                const s = getEffectiveStatus(a);
                 return s === "pending" || s === "pending_consultation" || (s === "confirmed" && a.appointment_date < todayStr);
             });
-            const completedAppsRaw = apps.filter(a => (a.status || "").toLowerCase() === "completed");
-            const confirmedAppsRaw = apps.filter(a => (a.status || "").toLowerCase() === "confirmed" && a.appointment_date >= todayStr);
+            const completedAppsRaw = apps.filter(a => getEffectiveStatus(a) === "completed");
+            const confirmedAppsRaw = apps.filter(a => getEffectiveStatus(a) === "confirmed" && a.appointment_date >= todayStr);
 
             // Populate Patient Details for today/tomorrow apps
             const formatAppListWithPatients = async (appList) => {

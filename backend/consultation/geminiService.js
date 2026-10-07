@@ -418,77 +418,38 @@ function parseGeminiJson(
     // Remove markdown JSON fences if Gemini
     // unexpectedly returns them.
 
-    cleaned =
-        cleaned
-            .replace(
-                /^```json\s*/i,
-                ""
-            )
-            .replace(
-                /^```\s*/i,
-                ""
-            )
-            .replace(
-                /\s*```$/i,
-                ""
-            )
-            .trim();
+    cleaned = cleaned
+        .replace(/^\s*```json\s*/i, "")
+        .replace(/^\s*```\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
 
-    // --------------------------------------------
-    // First attempt: direct JSON
-    // --------------------------------------------
-
+    // 1. Direct JSON parse
     try {
-        return JSON.parse(
-            cleaned
-        );
-    } catch (directError) {
-        // Continue below.
-    }
+        return JSON.parse(cleaned);
+    } catch (directError) {}
 
-    // --------------------------------------------
-    // Second attempt:
-    // extract outermost JSON object
-    // --------------------------------------------
+    // 2. Extract outermost JSON object
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
 
-    const firstBrace =
-        cleaned.indexOf("{");
-
-    const lastBrace =
-        cleaned.lastIndexOf("}");
-
-    if (
-        firstBrace !== -1 &&
-        lastBrace > firstBrace
-    ) {
-        const extracted =
-            cleaned.substring(
-                firstBrace,
-                lastBrace + 1
-            );
-
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const extracted = cleaned.substring(firstBrace, lastBrace + 1);
         try {
-            return JSON.parse(
-                extracted
-            );
+            return JSON.parse(extracted);
+        } catch (error) {}
+
+        // 3. Trailing comma and control char sanitization
+        try {
+            const sanitized = extracted.replace(/,\s*([\}\]])/g, "$1");
+            return JSON.parse(sanitized);
         } catch (error) {
-            console.error(
-                "[Gemini] JSON parsing failed after extraction."
-            );
+            console.error("[Gemini] JSON parsing failed after extraction and sanitization.");
         }
     }
 
-    console.error(
-        "[Gemini] Invalid JSON response:"
-    );
-
-    console.error(
-        cleaned
-    );
-
-    throw new Error(
-        "Gemini returned an invalid consultation response."
-    );
+    console.error("[Gemini] Invalid JSON response:", cleaned);
+    throw new Error("Gemini returned an invalid consultation response.");
 }
 
 // ============================================================

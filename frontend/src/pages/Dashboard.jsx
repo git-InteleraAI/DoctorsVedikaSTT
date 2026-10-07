@@ -149,7 +149,27 @@ const Dashboard = () => {
         const queryParams = new URLSearchParams();
         if (appointment.id) queryParams.set("appointmentId", appointment.id);
         if (appointment.visit_id || appointment.visitId) queryParams.set("visitId", appointment.visit_id || appointment.visitId);
-        
+        if (appointment.patientId || appointment.patient_id) queryParams.set("patientId", appointment.patientId || appointment.patient_id);
+
+        const isCompleted = (appointment.status || "").toLowerCase() === "completed" || 
+            (appointment.visitStage || appointment.visit_stage || "").toLowerCase() === "completed" || 
+            (appointment.visitStage || appointment.visit_stage || "").toLowerCase() === "exited";
+
+        if (isCompleted) {
+            navigate(`/consultation/${encodeURIComponent(encounterId)}/summary?${queryParams.toString()}`, {
+                state: {
+                    appointmentId: appointment.id,
+                    visitId: appointment.visit_id || appointment.visitId,
+                    hospitalPatientId: appointment.hospital_patient_id,
+                    patientId: appointment.patientId || appointment.patient_id || null,
+                    patient: appointment,
+                    doctorId: doctor?.id || "default-doctor",
+                    consultationCompleted: true,
+                },
+            });
+            return;
+        }
+
         const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
         fetch(`${API}/api/v1/queue/transition`, {
             method: "POST",
@@ -368,51 +388,62 @@ const Dashboard = () => {
                                         </div>
                                         
                                         {/* Action Buttons */}
-                                        {activeTab !== "completed" && String(app.status || "").toLowerCase() !== "completed" ? (
-                                            <button 
-                                                onClick={() => openConsultation(app)}
-                                                style={{
-                                                    background: "#0d9488", color: "#fff", border: "none", padding: "9px 18px",
-                                                    borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "8px",
-                                                    fontSize: "0.9rem", transition: "background 0.2s", boxShadow: "0 2px 4px rgba(13,148,136,0.2)"
-                                                }}
-                                                onMouseEnter={(e) => e.currentTarget.style.background = "#0f766e"}
-                                                onMouseLeave={(e) => e.currentTarget.style.background = "#0d9488"}
-                                            >
-                                                Start Consultation <i className="fa-solid fa-arrow-right" style={{ fontSize: "0.85rem" }} />
-                                            </button>
-                                        ) : (
-                                            <div style={{ display: "flex", gap: "8px" }}>
-                                                <button 
-                                                    onClick={() => navigate(`/patients/${encodeURIComponent(app.patientId)}`)}
-                                                    style={{
-                                                        background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", padding: "8px 14px",
-                                                        borderRadius: "8px", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", transition: "background 0.2s"
-                                                    }}
-                                                    onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"}
-                                                    onMouseLeave={(e) => e.currentTarget.style.background = "#f8fafc"}
-                                                >
-                                                    Patient Record
-                                                </button>
-                                                {patientRecord(app) && (
+                                        {(() => {
+                                            const isCompleted = activeTab === "completed" || 
+                                                String(app.status || "").toLowerCase() === "completed" || 
+                                                String(app.visitStage || app.visit_stage || "").toLowerCase() === "completed" || 
+                                                String(app.visitStage || app.visit_stage || "").toLowerCase() === "exited";
+
+                                            if (!isCompleted) {
+                                                return (
                                                     <button 
-                                                        onClick={() => {
-                                                            const record = patientRecord(app);
-                                                            const pdfTarget = record.pdfUrl
-                                                                ? (record.pdfUrl.startsWith("http") ? record.pdfUrl : `${API}${record.pdfUrl}`)
-                                                                : `${API}/api/v1/clinical/notes/${encodeURIComponent(app.patientId)}/${encodeURIComponent(record.consultationId)}/pdf`;
-                                                            window.open(pdfTarget, "_blank", "noopener,noreferrer");
-                                                        }}
+                                                        onClick={() => openConsultation(app)}
                                                         style={{
-                                                            background: "#16a34a", color: "#fff", border: "none", padding: "8px 14px",
-                                                            borderRadius: "8px", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px"
+                                                            background: "#0d9488", color: "#fff", border: "none", padding: "9px 18px",
+                                                            borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "8px",
+                                                            fontSize: "0.9rem", transition: "background 0.2s", boxShadow: "0 2px 4px rgba(13,148,136,0.2)"
                                                         }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = "#0f766e"}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = "#0d9488"}
                                                     >
-                                                        <i className="fa-solid fa-file-pdf"></i> View PDF
+                                                        Start Consultation <i className="fa-solid fa-arrow-right" style={{ fontSize: "0.85rem" }} />
                                                     </button>
-                                                )}
-                                            </div>
-                                        )}
+                                                );
+                                            }
+
+                                            return (
+                                                <div style={{ display: "flex", gap: "8px" }}>
+                                                    <button 
+                                                        onClick={() => navigate(`/patients/${encodeURIComponent(app.patientId)}`)}
+                                                        style={{
+                                                            background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", padding: "8px 14px",
+                                                            borderRadius: "8px", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", transition: "background 0.2s"
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = "#f8fafc"}
+                                                    >
+                                                        Patient Record
+                                                    </button>
+                                                    {patientRecord(app) && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                const record = patientRecord(app);
+                                                                const pdfTarget = record.pdfUrl
+                                                                    ? (record.pdfUrl.startsWith("http") ? record.pdfUrl : `${API}${record.pdfUrl}`)
+                                                                    : `${API}/api/v1/clinical/notes/${encodeURIComponent(app.patientId)}/${encodeURIComponent(record.consultationId)}/pdf`;
+                                                                window.open(pdfTarget, "_blank", "noopener,noreferrer");
+                                                            }}
+                                                            style={{
+                                                                background: "#16a34a", color: "#fff", border: "none", padding: "8px 14px",
+                                                                borderRadius: "8px", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px"
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-file-pdf"></i> View PDF
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>

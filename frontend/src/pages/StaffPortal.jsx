@@ -9,7 +9,7 @@ const API_BASE = getApiV1Url();
 export default function StaffPortal() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { doctor: currentUser, logout } = useAuth();
+  const { doctor: currentUser, logout, loading: authLoading } = useAuth();
 
   // -------------------------------------------------------------------------
   // URL Location-based Active Sub-Tab Resolution
@@ -266,7 +266,6 @@ export default function StaffPortal() {
       localStorage.getItem("doctor_token");
     const storedHospitalId =
       localStorage.getItem("doctors_vedika_hospital_id") ||
-      localStorage.getItem("hospital_id") ||
       localStorage.getItem("active_hospital_id");
 
     const headers = {
@@ -277,7 +276,7 @@ export default function StaffPortal() {
       "Pragma": "no-cache"
     };
 
-    if (storedHospitalId && storedHospitalId !== "null" && storedHospitalId !== "undefined") {
+    if (storedHospitalId && storedHospitalId !== "null" && storedHospitalId !== "undefined" && storedHospitalId !== "00000000-0000-0000-0000-000000000001") {
       headers["X-Hospital-Id"] = storedHospitalId;
     }
 
@@ -306,6 +305,10 @@ export default function StaffPortal() {
   // Data Fetching Effects
   // -------------------------------------------------------------------------
   useEffect(() => {
+    if (authLoading || !currentUser) {
+      return;
+    }
+
     fetchAllData();
 
     // Fast 2-second polling for real-time queue & stage updates
@@ -329,13 +332,30 @@ export default function StaffPortal() {
       clearInterval(interval);
       window.removeEventListener("storage", handleStorageUpdate);
     };
-  }, [activeTab]);
+  }, [activeTab, authLoading, currentUser?.id, currentUser?.userId]);
 
   useEffect(() => {
-    if (showWalkinModal) {
-      fetchDoctors();
+    if (!showWalkinModal || authLoading || !currentUser) {
+      return;
     }
-  }, [showWalkinModal]);
+
+    const targetHospitalId =
+      hospitalInfo?.id ||
+      currentUser?.hospitalId ||
+      currentUser?.hospital_id ||
+      localStorage.getItem("doctors_vedika_hospital_id") ||
+      localStorage.getItem("hospital_id");
+
+    fetchDoctors(targetHospitalId);
+  }, [
+    showWalkinModal,
+    authLoading,
+    currentUser?.id,
+    currentUser?.userId,
+    currentUser?.hospitalId,
+    currentUser?.hospital_id,
+    hospitalInfo?.id
+  ]);
 
   // Ensure selected doctor in appointment modal is auto-populated as soon as doctors list updates
   useEffect(() => {
@@ -350,16 +370,16 @@ export default function StaffPortal() {
     setIsLoading(true);
     try {
       // 1. Resolve and verify authenticated hospital context first
-      await fetchHospitalInfo();
+      const hosp = await fetchHospitalInfo();
+      const resolvedHospId = hosp?.id || localStorage.getItem("doctors_vedika_hospital_id");
 
       // 2. Fetch remaining portal data with verified hospital context header
       await Promise.all([
-        fetchStats(),
-        fetchDoctors(),
-        fetchQueue(),
-        fetchAppointments(),
-        fetchPatients(),
-        fetchQrIntakes()
+        fetchStats(resolvedHospId),
+        fetchDoctors(resolvedHospId),
+        fetchQueue(selectedQueueDate),
+        fetchAppointments(resolvedHospId),
+        fetchPatients(patientSearch)
       ]);
     } catch (err) {
       console.warn("[StaffPortal] Data fetch warning:", err);
@@ -386,9 +406,14 @@ export default function StaffPortal() {
     return null;
   };
 
-  const fetchStats = async () => {
+  const fetchStats = async (overrideHospId) => {
     try {
-      const res = await fetch(`${API_BASE}/staff/dashboard-stats?_t=${Date.now()}`, { headers: getAuthHeaders() });
+      const targetHospId = overrideHospId || hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id");
+      const headers = getAuthHeaders();
+      if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
+        headers["X-Hospital-Id"] = targetHospId;
+      }
+      const res = await fetch(`${API_BASE}/staff/dashboard-stats?_t=${Date.now()}`, { headers });
       const data = await res.json();
       if (data.success && data.stats) setStats(data.stats);
     } catch (err) {
@@ -396,13 +421,25 @@ export default function StaffPortal() {
     }
   };
 
-  const fetchDoctors = async () => {
+  const fetchDoctors = async (overrideHospId = null) => {
     setIsDoctorsLoading(true);
 
+    const targetHospId =
+      overrideHospId ||
+      hospitalInfo?.id ||
+      currentUser?.hospitalId ||
+      currentUser?.hospital_id ||
+      localStorage.getItem("doctors_vedika_hospital_id") ||
+      localStorage.getItem("hospital_id");
+
     const headers = getAuthHeaders();
+    if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
+      headers["X-Hospital-Id"] = targetHospId;
+    }
+
     console.log("[STAFF DOCTORS] request", {
       url: `${API_BASE}/staff/doctors`,
-      hospitalId: localStorage.getItem("doctors_vedika_hospital_id"),
+      hospitalId: targetHospId,
       headers: {
         hasAuthorization: !!headers.Authorization,
         hospitalId: headers["X-Hospital-Id"]
@@ -426,7 +463,6 @@ export default function StaffPortal() {
 
       const data = await response.json();
       console.log("[STAFF DOCTORS] RESPONSE", data);
-      console.log("[STAFF DOCTORS] DOCTORS ARRAY", data?.doctors);
 
       if (!response.ok) {
         console.error(
@@ -434,48 +470,39 @@ export default function StaffPortal() {
           response.status,
           data
         );
+        return;
+      }
 
+      if (!data.success || !Array.isArray(data.doctors)) {
+        console.error(
+          "[StaffPortal] Invalid doctor API response:",
+          data
+        );
+        return;
+      }
+
+      const receivedDoctors = data.doctors;
+
+      if (receivedDoctors.length === 0) {
         setDoctors([]);
         setSelectedDoctorId("");
         return;
       }
 
-      if (data.success && Array.isArray(data.doctors)) {
-        setDoctors(data.doctors);
+      setDoctors(receivedDoctors);
 
-        if (data.doctors.length === 0) {
-          setSelectedDoctorId("");
-          return;
-        }
+      const selectedStillExists = receivedDoctors.some(
+        doctor => String(doctor.doctorId) === String(selectedDoctorId)
+      );
 
-        const currentSelectionExists = data.doctors.some(
-          doctor =>
-            String(doctor.doctorId) ===
-            String(selectedDoctorId)
-        );
-
-        if (!currentSelectionExists) {
-          setSelectedDoctorId(data.doctors[0].doctorId);
-        }
-      } else {
-        console.error(
-          "[StaffPortal] Invalid doctor API response:",
-          data
-        );
-
-        setDoctors([]);
-        setSelectedDoctorId("");
+      if (!selectedStillExists) {
+        setSelectedDoctorId(receivedDoctors[0].doctorId);
       }
-
     } catch (error) {
       console.error(
         "[StaffPortal] Failed to load hospital doctors:",
         error
       );
-
-      setDoctors([]);
-      setSelectedDoctorId("");
-
     } finally {
       setIsDoctorsLoading(false);
     }
@@ -797,7 +824,7 @@ export default function StaffPortal() {
 
   const handleOpenVitalsModal = (visit) => {
     setEditingVisit(visit);
-    const existing = visit.intake_vitals || visit.vitals || {};
+    const existing = visit.intakeVitals || visit.intake_vitals || visit.vitals || {};
     setEditVitalsData({
       bp: existing.bp || existing.blood_pressure || existing.bloodPressure || "",
       pulse: existing.pulse || existing.heart_rate || existing.heartRate || "",
@@ -2291,6 +2318,27 @@ export default function StaffPortal() {
                                     <span>•</span>
                                     <span>{item.patientCode || item.hprCode || "Walk-in"}</span>
                                   </div>
+                                  {/* Display updated vitals pills directly under patient info */}
+                                  {(() => {
+                                    const vts = item.intakeVitals || item.intake_vitals || item.vitals || {};
+                                    const bp = vts.bp || vts.blood_pressure || vts.bloodPressure;
+                                    const pulse = vts.pulse || vts.heart_rate || vts.heartRate;
+                                    const temp = vts.temperature || vts.temp;
+                                    const spo2 = vts.spo2;
+                                    const weight = vts.weight;
+                                    if (bp || pulse || temp || spo2 || weight) {
+                                      return (
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
+                                          {bp && <span style={{ fontSize: "0.7rem", backgroundColor: "#e0f2fe", color: "#0369a1", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>BP: {bp}</span>}
+                                          {pulse && <span style={{ fontSize: "0.7rem", backgroundColor: "#fef3c7", color: "#b45309", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>Pulse: {pulse} bpm</span>}
+                                          {temp && <span style={{ fontSize: "0.7rem", backgroundColor: "#fee2e2", color: "#b91c1c", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>Temp: {temp}°F</span>}
+                                          {spo2 && <span style={{ fontSize: "0.7rem", backgroundColor: "#f0fdf4", color: "#15803d", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>SpO2: {spo2}%</span>}
+                                          {weight && <span style={{ fontSize: "0.7rem", backgroundColor: "#f3e8ff", color: "#6b21a8", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>Wt: {weight}kg</span>}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </div>
                             </td>
@@ -2331,13 +2379,28 @@ export default function StaffPortal() {
                                   </button>
                                 )}
 
-                                <button
-                                  onClick={() => handleOpenVitalsModal(item)}
-                                  style={{ backgroundColor: "rgba(8,174,184,0.1)", color: "#08AEB8", border: "1px solid rgba(8,174,184,0.3)", padding: "6px 10px", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}
-                                  title="View/Edit Patient Intake Vitals"
-                                >
-                                  <i className="fa-solid fa-heart-pulse" style={{ marginRight: "4px" }} /> Vitals
-                                </button>
+                                {(() => {
+                                  const vts = item.intakeVitals || item.intake_vitals || item.vitals || {};
+                                  const hasVitals = Boolean(vts.bp || vts.pulse || vts.temperature || vts.spo2 || vts.weight || vts.height || vts.bloodGroup);
+                                  return (
+                                    <button
+                                      onClick={() => handleOpenVitalsModal(item)}
+                                      style={{
+                                        backgroundColor: hasVitals ? "#ecfdf5" : "rgba(8,174,184,0.1)",
+                                        color: hasVitals ? "#047857" : "#08AEB8",
+                                        border: hasVitals ? "1px solid #a7f3d0" : "1px solid rgba(8,174,184,0.3)",
+                                        padding: "6px 10px",
+                                        borderRadius: "6px",
+                                        fontSize: "0.78rem",
+                                        fontWeight: 700,
+                                        cursor: "pointer"
+                                      }}
+                                      title="View/Edit Patient Intake Vitals"
+                                    >
+                                      <i className={`fa-solid ${hasVitals ? "fa-circle-check" : "fa-heart-pulse"}`} style={{ marginRight: "4px" }} /> Vitals
+                                    </button>
+                                  );
+                                })()}
 
                                 <button
                                   onClick={() => handleOpenPatientDetails(item)}

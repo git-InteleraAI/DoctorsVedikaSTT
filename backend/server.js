@@ -541,8 +541,18 @@ app.post(
                 pdfUrl: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
             };
 
+            // Save JSON record to local disk storage
+            try {
+                fs.writeFileSync(
+                    path.join(patientFolder, `${consultationId}.json`),
+                    JSON.stringify(patientRecord, null, 2)
+                );
+            } catch (diskWriteErr) {
+                console.warn("[Clinical Save] Unable to write local JSON record to disk:", diskWriteErr.message);
+            }
+
             // Save strictly to public.consultation_notes, public.prescriptions, and public.appointments in Supabase
-            const targetDb = db || supabase;
+            const targetDb = supabaseAdmin || db || supabase;
             if (isSupabaseConfigured && targetDb) {
                 try {
                     let resolvedAppUuid = appUuid;
@@ -642,6 +652,8 @@ app.post(
                             summary: fullSummaryData
                         });
 
+                        const hospitalId = req.doctor?.hospital_id || req.body.hospitalId || req.body.hospital_id || null;
+
                         const noteRecord = {
                             appointment_id: resolvedAppUuid,
                             doctor_id: resolvedDocUuid,
@@ -653,6 +665,7 @@ app.post(
                             audio_transcript: rawAudioTranscript,
                             audio_url: req.body.audio_url || req.body.audioUrl || null,
                             visit_id: req.body.visit_id || req.body.visitId || null,
+                            hospital_id: hospitalId,
                             updated_at: new Date().toISOString(),
                         };
 
@@ -670,6 +683,7 @@ app.post(
                             follow_up_date: formatFollowUpDate(prescription?.follow_up_date || prescription?.follow_up),
                             pdf_url: `/api/v1/clinical/notes/${encodeURIComponent(patientId)}/${encodeURIComponent(consultationId)}/pdf`,
                             visit_id: req.body.visit_id || req.body.visitId || null,
+                            hospital_id: hospitalId,
                             updated_at: new Date().toISOString(),
                         };
 
@@ -767,7 +781,7 @@ app.get(
     async (req, res) => {
         try {
             const { patientId, consultationId } = req.params;
-            const targetDb = db || supabase;
+            const targetDb = supabaseAdmin || db || supabase;
 
             let note = null;
             let rx = null;
@@ -919,6 +933,29 @@ app.get(
                         summaryObj = parsed.summary || parsed;
                     }
                 } catch (e) {}
+            }
+
+            if (!summaryObj || typeof summaryObj !== "object" || Object.keys(summaryObj).length === 0) {
+                // Fallback to local JSON record on disk if DB record is empty/missing
+                try {
+                    const folder = resolvePatientFolder(patientId);
+                    const jsonFile = path.join(folder, `${consultationId}.json`);
+                    let localRecord = null;
+                    if (fs.existsSync(jsonFile)) {
+                        localRecord = JSON.parse(fs.readFileSync(jsonFile, "utf8"));
+                    } else if (fs.existsSync(folder)) {
+                        const files = fs.readdirSync(folder).filter(f => f.endsWith(".json"));
+                        if (files.length > 0) {
+                            localRecord = JSON.parse(fs.readFileSync(path.join(folder, files[files.length - 1]), "utf8"));
+                        }
+                    }
+
+                    if (localRecord && localRecord.summary) {
+                        summaryObj = localRecord.summary;
+                    }
+                } catch (diskFallbackErr) {
+                    console.warn("[Clinical PDF] Disk fallback read notice:", diskFallbackErr.message);
+                }
             }
 
             if (!summaryObj || typeof summaryObj !== "object" || Object.keys(summaryObj).length === 0) {
