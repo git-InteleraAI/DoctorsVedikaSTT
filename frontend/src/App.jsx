@@ -22,6 +22,10 @@ import HospitalAdmin from "./pages/HospitalAdmin";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
+import QRIntakeEntry from "./pages/QRIntake/QRIntakeEntry";
+import QRPatientForm from "./pages/QRIntake/QRPatientForm";
+import QRIntakeChat from "./pages/QRIntake/QRIntakeChat";
+
 function App() {
   return (
     <AuthProvider>
@@ -78,6 +82,22 @@ function App() {
               <Dashboard />
             </ProtectedRoute>
           }
+        />
+
+        {/* QR Intake Entry Route */}
+        <Route
+          path="/qr/:hospitalCode"
+          element={<QRIntakeEntry />}
+        />
+
+        <Route
+          path="/qr/:hospitalCode/patient"
+          element={<QRPatientForm />}
+        />
+
+        <Route
+          path="/qr/:hospitalCode/chat/:accessToken"
+          element={<QRIntakeChat />}
         />
 
         <Route

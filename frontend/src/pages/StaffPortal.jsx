@@ -213,6 +213,13 @@ export default function StaffPortal() {
   });
   const [isSavingVitals, setIsSavingVitals] = useState(false);
 
+  // QR Intake State
+  const [qrIntakes, setQrIntakes] = useState([]);
+  const [selectedQrIntake, setSelectedQrIntake] = useState(null);
+  const [showQrDetailsModal, setShowQrDetailsModal] = useState(false);
+  const [activeQrSessionId, setActiveQrSessionId] = useState(null);
+  const [lastNotifiedQrCount, setLastNotifiedQrCount] = useState(0);
+
   // Patient Detail History Modal State
   const [selectedHprDetail, setSelectedHprDetail] = useState(null);
   const [showHprModal, setShowHprModal] = useState(false);
@@ -305,12 +312,14 @@ export default function StaffPortal() {
     const interval = setInterval(() => {
       fetchStats();
       fetchQueue();
+      fetchQrIntakes();
     }, 2000);
 
     const handleStorageUpdate = (e) => {
       if (!e || e.key === "doctors_vedika_queue_updated") {
         fetchStats();
         fetchQueue();
+        fetchQrIntakes();
       }
     };
 
@@ -349,7 +358,8 @@ export default function StaffPortal() {
         fetchDoctors(),
         fetchQueue(),
         fetchAppointments(),
-        fetchPatients()
+        fetchPatients(),
+        fetchQrIntakes()
       ]);
     } catch (err) {
       console.warn("[StaffPortal] Data fetch warning:", err);
@@ -631,6 +641,57 @@ export default function StaffPortal() {
     }
   };
 
+  const fetchQrIntakes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/staff/qr-intakes?_t=${Date.now()}`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.intakes)) {
+        setQrIntakes(data.intakes);
+        if (data.intakes.length > lastNotifiedQrCount && lastNotifiedQrCount > 0) {
+          setMessage({
+            text: `New incoming QR Patient Intake: ${data.intakes[0].patientName || "Patient"} has submitted their symptoms!`,
+            type: "success"
+          });
+        }
+        setLastNotifiedQrCount(data.intakes.length);
+      }
+    } catch (err) {
+      console.warn("Fetch QR intakes error:", err);
+    }
+  };
+
+  const handleStartWalkinFromQr = (intake) => {
+    const fName = intake.firstName || (intake.patientName ? intake.patientName.split(" ")[0] : "");
+    const lName = intake.lastName || (intake.patientName ? intake.patientName.split(" ").slice(1).join(" ") : "");
+    
+    const symptoms = Array.isArray(intake.clinicalIntake?.symptoms) ? intake.clinicalIntake.symptoms.join(", ") : "";
+    let complaintText = symptoms ? `Symptoms: ${symptoms}` : "";
+    if (intake.clinicalIntake?.duration) {
+      complaintText += complaintText ? ` | Duration: ${intake.clinicalIntake.duration}` : `Duration: ${intake.clinicalIntake.duration}`;
+    }
+    if (intake.clinicalIntake?.severity) {
+      complaintText += complaintText ? ` | Severity: ${intake.clinicalIntake.severity}` : `Severity: ${intake.clinicalIntake.severity}`;
+    }
+    if (intake.clinicalIntake?.location) {
+      complaintText += complaintText ? ` | Location: ${intake.clinicalIntake.location}` : `Location: ${intake.clinicalIntake.location}`;
+    }
+    if (intake.clinicalIntake?.recent_actions) {
+      complaintText += complaintText ? ` | Actions: ${intake.clinicalIntake.recent_actions}` : `Actions: ${intake.clinicalIntake.recent_actions}`;
+    }
+
+    setWalkinFirstName(fName);
+    setWalkinLastName(lName);
+    setWalkinPhone(intake.phone || "");
+    setWalkinDob(intake.dateOfBirth || "");
+    setWalkinGender(intake.gender ? (intake.gender.charAt(0).toUpperCase() + intake.gender.slice(1)) : "Male");
+    setChiefComplaints(complaintText);
+    setActiveQrSessionId(intake.id);
+    setCandidatePhoneQuery(intake.phone || "");
+
+    setShowWalkinModal(true);
+    setShowQrDetailsModal(false);
+  };
+
   // -------------------------------------------------------------------------
   // Handlers & Actions
   // -------------------------------------------------------------------------
@@ -694,7 +755,8 @@ export default function StaffPortal() {
         doctorId: selectedDoctorId,
         chiefComplaints,
         vitals: walkinVitals, // Optional vitals during registration
-        actionType // 'register_only' | 'register_and_checkin'
+        actionType, // 'register_only' | 'register_and_checkin'
+        qrSessionId: activeQrSessionId || null
       };
 
       const res = await fetch(endpoint, {
@@ -708,6 +770,7 @@ export default function StaffPortal() {
         const actionLabel = actionType === "register_only" ? "registered (scheduled)" : "checked in to queue";
         setMessage({ text: `Walk-in patient ${actionLabel} successfully!`, type: "success" });
         setShowWalkinModal(false);
+        setActiveQrSessionId(null);
         // Reset Form
         setSelectedCandidate(null);
         setCandidatePhoneQuery("");
@@ -723,6 +786,7 @@ export default function StaffPortal() {
         fetchQueue();
         fetchAppointments();
         fetchPatients();
+        fetchQrIntakes();
       } else {
         setMessage({ text: data.message || "Failed to register walk-in patient.", type: "error" });
       }
@@ -1174,6 +1238,170 @@ export default function StaffPortal() {
                 <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "4px" }}>Consultations Finished</div>
               </div>
 
+            </div>
+
+            {/* Incoming QR Patient Intakes Section */}
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                borderRadius: "16px",
+                padding: "20px 24px",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "38px", height: "38px", borderRadius: "10px", backgroundColor: "#e0f2fe", color: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.1rem" }}>
+                    <i className="fa-solid fa-qrcode" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#0b1c2d" }}>
+                      Incoming QR Patient Intakes
+                    </h3>
+                    <p style={{ margin: 0, fontSize: "0.8rem", color: "#64748b" }}>
+                      Patients who scanned the hospital QR code and completed digital clinical intake
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span
+                    style={{
+                      padding: "4px 12px",
+                      borderRadius: "20px",
+                      fontSize: "0.8rem",
+                      fontWeight: 800,
+                      backgroundColor: qrIntakes.length > 0 ? "rgba(8,174,184,0.12)" : "#f1f5f9",
+                      color: qrIntakes.length > 0 ? "#08AEB8" : "#64748b"
+                    }}
+                  >
+                    {qrIntakes.length} {qrIntakes.length === 1 ? "Pending Intake" : "Pending Intakes"}
+                  </span>
+                  <button
+                    onClick={fetchQrIntakes}
+                    style={{
+                      background: "none",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "8px",
+                      padding: "6px 10px",
+                      cursor: "pointer",
+                      fontSize: "0.8rem",
+                      color: "#64748b"
+                    }}
+                    title="Refresh QR Intakes"
+                  >
+                    <i className="fa-solid fa-rotate-right" /> Refresh
+                  </button>
+                </div>
+              </div>
+
+              {qrIntakes.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "20px 10px", color: "#94a3b8", fontSize: "0.88rem" }}>
+                  <i className="fa-solid fa-clipboard-check" style={{ fontSize: "1.5rem", marginBottom: "8px", display: "block", color: "#cbd5e1" }} />
+                  No pending QR patient intakes at this moment. New check-ins submitted via the hospital QR code will appear here in real-time.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {qrIntakes.map((item) => {
+                    const symptomsList = Array.isArray(item.clinicalIntake?.symptoms) ? item.clinicalIntake.symptoms : [];
+                    const isCaution = item.safetyStatus?.toLowerCase() === "caution";
+                    const isCritical = item.safetyStatus?.toLowerCase() === "critical";
+
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          backgroundColor: "#f8fafc",
+                          borderRadius: "12px",
+                          padding: "16px 20px",
+                          border: isCritical ? "1px solid #fca5a5" : isCaution ? "1px solid #fde68a" : "1px solid #e2e8f0",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "14px"
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: "220px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <span style={{ fontWeight: 800, fontSize: "0.98rem", color: "#0f172a" }}>
+                              {item.patientName || "Anonymous Patient"}
+                            </span>
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                                textTransform: "uppercase",
+                                backgroundColor: isCritical ? "#fee2e2" : isCaution ? "#fef3c7" : "#ecfdf5",
+                                color: isCritical ? "#b91c1c" : isCaution ? "#b45309" : "#047857"
+                              }}
+                            >
+                              {item.safetyStatus || "safe"}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "0.82rem", color: "#64748b" }}>
+                            <span>📞 {item.phone || "No phone"}</span>
+                            <span style={{ margin: "0 8px" }}>•</span>
+                            <span>DOB: {item.dateOfBirth || "N/A"}</span>
+                            <span style={{ margin: "0 8px" }}>•</span>
+                            <span>{item.gender ? item.gender.toUpperCase() : "N/A"}</span>
+                          </div>
+                          <div style={{ fontSize: "0.82rem", color: "#334155", marginTop: "2px" }}>
+                            <strong>Symptoms:</strong> {symptomsList.length > 0 ? symptomsList.join(", ") : "General assessment"}
+                            {item.clinicalIntake?.duration ? ` (${item.clinicalIntake.duration})` : ""}
+                            {item.clinicalIntake?.severity ? ` • Severity: ${item.clinicalIntake.severity}` : ""}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            onClick={() => {
+                              setSelectedQrIntake(item);
+                              setShowQrDetailsModal(true);
+                            }}
+                            style={{
+                              backgroundColor: "#ffffff",
+                              color: "#334155",
+                              border: "1px solid #cbd5e1",
+                              padding: "8px 14px",
+                              borderRadius: "8px",
+                              fontSize: "0.85rem",
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            <i className="fa-solid fa-file-lines" style={{ marginRight: "6px" }} /> View Intake
+                          </button>
+                          <button
+                            onClick={() => handleStartWalkinFromQr(item)}
+                            style={{
+                              backgroundColor: "#08AEB8",
+                              color: "#ffffff",
+                              border: "none",
+                              padding: "8px 16px",
+                              borderRadius: "8px",
+                              fontSize: "0.85rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px"
+                            }}
+                          >
+                            <i className="fa-solid fa-user-plus" /> Register &amp; Walk-in
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Doctor & Specialization Filtering Bar */}
@@ -3321,6 +3549,112 @@ export default function StaffPortal() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: QR CLINICAL INTAKE DETAILS
+      ========================================================================= */}
+      {showQrDetailsModal && selectedQrIntake && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(11, 28, 45, 0.6)", backdropFilter: "blur(6px)", zIndex: 4000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", boxSizing: "border-box" }}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "18px", width: "100%", maxWidth: "600px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", border: "1px solid #e2e8f0", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+            
+            <div style={{ padding: "18px 24px", backgroundColor: "#0b1c2d", color: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800 }}>QR Clinical Intake Details</h3>
+                <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Structured pre-consultation symptom assessment</span>
+              </div>
+              <button onClick={() => setShowQrDetailsModal(false)} style={{ background: "none", border: "none", color: "#ffffff", fontSize: "1.2rem", cursor: "pointer" }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto" }}>
+              {/* Patient Basic Info */}
+              <div style={{ backgroundColor: "#f8fafc", padding: "14px 18px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a" }}>
+                  {selectedQrIntake.patientName}
+                </div>
+                <div style={{ fontSize: "0.85rem", color: "#64748b", marginTop: "4px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                  <span>Phone: {selectedQrIntake.phone}</span>
+                  <span>DOB: {selectedQrIntake.dateOfBirth}</span>
+                  <span>Gender: {selectedQrIntake.gender}</span>
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "4px" }}>
+                  Submitted: {selectedQrIntake.submittedAt ? new Date(selectedQrIntake.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Recently"}
+                </div>
+              </div>
+
+              {/* Clinical Intake Fields */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800, color: "#08AEB8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Clinical Intake Summary
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: "8px", fontSize: "0.9rem" }}>
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Symptoms:</span>
+                  <span style={{ color: "#0f172a", fontWeight: 600 }}>
+                    {Array.isArray(selectedQrIntake.clinicalIntake?.symptoms) && selectedQrIntake.clinicalIntake.symptoms.length > 0
+                      ? selectedQrIntake.clinicalIntake.symptoms.join(", ")
+                      : "None recorded"}
+                  </span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Duration:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.duration || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Severity:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.severity ? selectedQrIntake.clinicalIntake.severity.toUpperCase() : "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Location:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.location || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Recent Actions:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.recent_actions || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Medications:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.current_medications || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Patient Notes:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.additional_notes || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Safety Status:</span>
+                  <span>
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        fontSize: "0.75rem",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        backgroundColor: selectedQrIntake.safetyStatus?.toLowerCase() === "caution" ? "#fef3c7" : "#ecfdf5",
+                        color: selectedQrIntake.safetyStatus?.toLowerCase() === "caution" ? "#b45309" : "#047857"
+                      }}
+                    >
+                      {selectedQrIntake.safetyStatus || "safe"}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "16px 24px", backgroundColor: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setShowQrDetailsModal(false)}
+                style={{ padding: "10px 18px", borderRadius: "8px", border: "1px solid #cbd5e1", backgroundColor: "#ffffff", color: "#475569", fontWeight: 700, cursor: "pointer" }}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStartWalkinFromQr(selectedQrIntake)}
+                style={{ padding: "10px 20px", borderRadius: "8px", border: "none", backgroundColor: "#08AEB8", color: "#ffffff", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <i className="fa-solid fa-user-plus" /> Proceed to Walk-in Registration
+              </button>
+            </div>
+
           </div>
         </div>
       )}
