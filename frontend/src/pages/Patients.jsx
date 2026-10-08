@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
+import PrescriptionPreviewModal from "../components/PrescriptionPreviewModal";
 import { getApiBaseUrl } from "../utils/apiConfig";
 
 const API = getApiBaseUrl();
 
 const Patients = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { doctor, loading: authLoading } = useAuth();
 
     // UI States
@@ -22,10 +24,57 @@ const Patients = () => {
     const [walkinForm, setWalkinForm] = useState({
         fullName: "", mobile: "", email: "", dob: "", gender: "", bloodGroup: "", address: ""
     });
+    const [dobMode, setDobMode] = useState("picker"); // "picker" | "text"
+    const [walkinDobText, setWalkinDobText] = useState("");
+
+    const parseManualDob = (input) => {
+        if (!input || typeof input !== "string") return "";
+        const trimmed = input.trim();
+        if (!trimmed) return "";
+        const ageMatch = trimmed.match(/^(\d{1,3})\s*(y|yrs|years|year|y\/o)?$/i);
+        if (ageMatch) {
+            const age = parseInt(ageMatch[1], 10);
+            if (age >= 0 && age <= 120) {
+                const currentYear = new Date().getFullYear();
+                const birthYear = currentYear - age;
+                return `${birthYear}-01-01`;
+            }
+        }
+        const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (ddmmyyyyMatch) {
+            const day = ddmmyyyyMatch[1].padStart(2, '0');
+            const month = ddmmyyyyMatch[2].padStart(2, '0');
+            const year = ddmmyyyyMatch[3];
+            return `${year}-${month}-${day}`;
+        }
+        const yyyymmddMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (yyyymmddMatch) {
+            const year = yyyymmddMatch[1];
+            const month = yyyymmddMatch[2].padStart(2, '0');
+            const day = yyyymmddMatch[3].padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        return trimmed;
+    };
 
     // Lookup & Search state
     const [lookupResult, setLookupResult] = useState(null);
     const [lookupLoading, setLookupLoading] = useState(false);
+
+    // Prescription Preview Modal State
+    const [prescriptionPreview, setPrescriptionPreview] = useState({
+        show: false,
+        visit: null,
+    });
+
+    useEffect(() => {
+        if (!location.state?.reportUpdated) return;
+        const patientToRefresh = selectedPatient?.userId || selectedPatient?.id;
+        if (patientToRefresh && typeof openProfile === 'function') {
+            openProfile(patientToRefresh);
+        }
+        navigate(location.pathname, { replace: true, state: {} });
+    }, [location.state]);
 
     const getToken = () => localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token") || localStorage.getItem("sb-access-token");
 
@@ -219,8 +268,11 @@ const Patients = () => {
         try {
             const token = getToken();
 
+            const effectiveDob = dobMode === "text" ? parseManualDob(walkinDobText) : walkinForm.dob;
+            const finalWalkinForm = { ...walkinForm, dob: effectiveDob };
+
             // 1. Create Walk-in Patient (or reuse existing)
-            const patRes = await axios.post(`${API}/api/patients/walkin`, walkinForm, {
+            const patRes = await axios.post(`${API}/api/patients/walkin`, finalWalkinForm, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -430,31 +482,84 @@ const Patients = () => {
                     {loading ? (
                         <div style={{ textAlign: "center", padding: "40px" }}><i className="fa-solid fa-spinner fa-spin fa-2x" style={{ color: "#0d9488" }}></i></div>
                     ) : (
-                        <div style={{ display: "grid", gap: "16px" }}>
+                        <div style={{ 
+                            display: "grid", 
+                            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", 
+                            gap: "20px",
+                            alignItems: "stretch"
+                        }}>
                             {patients.map(p => (
-                                <div key={p.id} className="classic-card responsive-flex-between">
-                                    <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-                                        <img src={p.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.fullName)}&background=0d9488&color=fff`} style={{ width: "48px", height: "48px", borderRadius: "50%" }} alt="" />
-                                        <div>
-                                            <h3 style={{ margin: "0 0 4px 0", fontSize: "1.1rem", color: "#0f172a" }}>{p.fullName}</h3>
-                                            <p style={{ margin: 0, fontSize: "0.88rem", color: "#64748b" }}>
-                                                {p.patientCode} • {p.age ? `${p.age} yrs` : "Age -"} • {p.gender || "-"} • <i className="fa-solid fa-phone" style={{ fontSize: "0.8rem", marginLeft: "4px" }}></i> {p.mobile}
-                                            </p>
+                                <div 
+                                    key={p.id} 
+                                    className="classic-card"
+                                    style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        justifyContent: "space-between",
+                                        padding: "20px",
+                                        borderRadius: "14px",
+                                        border: "1px solid #e2e8f0",
+                                        background: "#ffffff",
+                                        boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
+                                        transition: "all 0.2s ease-in-out"
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ display: "flex", gap: "14px", alignItems: "center", marginBottom: "12px" }}>
+                                            <img 
+                                                src={p.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.fullName || "Patient")}&background=0d9488&color=fff`} 
+                                                style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #e2e8f0", flexShrink: 0 }} 
+                                                alt={p.fullName} 
+                                            />
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <h3 style={{ margin: "0 0 2px 0", fontSize: "1.05rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.fullName}</h3>
+                                                <p style={{ margin: 0, fontSize: "0.82rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                    {p.patientCode || "Patient"} • {p.age ? `${p.age} yrs` : "Age -"} • {p.gender || "-"}
+                                                </p>
+                                            </div>
                                         </div>
+
+                                        {p.mobile && (
+                                            <div style={{ margin: "8px 0 12px 0", color: "#475569", fontSize: "0.82rem", background: "#f8fafc", padding: "6px 12px", borderRadius: "8px", fontWeight: 500, display: "flex", alignItems: "center", gap: "8px" }}>
+                                                <i className="fa-solid fa-phone" style={{ color: "#0d9488", fontSize: "0.8rem" }}></i> {p.mobile}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="responsive-flex-wrap" style={{ alignItems: "center", gap: "16px" }}>
-                                        <div style={{ textAlign: "right" }}>
-                                            <div style={{ fontSize: "0.85rem", color: "#64748b", marginBottom: "2px" }}>Total Visits: <strong style={{ color: "#0f172a" }}>{p.totalVisits}</strong></div>
-                                            <div style={{ fontSize: "0.85rem", color: "#64748b" }}>Last Visit: <strong style={{ color: "#0f172a" }}>{p.lastVisit ? new Date(p.lastVisit).toLocaleDateString() : "Never"}</strong></div>
+
+                                    <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "14px", marginTop: "10px" }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                                            <div style={{ fontSize: "0.82rem", color: "#64748b" }}>Total Visits: <strong style={{ color: "#0f172a" }}>{p.totalVisits || 0}</strong></div>
+                                            <div style={{ fontSize: "0.82rem", color: "#64748b" }}>Last Visit: <strong style={{ color: "#0f172a" }}>{p.lastVisit ? new Date(p.lastVisit).toLocaleDateString() : "Never"}</strong></div>
                                         </div>
-                                        <button onClick={() => openProfile(p.userId)} style={{ background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", padding: "8px 16px", borderRadius: "8px", fontWeight: 600, cursor: "pointer" }}>
-                                            View Profile <i className="fa-solid fa-arrow-right" style={{ marginLeft: "4px" }}></i>
+
+                                        <button 
+                                            onClick={() => openProfile(p.userId || p.id)} 
+                                            style={{ 
+                                                width: "100%",
+                                                background: "#0d9488", 
+                                                color: "#ffffff", 
+                                                border: "none", 
+                                                padding: "10px 16px", 
+                                                borderRadius: "8px", 
+                                                fontWeight: 600, 
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                gap: "8px",
+                                                fontSize: "0.88rem",
+                                                boxShadow: "0 2px 6px rgba(13,148,136,0.2)"
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.background = "#0f766e"}
+                                            onMouseLeave={(e) => e.currentTarget.style.background = "#0d9488"}
+                                        >
+                                            View Profile <i className="fa-solid fa-arrow-right" style={{ fontSize: "0.82rem" }}></i>
                                         </button>
                                     </div>
                                 </div>
                             ))}
                             {patients.length === 0 && (
-                                <div style={{ textAlign: "center", padding: "60px", background: "rgba(255,255,255,0.05)", borderRadius: "16px", border: "2px dashed rgba(255,255,255,0.1)", color: "#94a3b8" }}>
+                                <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "50px 20px", background: "#f8fafc", borderRadius: "14px", border: "1px dashed #cbd5e1", color: "#64748b" }}>
                                     No patients found. Try adjusting your search.
                                 </div>
                             )}
@@ -532,8 +637,46 @@ const Patients = () => {
                             />
                         </div>
                         <div>
-                            <label style={{ display: "block", marginBottom: "8px", color: "#475569", fontWeight: 600 }}>Date of Birth / Age</label>
-                            <input type="date" value={walkinForm.dob} onChange={e => setWalkinForm({ ...walkinForm, dob: e.target.value })} style={inputStyle} />
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                <label style={{ color: "#475569", fontWeight: 600 }}>Date of Birth / Age</label>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (dobMode === "picker") {
+                                            setDobMode("text");
+                                            if (walkinForm.dob) setWalkinDobText(walkinForm.dob);
+                                        } else {
+                                            setDobMode("picker");
+                                            if (walkinDobText) setWalkinForm({ ...walkinForm, dob: parseManualDob(walkinDobText) });
+                                        }
+                                    }}
+                                    style={{ background: "none", border: "none", color: "#08AEB8", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                                >
+                                    {dobMode === "picker" ? "⌨️ Type Date/Age" : "📅 Date Picker"}
+                                </button>
+                            </div>
+                            {dobMode === "picker" ? (
+                                <input
+                                    type="date"
+                                    value={walkinForm.dob}
+                                    onChange={e => {
+                                        setWalkinForm({ ...walkinForm, dob: e.target.value });
+                                        setWalkinDobText(e.target.value);
+                                    }}
+                                    style={inputStyle}
+                                />
+                            ) : (
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 25 Y, 15/08/1998, 1998-08-15"
+                                    value={walkinDobText}
+                                    onChange={e => {
+                                        setWalkinDobText(e.target.value);
+                                        setWalkinForm({ ...walkinForm, dob: parseManualDob(e.target.value) });
+                                    }}
+                                    style={inputStyle}
+                                />
+                            )}
                         </div>
                         <div>
                             <label style={{ display: "block", marginBottom: "8px", color: "#475569", fontWeight: 600 }}>Gender</label>
@@ -682,25 +825,54 @@ const Patients = () => {
                                             </div>
                                         </div>
                                         <div className="responsive-flex-wrap" style={{ flexDirection: "column", gap: "12px", alignItems: "flex-end", minWidth: "150px" }}>
-                                            <div style={{ textAlign: "right" }}>
-                                                <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "4px" }}>₹{visit.fee}</div>
-                                                <div style={{ color: visit.paymentStatus === 'paid' ? "#16a34a" : "#d97706", fontSize: "0.85rem", fontWeight: 600 }}>{visit.paymentStatus === 'paid' ? 'Paid' : 'Pending Payment'}</div>
-                                            </div>
-
                                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
                                                 {(visit.status === 'completed' || visit.visitStage === 'completed' || visit.visitStage === 'exited' || visit.hasNotes || Boolean(visit.diagnosis || visit.notes)) ? (
                                                     <>
+                                                        {/* FULL MEDICAL REPORT */}
                                                         <button
-                                                            onClick={() => window.open(`${API}/api/v1/clinical/notes/${encodeURIComponent(selectedPatient.userId)}/consultation-app-${visit.appointmentId}/pdf`, "_blank")}
-                                                            style={{ background: "#10B981", color: "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                                                            onClick={() => window.open(`${API}/api/v1/clinical/notes/${encodeURIComponent(selectedPatient.userId || selectedPatient.id)}/consultation-app-${visit.appointmentId}/pdf`, "_blank")}
+                                                            style={{ background: "#10B981", color: "#FFFFFF", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
                                                         >
-                                                            <i className="fa-solid fa-file-pdf"></i> PDF Report
+                                                            <i className="fa-solid fa-file-pdf" /> PDF Report
                                                         </button>
+
+                                                        {/* EDIT COMPLETED REPORT */}
                                                         <button
-                                                            onClick={() => navigate(`/patients/${selectedPatient.userId}`)}
-                                                            style={{ background: "#08AEB8", color: "#fff", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                                                            onClick={() => navigate(`/patients/${encodeURIComponent(selectedPatient.userId || selectedPatient.id)}/consultations/${encodeURIComponent(`consultation-app-${visit.appointmentId}`)}/edit`)}
+                                                            style={{ background: "#2563EB", color: "#FFFFFF", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
                                                         >
-                                                            <i className="fa-solid fa-file-medical"></i> View Record
+                                                            <i className="fa-solid fa-pen-to-square" /> Edit Report
+                                                        </button>
+
+                                                        {/* VIEW RECORD */}
+                                                        <button
+                                                            onClick={() => navigate(`/patients/${encodeURIComponent(selectedPatient.userId || selectedPatient.id)}`)}
+                                                            style={{ background: "#08AEB8", color: "#FFFFFF", border: "none", padding: "8px 14px", borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                                                        >
+                                                            <i className="fa-solid fa-file-medical" /> View Record
+                                                        </button>
+
+                                                        {/* PRESCRIPTION PREVIEW */}
+                                                        <button
+                                                            disabled={visit.prescriptionAvailable === false}
+                                                            onClick={() => {
+                                                                if (visit.prescriptionAvailable === false) return;
+                                                                setPrescriptionPreview({ show: true, visit });
+                                                            }}
+                                                            style={{
+                                                                background: visit.prescriptionAvailable === false ? "#F1F5F9" : "#EFF6FF",
+                                                                color: visit.prescriptionAvailable === false ? "#94A3B8" : "#2563EB",
+                                                                border: "1px solid #BFDBFE",
+                                                                padding: "8px 14px",
+                                                                borderRadius: "8px",
+                                                                fontWeight: 600,
+                                                                cursor: visit.prescriptionAvailable === false ? "not-allowed" : "pointer",
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: "6px"
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-file-prescription" /> Prescription
                                                         </button>
                                                     </>
                                                 ) : (visit.visitStage === "waiting" || visit.visitStage === "checked_in" || visit.visitStage === "in_consultation" || (visit.status === "confirmed" && visit.visitStage !== "completed" && visit.visitStage !== "cancelled")) ? (
@@ -789,6 +961,13 @@ const Patients = () => {
                     </div>
                 </div>
             )}
+            <PrescriptionPreviewModal
+                show={prescriptionPreview.show}
+                patient={selectedPatient}
+                visit={prescriptionPreview.visit}
+                doctor={doctor}
+                onClose={() => setPrescriptionPreview({ show: false, visit: null })}
+            />
         </DashboardLayout>
     );
 };

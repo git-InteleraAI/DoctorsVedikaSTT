@@ -473,113 +473,135 @@ export default function Appointments() {
                             };
 
                             return (
-                                <div className="appointment-card" key={app.id || app.appointmentId}>
-                                    <div className="appointment-card-body">
-                                        {/* Patient Info */}
-                                        <div className="patient-info-block">
-                                            <img
-                                                src={pAvatar}
-                                                alt={pName}
-                                                className="patient-avatar"
-                                                onError={(e) => {
-                                                    e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(pName)}&background=01b6af&color=fff`;
-                                                }}
+                                <div 
+                                    key={app.id || app.appointmentId} 
+                                    className="classic-card appointment-card" 
+                                    style={{ 
+                                        display: "flex", 
+                                        flexDirection: "column",
+                                        justifyContent: "space-between",
+                                        padding: "20px",
+                                        borderRadius: "14px",
+                                        border: "1px solid #e2e8f0",
+                                        background: "#ffffff",
+                                        boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
+                                        transition: "all 0.2s ease-in-out"
+                                    }}
+                                >
+                                    {/* TOP CARD CONTENT */}
+                                    <div>
+                                        {/* Patient Info Profile */}
+                                        <div style={{ display: "flex", gap: "14px", alignItems: "center", marginBottom: "12px" }}>
+                                            <img 
+                                                src={pAvatar} 
+                                                alt={pName} 
+                                                style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: "2px solid #e2e8f0", flexShrink: 0 }}
+                                                onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(pName)}&background=0d9488&color=fff`; }} 
                                             />
-
-                                            <div className="patient-meta-details">
-                                                <h3>
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <h3 style={{ margin: "0 0 2px 0", fontSize: "1.05rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                                     {pName}
-                                                    <span className="patient-code-tag">{pCode}</span>
                                                 </h3>
-
-                                                <div className="patient-demographics">
-                                                    {app.patientAge || app.age ? `${app.patientAge || app.age} yrs` : "Age N/A"} •{" "}
-                                                    {app.patientGender || app.gender || "Gender N/A"} •{" "}
-                                                    Blood: {app.bloodGroup || app.blood_group || "-"}
-                                                </div>
-
-                                                <div className="complaint-pill">
-                                                    <i className="fa-solid fa-stethoscope"></i>
-                                                    {app.reason || app.symptoms || app.chiefComplaint || "General Medical Checkup"}
-                                                </div>
+                                                <p style={{ margin: 0, fontSize: "0.82rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                    {pCode}
+                                                    {(app.patientAge || app.age) ? ` • ${app.patientAge || app.age} yrs` : ""}
+                                                    {(app.patientGender || app.gender) ? ` • ${app.patientGender || app.gender}` : ""}
+                                                    {(app.bloodGroup || app.blood_group) ? ` • ${app.bloodGroup || app.blood_group}` : ""}
+                                                </p>
                                             </div>
                                         </div>
 
-                                        {/* Slot & Badges */}
-                                        <div className="appointment-slot-block">
-                                            <div className="slot-time-badge">
-                                                <i className="fa-regular fa-calendar" style={{ color: "#01b6af" }}></i>
-                                                {formatDisplayDate(app.appointment_date || app.date, app.appointment_time || app.time)}
-                                            </div>
-
-                                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                                <span className={`fee-badge ${feeStatus === "paid" ? "paid" : "pending"}`}>
-                                                    {feeStatus === "paid" ? `₹${app.consultationFee || 500} Paid` : `₹${app.consultationFee || 500} Pending`}
-                                                </span>
-
-                                                <span className={`status-badge ${status}`}>
-                                                    <i className={`fa-solid fa-${status === "confirmed" ? "circle-check" : status === "pending" ? "clock" : status === "completed" ? "check-double" : "xmark"}`}></i>
-                                                    {status.toUpperCase()}
-                                                </span>
-                                            </div>
+                                        {/* Reason / Chief Complaint Pill */}
+                                        <div style={{ 
+                                            margin: "8px 0 12px 0", 
+                                            color: "#0f766e", 
+                                            fontSize: "0.82rem", 
+                                            background: "#f0fdfa", 
+                                            border: "1px solid #ccfbf1",
+                                            padding: "6px 12px", 
+                                            borderRadius: "8px", 
+                                            fontWeight: 500,
+                                            display: "flex",
+                                            alignItems: "flex-start",
+                                            gap: "8px",
+                                            lineHeight: 1.35
+                                        }}>
+                                            <i className="fa-solid fa-stethoscope" style={{ color: "#0d9488", marginTop: "2px", flexShrink: 0 }}></i>
+                                            <span style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                                                {app.reason || app.symptoms || app.chiefComplaint || "General Medical Checkup"}
+                                            </span>
                                         </div>
                                     </div>
 
-                                    {/* Action Bar */}
-                                    <div className="appointment-card-actions">
-                                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                                            <button
-                                                className="btn-action-secondary"
-                                                onClick={() => setSelectedAppointment(app)}
-                                            >
-                                                <i className="fa-solid fa-circle-info"></i>
-                                                View Details
-                                            </button>
-
-                                            {status === "pending" && (
-                                                <button
-                                                    className="btn-action-secondary"
-                                                    style={{ color: "#01b6af", borderColor: "#01b6af" }}
-                                                    onClick={() => handleStatusUpdate(app.id, "confirmed")}
-                                                >
-                                                    <i className="fa-solid fa-check"></i>
-                                                    Confirm
-                                                </button>
-                                            )}
+                                    {/* BOTTOM CARD ACTIONS & METADATA */}
+                                    <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "14px", marginTop: "10px" }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                                            <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                                                <i className="fa-regular fa-calendar" style={{ color: "#0d9488" }}></i>
+                                                <span>
+                                                    {formatDisplayDate(app.appointment_date || app.date, app.appointment_time || app.time)}
+                                                </span>
+                                            </div>
                                         </div>
 
-                                        {status === "completed" || visitStage === "completed" || visitStage === "exited" ? (
-                                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                                                <button
-                                                    className="btn-action-secondary"
-                                                    style={{ color: "#10b981", borderColor: "#10b981", fontWeight: 700 }}
-                                                    onClick={() => navigate(`/patients/${encodeURIComponent(pId)}`)}
-                                                >
-                                                    <i className="fa-solid fa-address-book"></i>
-                                                    Patient Record
-                                                </button>
-                                                <button
-                                                    className="btn-action-secondary"
-                                                    style={{ color: "#01b6af", borderColor: "#01b6af", fontWeight: 700 }}
-                                                    onClick={() => {
-                                                        const consId = app.visitId || app.visit_id || app.id;
-                                                        const pdfTarget = `${API}/api/v1/clinical/notes/${encodeURIComponent(pId)}/${encodeURIComponent(consId)}/pdf`;
-                                                        window.open(pdfTarget, "_blank", "noopener,noreferrer");
-                                                    }}
-                                                >
-                                                    <i className="fa-solid fa-file-pdf"></i>
-                                                    View PDF
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <button
-                                                className="btn-start-consultation"
-                                                onClick={() => handleStartConsultation(app)}
-                                            >
-                                                <span>{visitStage === "in_consultation" ? "In Consultation" : "Start Consultation"}</span>
-                                                <i className="fa-solid fa-arrow-right"></i>
-                                            </button>
-                                        )}
+                                        {/* Action Buttons */}
+                                        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                                            {status === "completed" || visitStage === "completed" || visitStage === "exited" ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => navigate(`/patients/${encodeURIComponent(pId)}`)}
+                                                        style={{
+                                                            flex: 1,
+                                                            background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", padding: "8px 12px",
+                                                            borderRadius: "8px", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", transition: "background 0.2s"
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = "#f1f5f9"}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = "#f8fafc"}
+                                                    >
+                                                        Patient Record
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const consId = app.visitId || app.visit_id || app.id;
+                                                            const pdfTarget = `${API}/api/v1/clinical/notes/${encodeURIComponent(pId)}/${encodeURIComponent(consId)}/pdf`;
+                                                            window.open(pdfTarget, "_blank", "noopener,noreferrer");
+                                                        }}
+                                                        style={{
+                                                            flex: 1,
+                                                            background: "#16a34a", color: "#fff", border: "none", padding: "8px 12px",
+                                                            borderRadius: "8px", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px"
+                                                        }}
+                                                    >
+                                                        <i className="fa-solid fa-file-pdf"></i> View PDF
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        onClick={() => setSelectedAppointment(app)}
+                                                        style={{
+                                                            background: "#f8fafc", color: "#475569", border: "1px solid #cbd5e1", padding: "8px 12px",
+                                                            borderRadius: "8px", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer"
+                                                        }}
+                                                    >
+                                                        Details
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleStartConsultation(app)}
+                                                        style={{
+                                                            flex: 1,
+                                                            background: "#0d9488", color: "#fff", border: "none", padding: "10px 14px",
+                                                            borderRadius: "8px", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                                                            fontSize: "0.88rem", boxShadow: "0 2px 6px rgba(13,148,136,0.2)"
+                                                        }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = "#0f766e"}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = "#0d9488"}
+                                                    >
+                                                        {visitStage === "in_consultation" ? "In Consultation" : "Start Consultation"} <i className="fa-solid fa-arrow-right" />
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             );

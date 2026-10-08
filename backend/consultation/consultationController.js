@@ -1,10 +1,30 @@
 const fs = require("fs");
+const crypto = require("crypto");
 const { supabaseAdmin } = require("../config/supabase");
 
 const {
   processConsultationAudio,
   generateSummaryFromTranscript,
 } = require("./geminiService");
+
+/**
+ * SHA-256 Deterministic Transcript Hashing
+ */
+function createConsultationTranscriptHash(transcript = []) {
+  const normalized = Array.isArray(transcript)
+    ? transcript.map((item) => ({
+        speaker: item?.speaker || "Conversation",
+        timestamp: item?.timestamp ?? null,
+        text: String(item?.text || "").trim(),
+      }))
+    : [];
+
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(normalized))
+    .digest("hex");
+}
+
 
 
 // ============================================================
@@ -245,6 +265,7 @@ function createConsultationState({
 
     // Latest transcript received from frontend.
     transcript: [],
+    transcriptHash: null,
 
     // Latest Gemini-generated summary.
     summary: null,
@@ -252,6 +273,9 @@ function createConsultationState({
     // Detected language if available.
     detectedLanguage:
       "Auto-detected",
+
+    // SHA-256 hash of the transcript snapshot used to generate summary.
+    preparedTranscriptHash: null,
 
     // Number of transcript lines that were included
     // in the latest background summary.
@@ -264,9 +288,6 @@ function createConsultationState({
     preparationInProgress: false,
 
     // Promise of the currently running preparation.
-    //
-    // This prevents duplicate Gemini calls for the same
-    // consultation.
     preparationPromise: null,
 
     // Last error is retained for debugging but does not
@@ -509,6 +530,8 @@ function startBackgroundSummaryPreparation(
       })
     );
 
+  const snapshotHash =
+    createConsultationTranscriptHash(transcriptSnapshot);
 
   state.preparationInProgress =
     true;
@@ -522,7 +545,7 @@ function startBackgroundSummaryPreparation(
 
 
   console.log(
-    `[Consultation] Starting background AI summary preparation for ${state.consultationId || state.appointmentId || "consultation"} with ${transcriptSnapshot.length} transcript lines.`
+    `[Consultation] Starting background AI summary preparation for ${state.consultationId || state.appointmentId || "consultation"} with ${transcriptSnapshot.length} transcript lines (Hash: ${snapshotHash.slice(0, 8)}).`
   );
 
 
@@ -555,11 +578,13 @@ function startBackgroundSummaryPreparation(
           state.preparedTranscriptLength =
             transcriptSnapshot.length;
 
+          state.preparedTranscriptHash =
+            snapshotHash;
+
           state.lastPreparedAt =
             Date.now();
 
-          state.lastPreparationError =
-            null;
+          state.lastPreparationError = null;
         }
 
 
@@ -571,12 +596,6 @@ function startBackgroundSummaryPreparation(
         return result;
       })
       .catch((error) => {
-
-        // ------------------------------------------------------
-        // Background AI failure MUST NOT break the consultation.
-        //
-        // The latest valid summary remains available.
-        // ------------------------------------------------------
 
         state.lastPreparationError =
           error?.message ||
@@ -906,7 +925,7 @@ async function completeConsultation(
 
 
     // ----------------------------------------------------------
-    // GET PER-CONSULTATION STATE
+    // GET PER-CONSULTATION STATE & EXACT TRANSCRIPT HASH MATCHING
     // ----------------------------------------------------------
 
     const {
@@ -919,13 +938,16 @@ async function completeConsultation(
         appointmentId,
       });
 
+    const finalTranscriptHash =
+      createConsultationTranscriptHash(liveTranscript);
 
-    // Always store the final transcript received from frontend.
     if (
       liveTranscript.length > 0
     ) {
       state.transcript =
         liveTranscript;
+      state.transcriptHash =
+        finalTranscriptHash;
     }
 
 
@@ -934,28 +956,20 @@ async function completeConsultation(
 
 
     // ==========================================================
-    // FASTEST PATH
+    // EXACT TRANSCRIPT HASH MATCH CHECK
     // ==========================================================
 
-    /**
-     * If the AI summary was already prepared while the doctor
-     * was consulting, use it.
-     *
-     * NO Gemini request is started here.
-     *
-     * This is what removes the normal 5–10 second Processing
-     * wait.
-     */
-    const hasSubstantialNewLines =
-      liveTranscript.length > (state.preparedTranscriptLength || 0) + 2;
+    const exactPreparedSummaryAvailable =
+      Boolean(
+        state.summary &&
+        Object.keys(state.summary).length > 0 &&
+        state.preparedTranscriptHash &&
+        state.preparedTranscriptHash === finalTranscriptHash
+      );
 
-    if (
-      state.summary &&
-      Object.keys(state.summary).length > 0 &&
-      !hasSubstantialNewLines
-    ) {
+    if (exactPreparedSummaryAvailable) {
       console.log(
-        "[Consultation] Using pre-prepared AI summary (instant response)."
+        `[Consultation] Using pre-prepared AI summary (EXACT TRANSCRIPT HASH MATCH: ${finalTranscriptHash.slice(0, 8)}).`
       );
 
       return res.json({
@@ -969,7 +983,7 @@ async function completeConsultation(
           transcript: liveTranscript.length ? liveTranscript : state.transcript,
           summary: state.summary,
         },
-        summarySource: "background-prepared",
+        summarySource: "background-prepared-exact",
         processing: false,
       });
     }
@@ -979,17 +993,22 @@ async function completeConsultation(
       state.preparationPromise
     ) {
       console.log(
-        "[Consultation] Waiting briefly for in-progress AI summary..."
+        "[Consultation] Waiting briefly for in-progress background AI summary..."
       );
 
       try {
         const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 3500));
-        const preparedResult = await Promise.race([state.preparationPromise, timeoutPromise]);
+        await Promise.race([state.preparationPromise, timeoutPromise]);
 
         if (
-          preparedResult &&
-          preparedResult.consultation_summary
+          state.summary &&
+          Object.keys(state.summary).length > 0 &&
+          state.preparedTranscriptHash === finalTranscriptHash
         ) {
+          console.log(
+            "[Consultation] In-progress AI summary finished with EXACT HASH MATCH."
+          );
+
           return res.json({
             success: true,
             consultation: {
@@ -997,11 +1016,11 @@ async function completeConsultation(
               patientId,
               appointmentId: String(appointmentId),
               consultationId: consultationId || null,
-              detectedLanguage: preparedResult.detected_language || "Auto-detected",
+              detectedLanguage: state.detectedLanguage || "Auto-detected",
               transcript: liveTranscript.length ? liveTranscript : state.transcript,
-              summary: preparedResult.consultation_summary,
+              summary: state.summary,
             },
-            summarySource: "background-prepared",
+            summarySource: "background-prepared-exact",
             processing: false,
           });
         }
@@ -1015,7 +1034,7 @@ async function completeConsultation(
 
 
     // ==========================================================
-    // TRANSCRIPT FALLBACK
+    // FINAL TRANSCRIPT HIGH-PRIORITY SUMMARY GENERATION
     // ==========================================================
 
     if (
@@ -1023,7 +1042,7 @@ async function completeConsultation(
     ) {
 
       console.log(
-        "[Consultation] No prepared summary available. Using transcript-first fallback."
+        `[Consultation] Prepared summary not exact match. Generating HIGH-priority summary for final transcript (Hash: ${finalTranscriptHash.slice(0, 8)})...`
       );
 
 
@@ -1031,7 +1050,7 @@ async function completeConsultation(
         Date.now();
 
 
-      const finalizationKey = `${consultationId || appointmentId}_finalization`;
+      const finalizationKey = `${consultationId || appointmentId}_final_${finalTranscriptHash}`;
       const result =
         await generateSummaryFromTranscript(
           liveTranscript,
@@ -1041,12 +1060,11 @@ async function completeConsultation(
 
 
       console.log(
-        `[Consultation] Transcript-first fallback completed in ${Date.now() - startTime}ms.`
+        `[Consultation] Final transcript high-priority summary completed in ${Date.now() - startTime}ms.`
       );
 
 
-      // Save the result into the consultation state so that
-      // subsequent requests can reuse it.
+      // Save the result into the consultation state
       state.summary =
         result.consultation_summary ||
         {};
@@ -1057,6 +1075,9 @@ async function completeConsultation(
 
       state.preparedTranscriptLength =
         liveTranscript.length;
+
+      state.preparedTranscriptHash =
+        finalTranscriptHash;
 
       state.lastPreparedAt =
         Date.now();
@@ -1095,7 +1116,7 @@ async function completeConsultation(
         },
 
         summarySource:
-          "transcript-fallback",
+          "final-transcript-accurate",
 
         processing:
           false,

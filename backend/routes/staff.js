@@ -1374,6 +1374,79 @@ router.get("/patients/search", requirePermission("walkin.register"), async (req,
 });
 
 /**
+ * Helper function to validate doctor availability, blocked dates, and time slot conflicts for Staff bookings
+ */
+async function validateSessionCapacityAndConflict(db, { doctorId, date, time, hospitalId, excludeAppointmentId = null }) {
+    if (!doctorId || !date) return { isAllowed: true };
+
+    const targetDateStr = String(date).trim();
+    const targetTimeStr = time ? String(time).trim() : null;
+
+    // 1. Check Blocked Dates
+    const { data: blockedRows } = await db
+        .from("blocked_dates")
+        .select("reason")
+        .eq("doctor_id", doctorId)
+        .eq("blocked_date", targetDateStr)
+        .limit(1);
+
+    if (blockedRows && blockedRows.length > 0) {
+        return {
+            isAllowed: false,
+            statusCode: 400,
+            message: `Doctor is unavailable on ${targetDateStr}: ${blockedRows[0].reason || "Blocked date"}`
+        };
+    }
+
+    // 2. Check Doctor Availability on day of week
+    const dateObj = new Date(targetDateStr);
+    const daysOfWeek = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const dayName = daysOfWeek[dateObj.getDay()];
+
+    const { data: availRows } = await db
+        .from("availability")
+        .select("is_available")
+        .eq("doctor_id", doctorId)
+        .eq("day_of_week", dayName)
+        .limit(1);
+
+    if (availRows && availRows.length > 0 && availRows[0].is_available === false) {
+        return {
+            isAllowed: false,
+            statusCode: 400,
+            message: `Doctor does not consult on ${dayName}s.`
+        };
+    }
+
+    // 3. Time Slot Conflict Check (excluding cancelled appointments)
+    if (targetTimeStr) {
+        let conflictQuery = db
+            .from("appointments")
+            .select("id")
+            .eq("doctor_id", doctorId)
+            .eq("appointment_date", targetDateStr)
+            .eq("appointment_time", targetTimeStr)
+            .neq("status", "cancelled");
+
+        if (excludeAppointmentId) {
+            conflictQuery = conflictQuery.neq("id", excludeAppointmentId);
+        }
+
+        const { data: conflicts } = await conflictQuery;
+
+        if (conflicts && conflicts.length > 0) {
+            return {
+                isAllowed: false,
+                statusCode: 409,
+                message: `The time slot ${targetTimeStr} on ${targetDateStr} is already booked by another appointment.`
+            };
+        }
+    }
+
+    return { isAllowed: true };
+}
+
+/**
  * POST /api/v1/staff/patients/walkin
  * Create a new temporary walk-in patient (HPR, appointment, visit with patient_id = NULL)
  * NO auth.users, NO public.users, NO public.patients created.
@@ -1411,6 +1484,23 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             return res.status(500).json({ success: false, message: "Database connection unavailable." });
         }
 
+        const nowObj = new Date();
+        const todayStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(nowObj);
+
+        // Validate session capacity, blocked dates, availability, and slot conflict
+        const capCheck = await validateSessionCapacityAndConflict(db, {
+            doctorId,
+            date: todayStr,
+            hospitalId: req.context.hospitalId
+        });
+
+        if (!capCheck.isAllowed) {
+            return res.status(capCheck.statusCode || 400).json({
+                success: false,
+                message: capCheck.message
+            });
+        }
+
         const calculatedFullName = (fullName || `${firstName || 'Walk-in'} ${lastName || ''}`).trim();
         const patientCode = "DV-P-" + Math.floor(100000 + Math.random() * 900000);
 
@@ -1440,8 +1530,6 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
         if (createHprErr) throw createHprErr;
 
         // 2. Create Appointment with patient_id = NULL
-        const nowObj = new Date();
-        const todayStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(nowObj);
         const nowTimeStr = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(nowObj);
 
         const appointmentData = {
@@ -1563,6 +1651,20 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
 
         const decHprRecord = decryptRecord("hospital_patient_records", hprRecord);
         const todayStr = new Date().toISOString().split("T")[0];
+
+        // Validate session capacity, blocked dates, and doctor availability
+        const capCheck = await validateSessionCapacityAndConflict(db, {
+            doctorId,
+            date: todayStr,
+            hospitalId: req.context.hospitalId
+        });
+
+        if (!capCheck.isAllowed) {
+            return res.status(capCheck.statusCode || 400).json({
+                success: false,
+                message: capCheck.message
+            });
+        }
 
         // Active Duplicate Check: prevent duplicate active visits for same doctor today
         const { data: activeVisits } = await db

@@ -2,6 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { getApiBaseUrl } from "../utils/apiConfig";
+import {
+    getTeluguIndication,
+    getTeluguDosage,
+    getTeluguFrequency,
+    getTeluguFoodTiming,
+    getTeluguDuration,
+    DIRECTIONS_FALLBACK_MAP
+} from "../utils/translationUtils";
 
 const API = getApiBaseUrl();
 
@@ -268,7 +276,7 @@ const RecordCard = ({ record, patientInfo }) => {
                     <Grid items={[
                         ["Patient Name", patientInfo?.name || formatText(record.patientName)],
                         ["Patient ID", patientInfo?.id || formatText(record.patientCode || record.displayPatientId || record.patientId)],
-                        ["Doctor Name", formatText(record.doctorName || record.doctor_name || "Dr. Harshini Jakki")],
+                        ["Doctor Name", formatText(record.doctorName || record.doctor_name || "Doctor")],
                         ["Language", formatText(summary.detected_language || record.detectedLanguage || "English")],
                     ]} />
                 </Section>
@@ -308,25 +316,70 @@ const RecordCard = ({ record, patientInfo }) => {
                         <p style={{ color: "#64748b", margin: 0, fontSize: "0.9rem" }}>No prescription medications documented.</p>
                     ) : (
                         <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600, fontSize: "0.9rem" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640, fontSize: "0.85rem" }}>
                                 <thead>
                                     <tr style={{ background: "#f1f5f9" }}>
-                                        {["#", "Medicine Name", "Dosage", "Frequency", "Duration", "Instructions"].map((h) => (
-                                            <th key={h} style={thStyle}>{h}</th>
-                                        ))}
+                                        <th style={thStyle}>#</th>
+                                        <th style={thStyle}>Medicine & Instructions</th>
+                                        <th style={thStyle}>Indication / For <span style={{ color: "#0d9488" }}>(దేనికి)</span></th>
+                                        <th style={thStyle}>Dosage <span style={{ color: "#0d9488" }}>(మోతాదు)</span></th>
+                                        <th style={thStyle}>Timing <span style={{ color: "#0d9488" }}>(సమయం)</span></th>
+                                        <th style={thStyle}>Food Timing <span style={{ color: "#0d9488" }}>(ఆహారంతో)</span></th>
+                                        <th style={thStyle}>Duration <span style={{ color: "#0d9488" }}>(వ్యవధి)</span></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {medicines.map((m, i) => (
-                                        <tr key={i} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                                            <td style={tdStyle}>{i + 1}</td>
-                                            <td style={{ ...tdStyle, fontWeight: 700, color: "#082b68" }}>{formatText(m.name || m.medicine) || "—"}</td>
-                                            <td style={tdStyle}>{formatText(m.dosage) || "—"}</td>
-                                            <td style={{ ...tdStyle, color: "#01b6af", fontWeight: 700 }}>{formatText(m.frequency) || "—"}</td>
-                                            <td style={tdStyle}>{formatText(m.duration) || "—"}</td>
-                                            <td style={{ ...tdStyle, color: "#64748b" }}>{formatText(m.instructions) || "—"}</td>
-                                        </tr>
-                                    ))}
+                                    {medicines.map((m, i) => {
+                                        const medName = formatText(m.name || m.medicine) || "—";
+                                        const indEng = formatText(m.indication || m.purpose) || "";
+                                        const indTe = m.indication_te || getTeluguIndication(indEng);
+
+                                        const dosEng = formatText(m.dosage) || "";
+                                        const dosTe = m.dosage_te || getTeluguDosage(dosEng);
+
+                                        const freqEng = formatText(m.frequency || m.time) || "";
+                                        const freqTe = m.frequency_te || getTeluguFrequency(freqEng);
+
+                                        const foodEng = formatText(m.foodTiming || m.food_timing || m.food) || "";
+                                        const foodTe = m.foodTiming_te || getTeluguFoodTiming(foodEng);
+
+                                        const durEng = formatText(m.duration) || "";
+                                        const durTe = m.duration_te || getTeluguDuration(durEng);
+
+                                        const instrEng = formatText(m.instructions) || "";
+                                        const instrTe = m.instructions_te || DIRECTIONS_FALLBACK_MAP[instrEng.toLowerCase()] || "";
+
+                                        return (
+                                            <tr key={i} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>{i + 1}</td>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>
+                                                    <strong style={{ color: "#082b68", fontSize: "0.9rem" }}>{medName}</strong>
+                                                    {instrEng && <div style={{ fontSize: "0.78rem", color: "#334155", marginTop: "2px" }}>{instrEng}</div>}
+                                                    {instrTe && <div style={{ fontSize: "0.76rem", color: "#0d9488", fontWeight: 700, marginTop: "2px" }}>{instrTe}</div>}
+                                                </td>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>
+                                                    <div>{indEng || "—"}</div>
+                                                    {indTe && <div style={{ fontSize: "0.76rem", color: "#0d9488", fontWeight: 700 }}>({indTe})</div>}
+                                                </td>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>
+                                                    <div>{dosEng || "—"}</div>
+                                                    {dosTe && <div style={{ fontSize: "0.76rem", color: "#0d9488", fontWeight: 700 }}>({dosTe})</div>}
+                                                </td>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>
+                                                    <div style={{ color: "#01b6af", fontWeight: 700 }}>{freqEng || "—"}</div>
+                                                    {freqTe && <div style={{ fontSize: "0.76rem", color: "#0d9488", fontWeight: 700 }}>({freqTe})</div>}
+                                                </td>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>
+                                                    <div>{foodEng || "—"}</div>
+                                                    {foodTe && <div style={{ fontSize: "0.76rem", color: "#0d9488", fontWeight: 700 }}>({foodTe})</div>}
+                                                </td>
+                                                <td style={{ ...tdStyle, verticalAlign: "top" }}>
+                                                    <div>{durEng || "—"}</div>
+                                                    {durTe && <div style={{ fontSize: "0.76rem", color: "#0d9488", fontWeight: 700 }}>({durTe})</div>}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

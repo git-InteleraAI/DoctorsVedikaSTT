@@ -1,6 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { getApiBaseUrl } from "../utils/apiConfig";
+import {
+    getTeluguIndication,
+    getTeluguDosage,
+    getTeluguFrequency,
+    getTeluguFoodTiming,
+    getTeluguDuration,
+    translateFreeTextApi,
+    DIRECTIONS_FALLBACK_MAP
+} from "../utils/translationUtils";
 
 const API = getApiBaseUrl();
 
@@ -62,6 +71,14 @@ const durationOptions = [
     "1 Month",
     "2 Months",
     "3 Months",
+];
+
+const foodTimingOptions = [
+    "Before food",
+    "After food",
+    "With food",
+    "Empty stomach",
+    "Any time",
 ];
 
 const NODE_API_URL = getApiBaseUrl();
@@ -169,12 +186,30 @@ const arrayValue = (value) => {
 };
 
 
+/**
+ * Standard Doctors Vedika prescription medicine structure.
+ *
+ * Existing fields are preserved so old consultation data
+ * remains compatible.
+ *
+ * New:
+ * indication  -> why medicine was prescribed
+ * foodTiming  -> before / after / with food
+ */
 const emptyMedicine = () => ({
     name: "",
+    indication: "",
+    indication_te: "",
     dosage: "",
+    dosage_te: "",
     frequency: "",
+    frequency_te: "",
     duration: "",
+    duration_te: "",
+    foodTiming: "",
+    foodTiming_te: "",
     instructions: "",
+    instructions_te: "",
 });
 
 
@@ -247,24 +282,30 @@ const formatTranscriptTimestamp = (ts) => {
 
 const ConsultationSummary = () => {
 
-    const location = useLocation();
-
     const navigate = useNavigate();
-
+    const location = useLocation();
+    const params = useParams();
+    const paramVisitId = params?.visitId;
+    const paramPatientId = params?.patientId;
+    const paramConsultationId = params?.consultationId;
 
     /* ----------------------------------------------------------------------
        Patient ID
     ---------------------------------------------------------------------- */
 
     const pathParts =
-        location.pathname
+        (location?.pathname || "")
             .split("/")
             .filter(Boolean);
 
     const patientIdFromPath =
-        pathParts.length >= 2
-            ? pathParts[1]
-            : "";
+        paramPatientId ||
+        (pathParts.length >= 2 ? pathParts[1] : "");
+
+    const effectiveConsultationId =
+        paramConsultationId ||
+        paramVisitId ||
+        "";
 
 
     /* ----------------------------------------------------------------------
@@ -274,24 +315,31 @@ const ConsultationSummary = () => {
     let storedResult = null;
 
     try {
-
         const stored =
             sessionStorage.getItem(
                 `consultation-result-${patientIdFromPath}`
-            );
+            ) ||
+            sessionStorage.getItem("consultation-result-latest");
 
         if (stored) {
-            storedResult =
-                JSON.parse(stored);
+            storedResult = JSON.parse(stored);
+        } else {
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const k = sessionStorage.key(i);
+                if (k && k.startsWith("consultation-result-")) {
+                    const val = sessionStorage.getItem(k);
+                    if (val) {
+                        storedResult = JSON.parse(val);
+                        break;
+                    }
+                }
+            }
         }
-
     } catch (error) {
-
         console.warn(
             "[ConsultationSummary] Unable to read session storage:",
             error
         );
-
     }
 
 
@@ -385,8 +433,8 @@ const ConsultationSummary = () => {
         patient?.displayId ||
         patient?.patient_code ||
         (resolvedPatientId && resolvedPatientId.length > 20
-            ? `DV-P-000086`
-            : resolvedPatientId || "DV-P-000086");
+            ? (patient?.patient_code || `DV-P-${resolvedPatientId.substring(0, 6).toUpperCase()}`)
+            : resolvedPatientId || "DV-P-000001");
 
     const displayPatientAge =
         fetchedPatient?.age ||
@@ -403,7 +451,7 @@ const ConsultationSummary = () => {
             state?.patient?.dob ||
             state?.dob
         ) ||
-        "27";
+        "";
 
     const displayPatientGender =
         fetchedPatient?.gender ||
@@ -411,7 +459,7 @@ const ConsultationSummary = () => {
         patient?.patientGender ||
         state?.gender ||
         state?.patientGender ||
-        "Female";
+        "";
 
     const getCurrentDoctorInfo = () => {
         try {
@@ -427,7 +475,7 @@ const ConsultationSummary = () => {
                 }
             }
         } catch {}
-        return { name: "Dr. Harshini Jakki", id: null };
+        return { name: "Doctor", id: null };
     };
 
     const currentDocInfo = getCurrentDoctorInfo();
@@ -553,7 +601,11 @@ const ConsultationSummary = () => {
     const appointmentId =
         state.appointmentId ||
         storedResult?.appointmentId ||
-        null;
+        new URLSearchParams(location.search).get("appointmentId") ||
+        new URLSearchParams(location.search).get("appointment_id") ||
+        (effectiveConsultationId && effectiveConsultationId.startsWith("consultation-app-")
+            ? effectiveConsultationId.replace("consultation-app-", "")
+            : null);
 
 
     /* ----------------------------------------------------------------------
@@ -837,7 +889,15 @@ const ConsultationSummary = () => {
 
         if (!Array.isArray(medicines)) {
             if (typeof medicines === "string" && medicines.trim()) {
-                return [{ name: medicines.trim(), dosage: "", frequency: "", duration: "", instructions: "" }];
+                return [{
+                    name: medicines.trim(),
+                    indication: "",
+                    dosage: "",
+                    frequency: "",
+                    duration: "",
+                    foodTiming: "",
+                    instructions: "",
+                }];
             }
             return [];
         }
@@ -845,15 +905,86 @@ const ConsultationSummary = () => {
         return medicines
             .map((medicine) => {
                 if (typeof medicine === "string") {
-                    return { name: medicine.trim(), dosage: "", frequency: "", duration: "", instructions: "" };
+                    return {
+                        name: medicine.trim(),
+                        indication: "",
+                        dosage: "",
+                        frequency: "",
+                        duration: "",
+                        foodTiming: "",
+                        instructions: "",
+                    };
                 }
                 if (!medicine || typeof medicine !== "object") return null;
                 return {
-                    name: medicine.name || medicine.medicine || "",
-                    dosage: medicine.dosage || "",
-                    frequency: medicine.frequency || "",
-                    duration: medicine.duration || "",
-                    instructions: medicine.instructions || "",
+                    name:
+                        medicine.name ||
+                        medicine.medicine ||
+                        medicine.drug ||
+                        "",
+
+                    indication:
+                        medicine.indication ||
+                        medicine.purpose ||
+                        medicine.reason ||
+                        medicine.for ||
+                        "",
+
+                    indication_te:
+                        medicine.indication_te ||
+                        medicine.indicationTelugu ||
+                        "",
+
+                    dosage:
+                        medicine.dosage ||
+                        "",
+
+                    dosage_te:
+                        medicine.dosage_te ||
+                        medicine.dosageTelugu ||
+                        "",
+
+                    frequency:
+                        medicine.frequency ||
+                        medicine.time ||
+                        "",
+
+                    frequency_te:
+                        medicine.frequency_te ||
+                        medicine.frequencyTelugu ||
+                        "",
+
+                    duration:
+                        medicine.duration ||
+                        "",
+
+                    duration_te:
+                        medicine.duration_te ||
+                        medicine.durationTelugu ||
+                        "",
+
+                    foodTiming:
+                        medicine.foodTiming ||
+                        medicine.food_timing ||
+                        medicine.food ||
+                        "",
+
+                    foodTiming_te:
+                        medicine.foodTiming_te ||
+                        medicine.food_timing_te ||
+                        medicine.foodTimingTelugu ||
+                        "",
+
+                    instructions:
+                        medicine.instructions ||
+                        medicine.directions ||
+                        "",
+
+                    instructions_te:
+                        medicine.instructions_te ||
+                        medicine.directions_te ||
+                        medicine.instructionsTelugu ||
+                        "",
                 };
             })
             .filter((m) => m && m.name.trim());
@@ -891,11 +1022,105 @@ const ConsultationSummary = () => {
     const [savedPdfUrl, setSavedPdfUrl] =
         useState("");
 
+    const [savedPrescriptionPdfUrl, setSavedPrescriptionPdfUrl] =
+        useState("");
+
     const [savedConsultationId, setSavedConsultationId] =
         useState("");
 
     const [error, setError] =
         useState("");
+
+    const fetchedOnceRef = useRef(false);
+
+    useEffect(() => {
+        const consId = effectiveConsultationId || state.consultationId || state.appointmentId || appointmentId;
+        const patId = resolvedPatientId || patientIdFromPath;
+        if (!patId || !consId || fetchedOnceRef.current) return;
+        fetchedOnceRef.current = true;
+
+        const fetchExistingRecord = async () => {
+            try {
+                const res = await fetch(`${NODE_API_URL}/api/v1/clinical/notes/${encodeURIComponent(patId)}/${encodeURIComponent(consId)}/pdf?format=json`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.record) {
+                        const rec = data.record;
+                        if (rec.summary && typeof rec.summary === "object" && Object.keys(rec.summary).length > 0) {
+                            setReport(prev => ({
+                                consultation_overview: rec.summary.consultation_overview || rec.summary.overview || prev.consultation_overview || "",
+                                chief_complaint: rec.summary.chief_complaint || rec.summary.chiefComplaint || prev.chief_complaint || "",
+                                symptoms: Array.isArray(rec.summary.symptoms) ? rec.summary.symptoms : (rec.summary.symptoms ? String(rec.summary.symptoms).split(", ") : prev.symptoms || []),
+                                history_of_present_illness: rec.summary.history_of_present_illness || rec.summary.historyOfPresentIllness || prev.history_of_present_illness || "",
+                                past_medical_history: Array.isArray(rec.summary.past_medical_history) ? rec.summary.past_medical_history : (rec.summary.past_medical_history ? [String(rec.summary.past_medical_history)] : prev.past_medical_history || []),
+                                allergies: Array.isArray(rec.summary.allergies) ? rec.summary.allergies : (rec.summary.allergies ? [String(rec.summary.allergies)] : prev.allergies || []),
+                                current_medications: Array.isArray(rec.summary.current_medications) ? rec.summary.current_medications : (rec.summary.current_medications ? [String(rec.summary.current_medications)] : prev.current_medications || []),
+                                examination_findings: Array.isArray(rec.summary.examination_findings) ? rec.summary.examination_findings : (rec.summary.examination_findings ? [String(rec.summary.examination_findings)] : prev.examination_findings || []),
+                                vital_signs: rec.summary.vital_signs || prev.vital_signs || {},
+                                assessment: rec.summary.assessment || prev.assessment || "",
+                                diagnosis: Array.isArray(rec.diagnosis) ? rec.diagnosis : (rec.diagnosis ? [String(rec.diagnosis)] : (Array.isArray(rec.summary.diagnosis) ? rec.summary.diagnosis : prev.diagnosis || [])),
+                                differential_diagnosis: Array.isArray(rec.summary.differential_diagnosis) ? rec.summary.differential_diagnosis : prev.differential_diagnosis || [],
+                                treatment_plan: rec.summary.treatment_plan || rec.summary.treatmentPlan || prev.treatment_plan || "",
+                                advice: Array.isArray(rec.summary.advice) ? rec.summary.advice : (rec.summary.advice ? [String(rec.summary.advice)] : (rec.prescription?.advice ? [String(rec.prescription.advice)] : prev.advice || [])),
+                                follow_up: rec.summary.follow_up || rec.summary.followUp || rec.prescription?.follow_up_date || rec.prescription?.follow_up || prev.follow_up || "",
+                                doctor_notes: rec.summary.doctor_notes || rec.summary.doctorNotes || rec.summary.notes || prev.doctor_notes || "",
+                                red_flags: Array.isArray(rec.summary.red_flags) ? rec.summary.red_flags : prev.red_flags || [],
+                            }));
+                        }
+
+                        const meds = rec.medications || rec.prescription?.medicines || rec.summary?.medications_discussed;
+                        if (Array.isArray(meds) && meds.length > 0) {
+                            const normMeds = meds.map(m => typeof m === "string" ? {
+                                name: m,
+                                indication: "",
+                                indication_te: "",
+                                dosage: "",
+                                dosage_te: "",
+                                frequency: "",
+                                frequency_te: "",
+                                duration: "",
+                                duration_te: "",
+                                foodTiming: "",
+                                foodTiming_te: "",
+                                instructions: "",
+                                instructions_te: ""
+                            } : {
+                                name: m.name || m.medicine || m.drug || "",
+                                indication: m.indication || m.purpose || m.reason || m.for || "",
+                                indication_te: m.indication_te || m.indicationTelugu || "",
+                                dosage: m.dosage || "",
+                                dosage_te: m.dosage_te || m.dosageTelugu || "",
+                                frequency: m.frequency || m.time || "",
+                                frequency_te: m.frequency_te || m.frequencyTelugu || "",
+                                duration: m.duration || "",
+                                duration_te: m.duration_te || m.durationTelugu || "",
+                                foodTiming: m.foodTiming || m.food_timing || m.food || "",
+                                foodTiming_te: m.foodTiming_te || m.food_timing_te || m.foodTimingTelugu || "",
+                                instructions: m.instructions || m.directions || "",
+                                instructions_te: m.instructions_te || m.directions_te || m.instructionsTelugu || "",
+                            }).filter(m => m.name && m.name.trim());
+                            if (normMeds.length > 0) {
+                                setMedicines(normMeds);
+                            }
+                        }
+
+                        if (rec.patientName || rec.patientAge || rec.patientGender) {
+                            setFetchedPatient(p => ({
+                                ...p,
+                                name: rec.patientName || p?.name,
+                                age: rec.patientAge || rec.age || p?.age,
+                                gender: rec.patientGender || rec.gender || p?.gender,
+                                displayId: rec.patientId || p?.displayId,
+                            }));
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("[ConsultationSummary] Auto-fetch error:", err);
+            }
+        };
+        fetchExistingRecord();
+    }, [effectiveConsultationId, resolvedPatientId, patientIdFromPath]);
 
     const [editingTranscript, setEditingTranscript] =
         useState(false);
@@ -1029,17 +1254,35 @@ const ConsultationSummary = () => {
                     (
                         medicine,
                         medicineIndex
-                    ) =>
-                        medicineIndex === index
-                            ? {
-                                ...medicine,
-                                [field]:
-                                    value,
-                            }
-                            : medicine
+                    ) => {
+                        if (medicineIndex !== index) return medicine;
+                        const updated = {
+                            ...medicine,
+                            [field]: value,
+                        };
+                        if (field === "indication") updated.indication_te = getTeluguIndication(value);
+                        if (field === "dosage") updated.dosage_te = getTeluguDosage(value);
+                        if (field === "frequency") updated.frequency_te = getTeluguFrequency(value);
+                        if (field === "foodTiming") updated.foodTiming_te = getTeluguFoodTiming(value);
+                        if (field === "duration") updated.duration_te = getTeluguDuration(value);
+                        if (field === "instructions") {
+                            const fallback = DIRECTIONS_FALLBACK_MAP[String(value || "").trim().toLowerCase()];
+                            if (fallback) updated.instructions_te = fallback;
+                        }
+                        return updated;
+                    }
                 )
         );
 
+    };
+
+    const handleTranslateDirections = async (index) => {
+        const med = medicines[index];
+        if (!med || !med.instructions) return;
+        const translated = await translateFreeTextApi(med.instructions);
+        if (translated) {
+            setMedicines(prev => prev.map((m, i) => i === index ? { ...m, instructions_te: translated } : m));
+        }
     };
 
 
@@ -1234,7 +1477,21 @@ const ConsultationSummary = () => {
                       .join("\n")
                 : "Full dialogue transcript omitted by doctor choice.";
 
+            const targetConsId =
+                effectiveConsultationId ||
+                state.consultationId ||
+                (appointmentId ? `consultation-app-${appointmentId}` : "") ||
+                `consultation-pat-${resolvedPatientId}`;
+
+            const resolvedAppointmentId =
+                appointmentId ||
+                state.appointmentId ||
+                (targetConsId.startsWith("consultation-app-") ? targetConsId.replace("consultation-app-", "") : null);
+
             const consultationPayload = {
+                consultationId: targetConsId,
+                consultation_id: targetConsId,
+                id: targetConsId,
                 patientId: resolvedPatientId,
                 patient_id: resolvedPatientId,
                 patientCode: displayPatientId,
@@ -1243,8 +1500,8 @@ const ConsultationSummary = () => {
                 doctor_id: doctorId || "default-doctor",
                 doctorName: displayDoctorName,
                 doctor_name: displayDoctorName,
-                appointmentId,
-                appointment_id: appointmentId,
+                appointmentId: resolvedAppointmentId,
+                appointment_id: resolvedAppointmentId,
                 patientName: displayPatientName,
                 patientAge: displayPatientAge || patient?.age || "",
                 patientGender: displayPatientGender || patient?.gender || "",
@@ -1298,7 +1555,8 @@ const ConsultationSummary = () => {
             );
 
             const saveToken = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("sb-access-token");
-            const response = await fetch(
+            
+            let response = await fetch(
                 `${NODE_API_URL}/api/v1/clinical/notes`,
                 {
                     method: "POST",
@@ -1309,6 +1567,40 @@ const ConsultationSummary = () => {
                     body: JSON.stringify(consultationPayload),
                 }
             );
+
+            if (response.ok && targetConsId && resolvedPatientId) {
+                try {
+                    await fetch(
+                        `${NODE_API_URL}/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(targetConsId)}`,
+                        {
+                            method: "PATCH",
+                            headers: {
+                                "Content-Type": "application/json",
+                                ...(saveToken ? { Authorization: `Bearer ${saveToken}` } : {})
+                            },
+                            body: JSON.stringify(consultationPayload),
+                        }
+                    );
+                } catch (patchErr) {
+                    console.warn("[ConsultationSummary] Secondary PATCH notice:", patchErr.message);
+                }
+            } else if (!response.ok && targetConsId && resolvedPatientId) {
+                try {
+                    response = await fetch(
+                        `${NODE_API_URL}/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(targetConsId)}`,
+                        {
+                            method: "PATCH",
+                            headers: {
+                                "Content-Type": "application/json",
+                                ...(saveToken ? { Authorization: `Bearer ${saveToken}` } : {})
+                            },
+                            body: JSON.stringify(consultationPayload),
+                        }
+                    );
+                } catch (patchErr) {
+                    console.warn("[ConsultationSummary] PATCH fallback notice:", patchErr.message);
+                }
+            }
 
             const raw = await response.text();
             let result = {};
@@ -1382,9 +1674,14 @@ const ConsultationSummary = () => {
                 result?.files?.pdfUrl ||
                 result?.record?.pdfUrl ||
                 result?.pdfUrl ||
-                `/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(consultationRecord.consultationId)}/pdf`;
+                `${NODE_API_URL}/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(consultationRecord.consultationId)}/pdf`;
 
-            setSavedPdfUrl(activePdfUrl);
+            const activeRxPdfUrl =
+                result?.prescriptionPdfUrl ||
+                `${NODE_API_URL}/api/v1/clinical/notes/${encodeURIComponent(resolvedPatientId)}/${encodeURIComponent(consultationRecord.consultationId)}/pdf?document=prescription`;
+
+            setSavedPdfUrl(`${activePdfUrl}${activePdfUrl.includes('?') ? '&' : '?'}t=${Date.now()}`);
+            setSavedPrescriptionPdfUrl(`${activeRxPdfUrl}${activeRxPdfUrl.includes('?') ? '&' : '?'}t=${Date.now()}`);
             setSavedConsultationId(result?.consultationId || result?.record?.consultationId || consultationRecord.consultationId);
 
             const finalSessionResult = {
@@ -1546,13 +1843,15 @@ const ConsultationSummary = () => {
 
 
     const handleDiscard = () => {
-        navigate(-1);
+        if (window.history.length > 2) {
+            navigate(-1);
+        } else {
+            navigate("/patients");
+        }
     };
 
     const handleBack = () => {
-        navigate(
-            `/consultation/${resolvedPatientId}`
-        );
+        navigate("/patients", { replace: true });
     };
 
 
@@ -1599,6 +1898,25 @@ const ConsultationSummary = () => {
 
 
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    <button
+                        type="button"
+                        onClick={handleBack}
+                        style={{
+                            background: "#F1F5F9",
+                            color: "#475569",
+                            border: "1px solid #CBD5E1",
+                            borderRadius: "8px",
+                            padding: "10px 16px",
+                            fontWeight: 700,
+                            fontSize: "0.9rem",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px"
+                        }}
+                    >
+                        ← Back to Patients
+                    </button>
                     {!saveSuccess ? (
                         <>
                             <button
@@ -1639,7 +1957,7 @@ const ConsultationSummary = () => {
                     ) : (
                         <button
                             type="button"
-                            onClick={() => navigate("/patients")}
+                            onClick={() => navigate("/patients", { replace: true })}
                             style={{
                                 background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
                                 color: "#ffffff",
@@ -1760,23 +2078,63 @@ const ConsultationSummary = () => {
 
             {showSaveModal && (
                 <div className="save-modal-backdrop" role="dialog" aria-modal="true">
-                    <div className="save-modal">
+                    <div className="save-modal" style={{ maxWidth: "520px", textAlign: "center" }}>
                         <div className="save-modal-icon">✓</div>
-                        <h2>Consultation Completed & Saved</h2>
+                        <h2>Consultation Report Saved</h2>
                         <p>
-                            The reviewed consultation report, transcript, prescription, and medical PDF have been saved to {patient?.name || "the patient's"} medical record.
+                            The consultation report, prescription, and updated PDFs have been generated and saved to {displayPatientName}'s medical record.
                         </p>
-                        <div className="save-modal-actions" style={{ justifyContent: "center", marginTop: "20px" }}>
+                        <div className="save-modal-actions" style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap", marginTop: "24px" }}>
+                            {savedPdfUrl && (
+                                <button
+                                    type="button"
+                                    onClick={() => window.open(savedPdfUrl, "_blank")}
+                                    style={{
+                                        background: "#10B981",
+                                        color: "#ffffff",
+                                        padding: "10px 18px",
+                                        borderRadius: "8px",
+                                        fontWeight: 700,
+                                        border: "none",
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px"
+                                    }}
+                                >
+                                    <i className="fa-solid fa-file-pdf" /> PDF Report
+                                </button>
+                            )}
+                            {savedPrescriptionPdfUrl && (
+                                <button
+                                    type="button"
+                                    onClick={() => window.open(savedPrescriptionPdfUrl, "_blank")}
+                                    style={{
+                                        background: "#2563EB",
+                                        color: "#ffffff",
+                                        padding: "10px 18px",
+                                        borderRadius: "8px",
+                                        fontWeight: 700,
+                                        border: "none",
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px"
+                                    }}
+                                >
+                                    <i className="fa-solid fa-prescription" /> Prescription PDF
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className="modal-primary-button"
-                                onClick={() => navigate("/patients")}
+                                onClick={() => navigate("/patients", { replace: true })}
                                 style={{
                                     background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
                                     color: "#ffffff",
-                                    padding: "12px 24px",
-                                    borderRadius: "10px",
-                                    fontWeight: 800,
+                                    padding: "10px 20px",
+                                    borderRadius: "8px",
+                                    fontWeight: 700,
                                     border: "none",
                                     cursor: "pointer"
                                 }}
@@ -2342,226 +2700,160 @@ const ConsultationSummary = () => {
 
                             <div className="medicine-list">
 
-                                {medicines.map(
-                                    (
-                                        medicine,
-                                        index
-                                    ) => (
+                                {medicines.map((medicine, index) => {
+                                    const indTe = medicine.indication_te || getTeluguIndication(medicine.indication);
+                                    const dosTe = medicine.dosage_te || getTeluguDosage(medicine.dosage);
+                                    const freqTe = medicine.frequency_te || getTeluguFrequency(medicine.frequency);
+                                    const foodTe = medicine.foodTiming_te || getTeluguFoodTiming(medicine.foodTiming);
+                                    const durTe = medicine.duration_te || getTeluguDuration(medicine.duration);
 
-                                        <div
-                                            className="medicine-row"
-                                            key={
-                                                index
-                                            }
-                                        >
+                                    return (
+                                        <div className="medicine-row" key={index}>
+                                            <div className="medicine-row-header">
+                                                <span className="medicine-number">{index + 1}</span>
 
-                                            <div className="medicine-number">
-                                                {index + 1}
-                                            </div>
+                                                <div className="input-field medicine-name-field">
+                                                    <label style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.82rem" }}>
+                                                        Medicine Name
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        className="medicine-input"
+                                                        value={medicine.name || ""}
+                                                        onChange={(e) => updateMedicine(index, "name", e.target.value)}
+                                                        placeholder="Example: Cetirizine 10mg"
+                                                    />
+                                                </div>
 
-
-                                            <InputField
-                                                label="Medicine"
-                                                value={
-                                                    medicine.name
-                                                }
-                                                onChange={(
-                                                    value
-                                                ) =>
-                                                    updateMedicine(
-                                                        index,
-                                                        "name",
-                                                        value
-                                                    )
-                                                }
-                                            />
-
-
-                                            <div className="input-field">
-
-                                                <label>
-                                                    Dosage
-                                                </label>
-
-                                                <select
-                                                    value={
-                                                        medicine.dosage ||
-                                                        ""
-                                                    }
-                                                    onChange={(
-                                                        event
-                                                    ) =>
-                                                        updateMedicine(
-                                                            index,
-                                                            "dosage",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="medicine-select"
+                                                <button
+                                                    type="button"
+                                                    className="delete-medicine"
+                                                    onClick={() => removeMedicine(index)}
                                                 >
-
-                                                    <option value="">
-                                                        Select dosage
-                                                    </option>
-
-                                                    {dosageOptions.map(
-                                                        (
-                                                            option
-                                                        ) => (
-                                                            <option
-                                                                key={
-                                                                    option
-                                                                }
-                                                                value={
-                                                                    option
-                                                                }
-                                                            >
-                                                                {
-                                                                    option
-                                                                }
-                                                            </option>
-                                                        )
-                                                    )}
-
-                                                </select>
-
+                                                    Remove
+                                                </button>
                                             </div>
 
+                                            <div className="medicine-details-grid">
+                                                <div className="input-field">
+                                                    <label style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.82rem", display: "flex", flexDirection: "column" }}>
+                                                        <span>Indication <span style={{ color: "#0d9488" }}>(దేనికి)</span></span>
+                                                        {indTe && <span style={{ color: "#0f766e", fontSize: "0.76rem" }}>[{indTe}]</span>}
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        className="medicine-input"
+                                                        value={medicine.indication || ""}
+                                                        onChange={(e) => updateMedicine(index, "indication", e.target.value)}
+                                                        placeholder="Fever (జ్వరం)"
+                                                    />
+                                                </div>
 
-                                            <div className="input-field">
+                                                <div className="input-field">
+                                                    <label style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.82rem", display: "flex", flexDirection: "column" }}>
+                                                        <span>Dosage <span style={{ color: "#0d9488" }}>(మోతాదు)</span></span>
+                                                        {dosTe && <span style={{ color: "#0f766e", fontSize: "0.76rem" }}>[{dosTe}]</span>}
+                                                    </label>
+                                                    <select
+                                                        className="medicine-select"
+                                                        value={medicine.dosage || ""}
+                                                        onChange={(e) => updateMedicine(index, "dosage", e.target.value)}
+                                                    >
+                                                        <option value="">Select dosage</option>
+                                                        {dosageOptions.map((opt) => (
+                                                            <option key={opt} value={opt}>{opt}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
 
-                                                <label>
-                                                    Frequency
-                                                </label>
+                                                <div className="input-field">
+                                                    <label style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.82rem", display: "flex", flexDirection: "column" }}>
+                                                        <span>Frequency <span style={{ color: "#0d9488" }}>(సమయం)</span></span>
+                                                        {freqTe && <span style={{ color: "#0f766e", fontSize: "0.76rem" }}>[{freqTe}]</span>}
+                                                    </label>
+                                                    <select
+                                                        className="medicine-select"
+                                                        value={medicine.frequency || ""}
+                                                        onChange={(e) => updateMedicine(index, "frequency", e.target.value)}
+                                                    >
+                                                        <option value="">Select frequency</option>
+                                                        {frequencyOptions.map((opt) => (
+                                                            <option key={opt} value={opt}>{opt}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
 
-                                                <select
-                                                    value={
-                                                        medicine.frequency ||
-                                                        ""
-                                                    }
-                                                    onChange={(
-                                                        event
-                                                    ) =>
-                                                        updateMedicine(
-                                                            index,
-                                                            "frequency",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="medicine-select"
-                                                >
-
-                                                    <option value="">
-                                                        Select frequency
-                                                    </option>
-
-                                                    {frequencyOptions.map(
-                                                        (
-                                                            option
-                                                        ) => (
-                                                            <option
-                                                                key={
-                                                                    option
-                                                                }
-                                                                value={
-                                                                    option
-                                                                }
-                                                            >
-                                                                {
-                                                                    option
-                                                                }
-                                                            </option>
-                                                        )
-                                                    )}
-
-                                                </select>
-
+                                                <div className="input-field">
+                                                    <label style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.82rem", display: "flex", flexDirection: "column" }}>
+                                                        <span>Food & Duration</span>
+                                                        {(foodTe || durTe) && <span style={{ color: "#0f766e", fontSize: "0.76rem" }}>[{[foodTe, durTe].filter(Boolean).join(" / ")}]</span>}
+                                                    </label>
+                                                    <div style={{ display: "flex", gap: "6px" }}>
+                                                        <select
+                                                            className="medicine-select"
+                                                            value={medicine.foodTiming || ""}
+                                                            onChange={(e) => updateMedicine(index, "foodTiming", e.target.value)}
+                                                            style={{ flex: 1, padding: "0 4px" }}
+                                                        >
+                                                            <option value="">Food</option>
+                                                            {foodTimingOptions.map((opt) => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                        <select
+                                                            className="medicine-select"
+                                                            value={medicine.duration || ""}
+                                                            onChange={(e) => updateMedicine(index, "duration", e.target.value)}
+                                                            style={{ flex: 1, padding: "0 4px" }}
+                                                        >
+                                                            <option value="">Duration</option>
+                                                            {durationOptions.map((opt) => (
+                                                                <option key={opt} value={opt}>{opt}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
                                             </div>
 
+                                            {/* DIRECTIONS & TELUGU TRANSLATION WORKFLOW */}
+                                            <div className="medicine-directions-box" style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px 14px", marginTop: "2px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                    <label style={{ fontWeight: 700, color: "#082B68", fontSize: "0.84rem" }}>
+                                                        Directions / Instructions <span style={{ color: "#0d9488" }}>(ఎలా తీసుకోవాలి)</span>
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleTranslateDirections(index)}
+                                                        style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", padding: "3px 10px", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}
+                                                    >
+                                                        🌐 Translate to Telugu
+                                                    </button>
+                                                </div>
 
-                                            <div className="input-field">
+                                                <textarea
+                                                    value={medicine.instructions || ""}
+                                                    onChange={(e) => updateMedicine(index, "instructions", e.target.value)}
+                                                    placeholder="Take one tablet after food."
+                                                    rows={1}
+                                                    style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.84rem", fontFamily: "inherit" }}
+                                                />
 
-                                                <label>
-                                                    Duration
-                                                </label>
-
-                                                <select
-                                                    value={
-                                                        medicine.duration ||
-                                                        ""
-                                                    }
-                                                    onChange={(
-                                                        event
-                                                    ) =>
-                                                        updateMedicine(
-                                                            index,
-                                                            "duration",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="medicine-select"
-                                                >
-
-                                                    <option value="">
-                                                        Select duration
-                                                    </option>
-
-                                                    {durationOptions.map(
-                                                        (
-                                                            option
-                                                        ) => (
-                                                            <option
-                                                                key={
-                                                                    option
-                                                                }
-                                                                value={
-                                                                    option
-                                                                }
-                                                            >
-                                                                {
-                                                                    option
-                                                                }
-                                                            </option>
-                                                        )
-                                                    )}
-
-                                                </select>
-
+                                                <div>
+                                                    <label style={{ fontWeight: 700, color: "#0f766e", fontSize: "0.78rem", display: "block", marginBottom: "3px" }}>
+                                                        Telugu Translation Review & Edit:
+                                                    </label>
+                                                    <textarea
+                                                        value={medicine.instructions_te || ""}
+                                                        onChange={(e) => updateMedicine(index, "instructions_te", e.target.value)}
+                                                        placeholder="భోజనం తర్వాత ఒక మాత్ర తీసుకోండి."
+                                                        rows={1}
+                                                        style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #99f6e4", background: "#f0fdf4", color: "#065f46", fontSize: "0.84rem", fontWeight: 600, fontFamily: "inherit" }}
+                                                    />
+                                                </div>
                                             </div>
-
-
-                                            <InputField
-                                                label="Instructions"
-                                                value={
-                                                    medicine.instructions
-                                                }
-                                                onChange={(
-                                                    value
-                                                ) =>
-                                                    updateMedicine(
-                                                        index,
-                                                        "instructions",
-                                                        value
-                                                    )
-                                                }
-                                            />
-
-
-                                            <button
-                                                className="delete-medicine"
-                                                onClick={() =>
-                                                    removeMedicine(
-                                                        index
-                                                    )
-                                                }
-                                            >
-                                                Remove
-                                            </button>
-
                                         </div>
-
-                                    )
-                                )}
+                                    );
+                                })}
 
                             </div>
 
@@ -2811,7 +3103,7 @@ const ConsultationSummary = () => {
                             ) : (
                                 <button
                                     type="button"
-                                    onClick={() => navigate("/patients")}
+                                    onClick={() => navigate("/patients", { replace: true })}
                                     style={{
                                         background: "linear-gradient(135deg, #01b6af 0%, #082b68 100%)",
                                         color: "#ffffff",
@@ -3315,11 +3607,12 @@ const ConsultationSummary = () => {
                 .meta-grid {
                     width: 100%;
                     margin: 0 0 10px;
-                    padding: 0 8px;
+                    padding: 0 12px;
                     display: grid;
-                    grid-template-columns: repeat(6, minmax(0, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
                     gap: 8px;
-                    shrink: 0;
+                    box-sizing: border-box;
+                    flex-shrink: 0;
                 }
 
                 .meta-card {
@@ -3352,13 +3645,15 @@ const ConsultationSummary = () => {
 
                 .summary-grid {
                     width: 100%;
+                    max-width: 100%;
                     flex: 1;
                     min-height: 0;
-                    padding: 0 8px 16px;
+                    padding: 0 12px 16px;
                     display: grid;
-                    grid-template-columns: minmax(0, 1fr) 520px;
-                    gap: 12px;
+                    grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+                    gap: 16px;
                     align-items: stretch;
+                    box-sizing: border-box;
                     overflow: hidden;
                 }
 
@@ -3472,29 +3767,52 @@ const ConsultationSummary = () => {
                 .medicine-list { display: grid; gap: 14px; }
                 .medicine-row {
                     display: flex;
-                    flex-wrap: wrap;
-                    gap: 15px;
-                    align-items: flex-end;
-                    padding: 15px;
+                    flex-direction: column;
+                    gap: 12px;
+                    padding: 16px;
                     border: 1px solid #E2E8F0;
-                    border-radius: 12px;
+                    border-radius: 14px;
                     background: #F8FAFC;
+                    box-sizing: border-box;
+                    width: 100%;
                 }
-                .medicine-row .medicine-number {
-                    flex: 0 0 20px;
-                    color:#08AEB8; font-weight:900; padding-bottom:12px;
+
+                .medicine-row-header {
+                    display: flex;
+                    align-items: flex-end;
+                    gap: 12px;
+                    width: 100%;
                 }
-                .medicine-row .input-field {
-                    flex: 1 1 120px;
-                }
-                .medicine-row .input-field:nth-of-type(2) {
-                    flex: 2 1 180px;
-                }
-                .medicine-row .input-field:nth-of-type(6) {
-                    flex: 2 1 180px;
-                }
-                .medicine-row .delete-medicine {
+
+                .medicine-row-header .medicine-number {
+                    color: #08AEB8;
+                    font-weight: 900;
+                    font-size: 16px;
+                    padding-bottom: 10px;
                     flex: 0 0 auto;
+                }
+
+                .medicine-row-header .medicine-name-field {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                }
+
+                .medicine-row-header .delete-medicine {
+                    flex: 0 0 auto;
+                    height: 42px;
+                    margin-bottom: 1px;
+                }
+
+                .medicine-details-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 12px;
+                    width: 100%;
+                }
+
+                .medicine-directions-box {
+                    width: 100%;
+                    box-sizing: border-box;
                 }
                 .medicine-select { min-height: 44px; }
 
@@ -3530,28 +3848,45 @@ const ConsultationSummary = () => {
                 .modal-secondary-button { border:1px solid rgba(148,163,184,.28); background:rgba(255,255,255,.05); color:#e8eef7; }
                 .modal-primary-button { border:0; background:#00c7df; color:#031019; }
 
-                @media (max-width: 1100px) {
-                    .summary-grid { grid-template-columns: 1fr; }
-                    .side-column { position: static; }
+                @media (max-width: 1200px) {
+                    .summary-grid {
+                        grid-template-columns: 1fr;
+                        overflow: visible;
+                    }
+                    .report-column, .side-column {
+                        height: auto;
+                        overflow-y: visible;
+                    }
+                    .side-column {
+                        position: static;
+                    }
                 }
+
+                @media (max-width: 900px) {
+                    .medicine-details-grid {
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+                }
+
                 @media (max-width: 760px) {
                     .consultation-summary-page {
                         height: auto !important;
                         overflow-y: auto !important;
                         min-height: 100vh !important;
                     }
-                    .summary-header { padding:18px; min-height:0; flex-direction:column; gap: 15px; }
+                    .summary-header {
+                        padding: 14px 16px;
+                        flex-direction: column;
+                        gap: 12px;
+                    }
                     .title-row h1 { font-size: 24px; }
-                    .meta-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-                    .review-banner { align-items:flex-start; padding:17px; }
+                    .meta-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+                    .review-banner { align-items:flex-start; padding:12px; }
                     .vitals-edit-grid, .patient-stat-grid { grid-template-columns:1fr; }
                     .editable-list-row { grid-template-columns:1fr; }
-                    .medicine-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
-                    .medicine-row .input-field, .medicine-row > div { flex: none !important; width: 100%; }
-                    .medicine-row > div:nth-child(2) { grid-column: span 2; } 
-                    .medicine-row > div:nth-child(6) { grid-column: span 2; }
-                    .medicine-row .delete-medicine { grid-column: span 2; margin-top: 5px; }
-                    .medicine-row .medicine-number { display:none; }
+                    .medicine-details-grid { grid-template-columns: 1fr; }
+                    .medicine-row-header { flex-wrap: wrap; }
+                    .medicine-row-header .delete-medicine { width: 100%; }
                     .summary-grid { overflow: visible; height: auto; }
                     .report-column, .side-column { overflow-y: visible; height: auto; }
                 }
@@ -3707,6 +4042,7 @@ const InputField = ({
     label,
     value,
     onChange,
+    placeholder,
 }) => (
 
     <div className="input-field">
@@ -3724,6 +4060,7 @@ const InputField = ({
                     event.target.value
                 )
             }
+            placeholder={placeholder}
         />
 
     </div>

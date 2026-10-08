@@ -130,16 +130,37 @@ export default function HospitalAdmin() {
             localStorage.getItem("doctors_vedika_token") ||
             localStorage.getItem("token") ||
             localStorage.getItem("sb-access-token");
-        return {
+        const storedHospitalId =
+            currentUser?.hospitalId ||
+            currentUser?.hospital_id ||
+            localStorage.getItem("doctors_vedika_hospital_id") ||
+            localStorage.getItem("active_hospital_id");
+
+        const headers = {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token}`,
+            "X-Portal-Context": "hospital_admin"
         };
+
+        if (storedHospitalId && storedHospitalId !== "null" && storedHospitalId !== "undefined" && storedHospitalId !== "00000000-0000-0000-0000-000000000001") {
+            headers["X-Hospital-Id"] = storedHospitalId;
+        }
+
+        return headers;
     };
 
     // -------------------------------------------------------------------------
-    // Data Fetching
+    // Data Fetching & Modal Reset on Tab Change
     // -------------------------------------------------------------------------
     useEffect(() => {
+        setShowAddDoctorModal(false);
+        setShowAddStaffModal(false);
+        setShowEditDoctorModal(false);
+        setShowEditStaffModal(false);
+        setShowEditHospitalModal(false);
+        setStatusConfirmModal({ show: false, memberType: "doctor", member: null, targetStatus: "inactive" });
+        setViewMemberModal({ show: false, memberType: "doctor", member: null });
+        setShowCredentialModal(false);
         fetchAllData();
     }, [activeTab]);
 

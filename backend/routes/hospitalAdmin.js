@@ -18,7 +18,9 @@ router.use(authenticateAdapter);
 
 // Explicit guard: Only Hospital Administrators can access /hospital-admin routes
 const requireHospitalAdminRole = (req, res, next) => {
-    if (!req.context || req.context.role !== "hospital_admin") {
+    const role = req.context?.role;
+    const isHospitalAdmin = role === "hospital_admin" || role === "admin" || req.context?.capabilities?.hospitalAdmin;
+    if (!req.context || !isHospitalAdmin) {
         return res.status(403).json({
             success: false,
             message: "Access forbidden. Hospital Administrator privileges required."
@@ -248,10 +250,10 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
                     userId: m.user_id,
                     fullName: d?.doctor_name || d?.full_name || u?.full_name || "Dr. Unnamed Doctor",
                     email: d?.doctor_email || d?.email || u?.email || "N/A",
-                    phone: d?.doctor_mobile || d?.mobile_number || u?.phone || "",
-                    specialization: d?.doctor_specialization || d?.specialization || "General Physician",
-                    qualification: d?.doctor_qualification || d?.qualification || "",
-                    registrationNumber: d?.doctor_registration_number || d?.registration_number || d?.doctor_reg_no || "",
+                    phone: d?.doctor_mobile ?? d?.mobile_number ?? u?.phone ?? "",
+                    specialization: d?.doctor_specialization ?? d?.specialization ?? "Not specified",
+                    qualification: d?.doctor_qualification ?? d?.qualification ?? "",
+                    registrationNumber: d?.doctor_registration_number ?? d?.registration_number ?? d?.doctor_reg_no ?? "",
                     experience: d?.doctor_experience || null,
                     clinicName: d?.doctor_clinic_name || null,
                     clinicAddress: d?.doctor_clinic_address || null,
@@ -400,6 +402,7 @@ router.post("/doctors", requirePermission("staff.invite"), async (req, res) => {
         }
 
         authUserId = authUser.user.id;
+        console.log("[HospitalAdmin] POST /doctors req.body:", req.body);
         authUserCreated = true;
 
         try {
@@ -417,28 +420,70 @@ router.post("/doctors", requirePermission("staff.invite"), async (req, res) => {
             // 4. Create public.doctors record
             const docPayload = {
                 user_id: authUserId,
-                hospital_id: hospitalId,
                 doctor_name: fullName,
                 doctor_email: normalizedEmail,
-                doctor_mobile: phone || "0000000000",
-                doctor_specialization: specialization || "General Physician & AI Consultant",
+                doctor_mobile: phone || null,
+                doctor_specialization: specialization || null,
                 doctor_qualification: qualification || null,
                 doctor_registration_number: registrationNumber || null,
                 doctor_gender: gender || null,
                 doctor_is_active: true
             };
 
-            const { data: newDoc, error: docInsErr } = await db.from("doctors").upsert(docPayload, { onConflict: "user_id" }).select("doctor_id").single();
-            let resolvedDoctorId = newDoc?.doctor_id;
+            console.log("[HospitalAdmin] POST /doctors PAYLOAD:", docPayload);
 
-            if (!resolvedDoctorId) {
-                const { data: fetchDoc } = await db.from("doctors").select("doctor_id").eq("user_id", authUserId).single();
-                resolvedDoctorId = fetchDoc?.doctor_id;
+            let savedDoctor = null;
+            const { data: upsertedDoc, error: docInsErr } = await db
+                .from("doctors")
+                .upsert(docPayload, { onConflict: "user_id" })
+                .select("*")
+                .maybeSingle();
+
+            if (docInsErr) {
+                console.error("[HospitalAdmin] DOCTOR UPSERT ERROR:", docInsErr);
+                const { data: existingDoc } = await db
+                    .from("doctors")
+                    .select("doctor_id")
+                    .eq("user_id", authUserId)
+                    .maybeSingle();
+
+                if (existingDoc) {
+                    const { data: updatedDoc, error: updateErr } = await db
+                        .from("doctors")
+                        .update(docPayload)
+                        .eq("doctor_id", existingDoc.doctor_id)
+                        .select("*")
+                        .single();
+
+                    if (updateErr) throw updateErr;
+                    savedDoctor = updatedDoc;
+                } else {
+                    const { data: insertedDoc, error: insertErr } = await db
+                        .from("doctors")
+                        .insert(docPayload)
+                        .select("*")
+                        .single();
+
+                    if (insertErr) throw insertErr;
+                    savedDoctor = insertedDoc;
+                }
+            } else if (upsertedDoc) {
+                savedDoctor = upsertedDoc;
+            } else {
+                const { data: fetchedDoc, error: fetchErr } = await db
+                    .from("doctors")
+                    .select("*")
+                    .eq("user_id", authUserId)
+                    .maybeSingle();
+
+                if (fetchErr || !fetchedDoc) {
+                    throw new Error("Failed to persist or locate doctor profile record after creation.");
+                }
+                savedDoctor = fetchedDoc;
             }
 
-            if (!resolvedDoctorId) {
-                throw new Error("Failed to create doctor profile record.");
-            }
+            console.log("[HospitalAdmin] SAVED DOCTOR:", savedDoctor);
+            const resolvedDoctorId = savedDoctor.doctor_id;
 
             // 5. Create hospital_members record
             const newMember = {
@@ -474,7 +519,7 @@ router.post("/doctors", requirePermission("staff.invite"), async (req, res) => {
                 message: "Doctor account created successfully.",
                 credentials: {
                     hospitalName: req.context.hospitalName || "Doctors Vedika Main Hospital",
-                    memberName: fullName.startsWith("Dr.") ? fullName : `Dr. ${fullName}`,
+                    memberName: (savedDoctor.doctor_name || fullName).startsWith("Dr.") ? (savedDoctor.doctor_name || fullName) : `Dr. ${savedDoctor.doctor_name || fullName}`,
                     role: "Doctor",
                     email: normalizedEmail,
                     temporaryPassword: tempPassword,
@@ -485,12 +530,12 @@ router.post("/doctors", requirePermission("staff.invite"), async (req, res) => {
                     memberId: memberData.id,
                     doctorId: resolvedDoctorId,
                     userId: authUserId,
-                    fullName,
-                    email: normalizedEmail,
-                    phone: phone || "",
-                    specialization: specialization || "General Physician",
-                    qualification: qualification || "",
-                    registrationNumber: registrationNumber || "",
+                    fullName: savedDoctor.doctor_name || fullName,
+                    email: savedDoctor.doctor_email || normalizedEmail,
+                    phone: savedDoctor.doctor_mobile || "",
+                    specialization: savedDoctor.doctor_specialization || "Not specified",
+                    qualification: savedDoctor.doctor_qualification || "",
+                    registrationNumber: savedDoctor.doctor_registration_number || "",
                     status: "active"
                 }
             });

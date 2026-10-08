@@ -479,6 +479,11 @@ class PatientController {
                     diagnosis: note.diagnosis || "",
                     notes: note.notes || "",
                     prescription: rx.medicines || rx.prescription_data || null,
+                    prescriptionAvailable: Boolean(
+                        rx.id ||
+                        (Array.isArray(rx.medicines) && rx.medicines.length > 0) ||
+                        (Array.isArray(rx.prescription_data) && rx.prescription_data.length > 0)
+                    ),
                     doctorId: app.doctor_id
                 };
             });

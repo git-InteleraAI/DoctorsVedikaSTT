@@ -47,12 +47,12 @@ class AuthService {
      */
 
     generateToken(doctor) {
+        const canonicalUserId = doctor.user_id || doctor.id;
         return jwt.sign(
             {
-                id:
-                    doctor.doctor_id ||
-                    doctor.id,
-
+                id: canonicalUserId,
+                userId: canonicalUserId,
+                doctorId: doctor.doctor_id || null,
                 email:
                     doctor.doctor_email ||
                     doctor.email,

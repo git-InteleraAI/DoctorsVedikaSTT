@@ -332,29 +332,30 @@
 
 /* Appointment List & Cards */
 .appointments-list-container {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  align-items: stretch;
 }
 
 .appointment-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  padding: 22px;
+  border-radius: 14px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.02);
-  transition: all 0.2s ease;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease-in-out;
   position: relative;
   overflow: hidden;
 }
 
 .appointment-card:hover {
-  border-color: rgba(1, 182, 175, 0.4);
-  box-shadow: 0 8px 24px rgba(8, 43, 104, 0.06);
-  transform: translateY(-1px);
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
 }
 
 .appointment-card-body {

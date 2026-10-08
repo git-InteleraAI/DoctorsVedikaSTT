@@ -72,54 +72,65 @@ class AuthService {
         password,
         portal
     ) {
-        const response =
-            await fetch(
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        try {
+            const response = await fetch(
                 `${API_BASE_URL}/api/auth/login`,
                 {
                     method: "POST",
                     headers: {
-                        "Content-Type":
-                            "application/json",
+                        "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
                         email,
                         password,
                         portal,
                     }),
+                    signal: controller.signal,
                 }
             );
 
-        const data =
-            await response.json();
+            clearTimeout(timeoutId);
 
-        if (!response.ok) {
-            throw new Error(
-                data.message ||
-                "Invalid email or password."
-            );
-        }
+            const data = await response.json();
 
-        if (data.token) {
-            localStorage.setItem(
-                "doctors_vedika_token",
-                data.token
-            );
-
-            localStorage.setItem(
-                "doctors_vedika_user",
-                JSON.stringify(
-                    data.doctor
-                )
-            );
-
-            const hospId = data.doctor?.hospitalId || data.doctor?.hospital_id;
-            if (hospId && hospId !== "null" && hospId !== "undefined") {
-                localStorage.setItem("doctors_vedika_hospital_id", hospId);
-                localStorage.setItem("hospital_id", hospId);
+            if (!response.ok) {
+                throw new Error(
+                    data.message ||
+                    "Invalid email or password."
+                );
             }
-        }
 
-        return data;
+            if (data.token) {
+                localStorage.setItem(
+                    "doctors_vedika_token",
+                    data.token
+                );
+
+                localStorage.setItem(
+                    "doctors_vedika_user",
+                    JSON.stringify(
+                        data.doctor
+                    )
+                );
+
+                const hospId = data.doctor?.hospitalId || data.doctor?.hospital_id;
+                if (hospId && hospId !== "null" && hospId !== "undefined") {
+                    localStorage.setItem("doctors_vedika_hospital_id", hospId);
+                    localStorage.setItem("hospital_id", hospId);
+                }
+            }
+
+            return data;
+        } catch (err) {
+            clearTimeout(timeoutId);
+            if (err.name === "AbortError") {
+                throw new Error("Connection timed out. Please check if the backend server is running.");
+            }
+            throw err;
+        }
     }
 
     async fetchProfile() {
@@ -142,15 +153,15 @@ class AuthService {
             });
 
             if (response.status === 401 || response.status === 403) {
-                if (cachedUser) {
-                    return cachedUser;
-                }
+                console.warn("[AuthService] Auth validation failed (401/403). Clearing stale session.");
                 this.logout();
                 return null;
             }
 
             if (!response.ok) {
-                return cachedUser;
+                console.warn("[AuthService] fetchProfile returned non-OK status:", response.status);
+                this.logout();
+                return null;
             }
 
             const data = await response.json();

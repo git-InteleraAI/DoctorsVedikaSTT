@@ -6,6 +6,7 @@ import Appointments from "./pages/Appointments";
 import Consultation from "./pages/Consultation";
 import ConsultationSummary from "./pages/ConsultationSummary";
 import PatientRecord from "./pages/PatientRecord";
+import EditConsultationReport from "./pages/EditConsultationReport";
 import Patients from "./pages/Patients";
 import DoctorLogin from "./pages/DoctorLogin";
 import DoctorOnboarding from "./pages/DoctorOnboarding";
@@ -130,6 +131,15 @@ function App() {
           element={
             <ProtectedRoute>
               <PatientRecord />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/patients/:patientId/consultations/:consultationId/edit"
+          element={
+            <ProtectedRoute>
+              <ConsultationSummary />
             </ProtectedRoute>
           }
         />

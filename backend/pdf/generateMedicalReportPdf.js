@@ -352,11 +352,12 @@ function renderPdfToStream(patientRecord, stream) {
         if (rawDocName && !rawDocName.toLowerCase().startsWith('dr')) {
             rawDocName = `Dr. ${rawDocName}`;
         }
-        const doctorName = cleanString(rawDocName, 'Dr. Harshini Jakki');
+        const doctorName = cleanString(rawDocName, '');
+        const doctorSpecialty = cleanString(patientRecord.doctorSpecialty || patientRecord.doctor_specialization || patientRecord.doctor?.specialization, '');
         const dateStr = formatISTDate(patientRecord.consultationDate);
         const timeStr = formatISTTime(patientRecord.consultationTime, patientRecord.created_at || patientRecord.consultationDate);
-        const rawClinic = patientRecord.clinicName || patientRecord.clinic_name || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name || patientRecord.doctor?.doctor_clinic_name || patientRecord.doctor?.clinic_name;
-        const clinicName = cleanString(rawClinic, 'Doctors Vedika Clinic');
+        const rawClinic = patientRecord.clinicName || patientRecord.clinic_name || patientRecord.hospitalName || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name || patientRecord.doctor?.doctor_clinic_name || patientRecord.doctor?.clinic_name;
+        const clinicName = cleanString(rawClinic, '');
 
         const rowY1 = cardY + 30;
         const rowY2 = cardY + 42;
@@ -619,8 +620,8 @@ function renderPdfToStream(patientRecord, stream) {
         drawSectionHeader('6. Prescription', 'Rx');
         const contentW = PAGE.contentWidth;
         const tableX = PAGE.marginX;
-        const cols = [0.08, 0.28, 0.16, 0.16, 0.14, 0.18].map((p) => contentW * p);
-        const headers = ['S. No.', 'Medicine', 'Dosage', 'Frequency', 'Duration', 'Instructions'];
+        const cols = [0.06, 0.22, 0.15, 0.11, 0.13, 0.15, 0.18].map((p) => contentW * p);
+        const headers = ['S. No.', 'Medicine', 'Indication', 'Dosage', 'Frequency', 'Food / Duration', 'Instructions'];
 
         const drawTableHeader = () => {
             const hY = doc.y;
@@ -630,7 +631,7 @@ function renderPdfToStream(patientRecord, stream) {
             let curX = tableX;
             headers.forEach((h, idx) => {
                 doc.fillColor(COLORS.navy).font(fontBold).fontSize(7)
-                    .text(h, curX + 4, hY + 4, { width: cols[idx] - 8, align: idx === 0 ? 'center' : 'left' });
+                    .text(h, curX + 3, hY + 4, { width: cols[idx] - 6, align: idx === 0 ? 'center' : 'left' });
                 curX += cols[idx];
             });
             doc.y = hY + 16;
@@ -640,19 +641,43 @@ function renderPdfToStream(patientRecord, stream) {
         drawTableHeader();
 
         prescriptionMeds.forEach((med, mIdx) => {
+            const indEn = cleanString(med.indication || med.purpose || med.reason || med.for, '');
+            const indTe = cleanString(med.indication_te, '');
+            const indVal = indEn ? (indTe ? `${indEn} (${indTe})` : indEn) : (indTe || '-');
+
+            const dosEn = cleanString(med.dosage || med.dose, '');
+            const dosTe = cleanString(med.dosage_te, '');
+            const dosVal = dosEn ? (dosTe ? `${dosEn} (${dosTe})` : dosEn) : (dosTe || '-');
+
+            const freqClean = cleanString(med.frequency || med.timing, '');
+            const freqTe = cleanString(med.frequency_te, '');
+            const freqVal = freqClean ? (freqTe ? `${freqClean} (${freqTe})` : freqClean) : (freqTe || '-');
+
+            const foodStr = cleanString(med.foodTiming || med.food_timing || med.food, '');
+            const durStr = cleanString(med.duration, '');
+            const foodDurParts = [];
+            if (foodStr) foodDurParts.push(med.foodTiming_te ? `${foodStr} (${med.foodTiming_te})` : foodStr);
+            if (durStr) foodDurParts.push(med.duration_te ? `${durStr} (${med.duration_te})` : durStr);
+            const foodDurVal = foodDurParts.join(' | ') || '-';
+
+            const instEn = cleanString(med.instructions, '');
+            const instTe = cleanString(med.instructions_te, '');
+            const instVal = [instEn, instTe].filter(Boolean).join('\n') || '-';
+
             const values = [
                 `${mIdx + 1}`,
                 cleanString(med.name || med.medicineName || med.medicine_name, 'Medicine'),
-                cleanString(med.dosage || med.dose, '-'),
-                cleanString(med.frequency || med.timing, '-'),
-                cleanString(med.duration, '-'),
-                cleanString(med.instructions, '-'),
+                indVal,
+                dosVal,
+                freqVal,
+                foodDurVal,
+                instVal,
             ];
 
             const heights = values.map((v, i) => doc.heightOfString(v, {
-                width: cols[i] - 8,
+                width: cols[i] - 6,
                 font: fontRegular,
-                fontSize: 7.2,
+                fontSize: 6.8,
             }));
             const rowH = Math.max(16, Math.max(...heights) + 5);
 
@@ -665,8 +690,8 @@ function renderPdfToStream(patientRecord, stream) {
 
             let rx = tableX;
             values.forEach((v, i) => {
-                doc.fillColor(COLORS.textDark).font(i === 1 ? fontBold : fontRegular).fontSize(7.2)
-                    .text(v, rx + 4, rowY + 3.5, { width: cols[i] - 8, align: i === 0 ? 'center' : 'left' });
+                doc.fillColor(COLORS.textDark).font(i === 1 ? fontBold : fontRegular).fontSize(6.8)
+                    .text(v, rx + 3, rowY + 3.5, { width: cols[i] - 6, align: i === 0 ? 'center' : 'left' });
                 rx += cols[i];
             });
 
@@ -829,19 +854,26 @@ function renderPdfToStream(patientRecord, stream) {
         const footTextY = footerLineY + 5;
         const colW = PAGE.contentWidth / 3;
 
-        const footClinic = cleanString(patientRecord.clinicName || patientRecord.clinic_name || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name, 'Doctors Vedika Clinic');
-        const footAddr = cleanString(patientRecord.clinicAddress || patientRecord.clinic_address || patientRecord.doctorClinicAddress || patientRecord.doctor_clinic_address, 'Hyderabad, Telangana, India');
+        const footClinic = cleanString(patientRecord.clinicName || patientRecord.clinic_name || patientRecord.hospitalName || patientRecord.doctorClinicName || patientRecord.doctor_clinic_name, '');
+        const footAddr = cleanString(patientRecord.clinicAddress || patientRecord.clinic_address || patientRecord.hospitalAddress || patientRecord.doctorClinicAddress || patientRecord.doctor_clinic_address, '');
+        const footPhone = cleanString(patientRecord.hospitalPhone || patientRecord.clinicPhone || patientRecord.phone, '');
+        const footEmail = cleanString(patientRecord.hospitalEmail || patientRecord.clinicEmail || patientRecord.email, '');
 
-        doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
-            .text(footClinic, PAGE.marginX, footTextY, { width: colW, lineBreak: false })
-            .text(footAddr, PAGE.marginX, footTextY + 7.5, { width: colW, lineBreak: false });
+        if (footClinic || footAddr) {
+            doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
+                .text(footClinic, PAGE.marginX, footTextY, { width: colW, lineBreak: false })
+                .text(footAddr, PAGE.marginX, footTextY + 7.5, { width: colW, lineBreak: false });
+        }
 
-        doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
-            .text('www.doctorsvedika.com', PAGE.marginX + colW, footTextY, { width: colW, align: 'center' })
-            .text('care@doctorsvedika.com', PAGE.marginX + colW, footTextY + 7.5, { width: colW, align: 'center' });
+        if (footEmail) {
+            doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
+                .text(footEmail, PAGE.marginX + colW, footTextY + 3.5, { width: colW, align: 'center' });
+        }
 
-        doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
-            .text('+91 91234 56789', PAGE.marginX + colW * 2, footTextY + 3.5, { width: colW, align: 'right' });
+        if (footPhone) {
+            doc.fillColor(COLORS.textMuted).font(fontRegular).fontSize(6.5)
+                .text(footPhone, PAGE.marginX + colW * 2, footTextY + 3.5, { width: colW, align: 'right' });
+        }
 
         const pillW = 56;
         const pillH = 13;

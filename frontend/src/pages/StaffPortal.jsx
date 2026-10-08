@@ -78,6 +78,17 @@ export default function StaffPortal() {
   const [isActionSubmitting, setIsActionSubmitting] = useState(false);
   const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
 
+  // Reschedule Modal State
+  const [rescheduleModalAppointment, setRescheduleModalAppointment] = useState(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [rescheduleDoctorId, setRescheduleDoctorId] = useState("");
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [isSlotsLoading, setIsSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState("");
+  const [rescheduleSubmitError, setRescheduleSubmitError] = useState("");
+
   const formatISTTime = (rawIso) => {
     if (!rawIso) return "--";
     const d = new Date(rawIso);
@@ -186,6 +197,38 @@ export default function StaffPortal() {
   const [walkinPhone, setWalkinPhone] = useState("");
   const [walkinGender, setWalkinGender] = useState("Male");
   const [walkinDob, setWalkinDob] = useState("");
+  const [dobMode, setDobMode] = useState("picker"); // "picker" | "text"
+  const [walkinDobText, setWalkinDobText] = useState("");
+
+  const parseManualDob = (input) => {
+    if (!input || typeof input !== "string") return "";
+    const trimmed = input.trim();
+    if (!trimmed) return "";
+    const ageMatch = trimmed.match(/^(\d{1,3})\s*(y|yrs|years|year|y\/o)?$/i);
+    if (ageMatch) {
+      const age = parseInt(ageMatch[1], 10);
+      if (age >= 0 && age <= 120) {
+        const currentYear = new Date().getFullYear();
+        const birthYear = currentYear - age;
+        return `${birthYear}-01-01`;
+      }
+    }
+    const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (ddmmyyyyMatch) {
+      const day = ddmmyyyyMatch[1].padStart(2, '0');
+      const month = ddmmyyyyMatch[2].padStart(2, '0');
+      const year = ddmmyyyyMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+    const yyyymmddMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (yyyymmddMatch) {
+      const year = yyyymmddMatch[1];
+      const month = yyyymmddMatch[2].padStart(2, '0');
+      const day = yyyymmddMatch[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return trimmed;
+  };
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [chiefComplaints, setChiefComplaints] = useState("");
   const [walkinVitals, setWalkinVitals] = useState({
@@ -258,6 +301,9 @@ export default function StaffPortal() {
       localStorage.getItem("token") ||
       localStorage.getItem("doctor_token");
     const storedHospitalId =
+      hospitalInfo?.id ||
+      currentUser?.hospitalId ||
+      currentUser?.hospital_id ||
       localStorage.getItem("doctors_vedika_hospital_id") ||
       localStorage.getItem("active_hospital_id");
 
@@ -295,8 +341,20 @@ export default function StaffPortal() {
   };
 
   // -------------------------------------------------------------------------
-  // Data Fetching Effects
+  // Data Fetching Effects & Modal Reset on Navigation
   // -------------------------------------------------------------------------
+  useEffect(() => {
+    setShowWalkinModal(false);
+    setShowVitalsModal(false);
+    setShowHprModal(false);
+    setShowQuickScheduleForm(false);
+    setShowConvertModal(false);
+    setShowVisitDetailsDrawer(false);
+    setCancelModalAppointment(null);
+    setDeleteModalAppointment(null);
+    setActionMenuOpenId(null);
+  }, [activeTab]);
+
   useEffect(() => {
     if (authLoading || !currentUser) {
       return;
@@ -399,12 +457,13 @@ export default function StaffPortal() {
 
   const fetchStats = async (overrideHospId) => {
     try {
-      const targetHospId = overrideHospId || hospitalInfo?.id || localStorage.getItem("doctors_vedika_hospital_id");
+      const targetHospId = overrideHospId || hospitalInfo?.id || currentUser?.hospitalId || currentUser?.hospital_id || localStorage.getItem("doctors_vedika_hospital_id");
       const headers = getAuthHeaders();
       if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
         headers["X-Hospital-Id"] = targetHospId;
       }
       const res = await fetch(`${API_BASE}/staff/dashboard-stats?_t=${Date.now()}`, { headers });
+      if (!res.ok) return;
       const data = await res.json();
       if (data.success && data.stats) setStats(data.stats);
     } catch (err) {
@@ -452,17 +511,16 @@ export default function StaffPortal() {
 
       console.log("[STAFF DOCTORS] HTTP", response.status);
 
-      const data = await response.json();
-      console.log("[STAFF DOCTORS] RESPONSE", data);
-
       if (!response.ok) {
         console.error(
           "[StaffPortal] Doctor API failed:",
-          response.status,
-          data
+          response.status
         );
         return;
       }
+
+      const data = await response.json();
+      console.log("[STAFF DOCTORS] RESPONSE", data);
 
       if (!data.success || !Array.isArray(data.doctors)) {
         console.error(
@@ -501,9 +559,15 @@ export default function StaffPortal() {
 
   const fetchQueue = async (targetDate = selectedQueueDate) => {
     try {
+      const targetHospId = hospitalInfo?.id || currentUser?.hospitalId || currentUser?.hospital_id || localStorage.getItem("doctors_vedika_hospital_id");
+      const headers = getAuthHeaders();
+      if (targetHospId && targetHospId !== "null" && targetHospId !== "undefined") {
+        headers["X-Hospital-Id"] = targetHospId;
+      }
       const sep = targetDate ? "&" : "?";
       const url = `${API_BASE}/staff/queue${targetDate ? `?date=${encodeURIComponent(targetDate)}` : ""}${sep}_t=${Date.now()}`;
-      const res = await fetch(url, { headers: getAuthHeaders() });
+      const res = await fetch(url, { headers });
+      if (!res.ok) return;
       const data = await res.json();
       if (data.success && data.queue) {
         setQueue(data.queue);
@@ -589,6 +653,12 @@ export default function StaffPortal() {
       if (data.success) {
         setMessage({ text: data.message || "Appointment cancelled successfully.", type: "success" });
         setCancelModalAppointment(null);
+        try {
+          localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+          window.dispatchEvent(new Event("storage"));
+        } catch (evtErr) {
+          console.warn("Storage event error:", evtErr);
+        }
         fetchQueue(selectedQueueDate);
         fetchAppointments();
       } else {
@@ -628,6 +698,116 @@ export default function StaffPortal() {
     } catch (err) {
       setMessage({ text: err.message || "Error deleting appointment.", type: "error" });
       setDeleteModalAppointment(null);
+    } finally {
+      setIsActionSubmitting(false);
+    }
+  };
+
+  // Reschedule Handlers & Slot Availability Fetching
+  const handleOpenRescheduleModal = (item) => {
+    const apptDate = item.appointmentDate || item.appointment_date || selectedQueueDate || new Date().toISOString().split("T")[0];
+    const apptTime = item.appointmentTime || item.appointment_time || "";
+    const docId = item.doctorId || item.doctor_id || (doctors && doctors.length > 0 ? (doctors[0].doctorId || doctors[0].id) : "");
+
+    setRescheduleModalAppointment(item);
+    setRescheduleDate(apptDate);
+    setRescheduleTime(apptTime);
+    setRescheduleReason("");
+    setRescheduleDoctorId(docId);
+    setAvailableSlots([]);
+    setSlotsError("");
+    setRescheduleSubmitError("");
+    setActionMenuOpenId(null);
+  };
+
+  const fetchRescheduleSlots = async (targetDate, targetDoctorId) => {
+    if (!targetDate || !targetDoctorId) {
+      setAvailableSlots([]);
+      return;
+    }
+    setIsSlotsLoading(true);
+    setSlotsError("");
+    try {
+      const baseUrl = getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/api/availability/slots?date=${encodeURIComponent(targetDate)}&doctorId=${encodeURIComponent(targetDoctorId)}`, {
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success && data.available && Array.isArray(data.slots)) {
+        setAvailableSlots(data.slots);
+      } else if (data.success && data.available === false) {
+        setAvailableSlots([]);
+        setSlotsError(data.reason || `Doctor unavailable on ${targetDate}`);
+      } else {
+        setAvailableSlots([]);
+        setSlotsError(data.message || data.reason || "Failed to load slots for selected date.");
+      }
+    } catch (err) {
+      console.error("Error fetching reschedule slots:", err);
+      setAvailableSlots([]);
+      setSlotsError("Could not fetch slot availability.");
+    } finally {
+      setIsSlotsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (rescheduleModalAppointment && rescheduleDate && rescheduleDoctorId) {
+      fetchRescheduleSlots(rescheduleDate, rescheduleDoctorId);
+    }
+  }, [rescheduleModalAppointment, rescheduleDate, rescheduleDoctorId]);
+
+  const handleConfirmRescheduleAppointment = async (e) => {
+    e?.preventDefault();
+    if (!rescheduleModalAppointment) return;
+    if (!rescheduleDate || !rescheduleTime) {
+      setRescheduleSubmitError("Please select a date and an available time slot.");
+      return;
+    }
+
+    setIsActionSubmitting(true);
+    setRescheduleSubmitError("");
+
+    try {
+      const apptId = rescheduleModalAppointment.appointmentId || rescheduleModalAppointment.id;
+      const baseUrl = getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/api/appointments/${apptId}/reschedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          newDate: rescheduleDate,
+          newTime: rescheduleTime,
+          reason: rescheduleReason
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setMessage({
+          text: data.message || `Appointment rescheduled to ${rescheduleDate} at ${rescheduleTime} successfully.`,
+          type: "success"
+        });
+        setRescheduleModalAppointment(null);
+
+        try {
+          localStorage.setItem("doctors_vedika_queue_updated", String(Date.now()));
+          window.dispatchEvent(new Event("storage"));
+        } catch (evtErr) {
+          console.warn("Storage event error:", evtErr);
+        }
+
+        fetchQueue(selectedQueueDate);
+        fetchAppointments();
+      } else {
+        setRescheduleSubmitError(data.message || "Failed to reschedule appointment.");
+      }
+    } catch (err) {
+      console.error("Reschedule submit error:", err);
+      setRescheduleSubmitError(err.message || "An error occurred while rescheduling.");
     } finally {
       setIsActionSubmitting(false);
     }
@@ -704,8 +884,10 @@ export default function StaffPortal() {
       return;
     }
 
-    if (!walkinDob || !walkinDob.trim()) {
-      setMessage({ text: "Date of Birth (DOB) is required to register a walk-in patient.", type: "error" });
+    const effectiveDob = dobMode === "text" ? parseManualDob(walkinDobText) : walkinDob;
+
+    if (!effectiveDob || !effectiveDob.trim()) {
+      setMessage({ text: "Date of Birth (DOB) / Age is required to register a walk-in patient.", type: "error" });
       return;
     }
 
@@ -718,7 +900,7 @@ export default function StaffPortal() {
         fullName: `${walkinFirstName} ${walkinLastName}`.trim(),
         phone: walkinPhone,
         gender: walkinGender,
-        dateOfBirth: walkinDob,
+        dateOfBirth: effectiveDob,
         doctorId: selectedDoctorId,
         chiefComplaints,
         vitals: walkinVitals, // Optional vitals during registration
@@ -744,6 +926,7 @@ export default function StaffPortal() {
         setWalkinLastName("");
         setWalkinPhone("");
         setWalkinDob("");
+        setWalkinDobText("");
         setChiefComplaints("");
         setWalkinVitals({ bp: "", pulse: "", temperature: "", weight: "", height: "", spo2: "", bloodGroup: "" });
         // Refresh Data
@@ -1261,10 +1444,11 @@ export default function StaffPortal() {
                   </span>
                 </div>
                 <button
-                  onClick={fetchQueue}
+                  onClick={fetchAllData}
+                  disabled={isLoading}
                   style={{ backgroundColor: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", padding: "6px 12px", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
                 >
-                  <i className="fa-solid fa-arrows-rotate" /> Refresh
+                  <i className={`fa-solid fa-arrows-rotate ${isLoading ? "fa-spin" : ""}`} /> Refresh
                 </button>
               </div>
 
@@ -1409,10 +1593,11 @@ export default function StaffPortal() {
                   </span>
                 </div>
                 <button
-                  onClick={fetchAppointments}
+                  onClick={fetchAllData}
+                  disabled={isLoading}
                   style={{ backgroundColor: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1", padding: "6px 12px", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}
                 >
-                  <i className="fa-solid fa-rotate-right" /> Refresh
+                  <i className={`fa-solid fa-rotate-right ${isLoading ? "fa-spin" : ""}`} /> Refresh
                 </button>
               </div>
 
@@ -1683,8 +1868,8 @@ export default function StaffPortal() {
                 <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 800, color: "#0b1c2d" }}>Today's Appointments</h2>
                 <p style={{ margin: "4px 0 0", fontSize: "0.88rem", color: "#64748b" }}>Operational check-in desk for pre-booked appointments</p>
               </div>
-              <button onClick={fetchAppointments} style={{ backgroundColor: "#0b1c2d", color: "#ffffff", border: "none", padding: "10px 18px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" }}>
-                <i className="fa-solid fa-rotate-right" style={{ marginRight: "6px" }} /> Refresh List
+              <button onClick={fetchAllData} disabled={isLoading} style={{ backgroundColor: "#0b1c2d", color: "#ffffff", border: "none", padding: "10px 18px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" }}>
+                <i className={`fa-solid fa-rotate-right ${isLoading ? "fa-spin" : ""}`} style={{ marginRight: "6px" }} /> Refresh List
               </button>
             </div>
 
@@ -1864,10 +2049,11 @@ export default function StaffPortal() {
 
                 {/* Refresh Button */}
                 <button
-                  onClick={() => { fetchQueue(selectedQueueDate); fetchAppointments(); }}
+                  onClick={fetchAllData}
+                  disabled={isLoading}
                   style={{ backgroundColor: "#0b1c2d", color: "#ffffff", border: "none", padding: "8px 16px", borderRadius: "10px", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
                 >
-                  <i className="fa-solid fa-arrows-rotate" /> Refresh
+                  <i className={`fa-solid fa-arrows-rotate ${isLoading ? "fa-spin" : ""}`} /> {isLoading ? "Refreshing..." : "Refresh"}
                 </button>
               </div>
             </div>
@@ -2213,6 +2399,15 @@ export default function StaffPortal() {
                                         </button>
                                       )}
 
+                                      {!isCompleted && !isCancelled && !isInConsult && (
+                                        <button
+                                          onClick={() => handleOpenRescheduleModal(item)}
+                                          style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "8px 14px", border: "none", background: "none", fontSize: "0.8rem", fontWeight: 700, color: "#0284c7", cursor: "pointer" }}
+                                        >
+                                          <i className="fa-solid fa-clock-rotate-left" style={{ color: "#0284c7" }} /> Reschedule Appointment
+                                        </button>
+                                      )}
+
                                       {item.can_cancel !== false && !isCompleted && !isCancelled && (
                                         <button
                                           onClick={() => handleOpenCancelModal(item)}
@@ -2522,15 +2717,49 @@ export default function StaffPortal() {
                     />
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Date of Birth (DOB) *</label>
-                    <input
-                      type="date"
-                      required
-                      max={new Date().toISOString().split("T")[0]}
-                      value={walkinDob}
-                      onChange={(e) => setWalkinDob(e.target.value)}
-                      style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", outline: "none", boxSizing: "border-box" }}
-                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#334155" }}>Date of Birth (DOB) *</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (dobMode === "picker") {
+                            setDobMode("text");
+                            if (walkinDob) setWalkinDobText(walkinDob);
+                          } else {
+                            setDobMode("picker");
+                            if (walkinDobText) setWalkinDob(parseManualDob(walkinDobText));
+                          }
+                        }}
+                        style={{ background: "none", border: "none", color: "#08AEB8", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                      >
+                        {dobMode === "picker" ? "⌨️ Type Date/Age" : "📅 Date Picker"}
+                      </button>
+                    </div>
+                    {dobMode === "picker" ? (
+                      <input
+                        type="date"
+                        required
+                        max={new Date().toISOString().split("T")[0]}
+                        value={walkinDob}
+                        onChange={(e) => {
+                          setWalkinDob(e.target.value);
+                          setWalkinDobText(e.target.value);
+                        }}
+                        style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", outline: "none", boxSizing: "border-box" }}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 25 Y, 15/08/1998, 1998-08-15"
+                        value={walkinDobText}
+                        onChange={(e) => {
+                          setWalkinDobText(e.target.value);
+                          setWalkinDob(parseManualDob(e.target.value));
+                        }}
+                        style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", outline: "none", boxSizing: "border-box" }}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "4px" }}>Gender</label>
@@ -3385,6 +3614,204 @@ export default function StaffPortal() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: RESCHEDULE APPOINTMENT
+      ========================================================================= */}
+      {rescheduleModalAppointment && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(11, 28, 45, 0.6)", backdropFilter: "blur(6px)", zIndex: 6000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "16px", width: "100%", maxWidth: "540px", border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 20px 40px rgba(0,0,0,0.2)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+            
+            {/* Modal Header */}
+            <div style={{ padding: "18px 24px", backgroundColor: "#0b1c2d", color: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <i className="fa-solid fa-clock-rotate-left" style={{ color: "#08AEB8", fontSize: "1.2rem" }} />
+                <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800 }}>Reschedule Appointment</h3>
+              </div>
+              <button onClick={() => setRescheduleModalAppointment(null)} style={{ background: "none", border: "none", color: "#ffffff", fontSize: "1.2rem", cursor: "pointer" }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleConfirmRescheduleAppointment} style={{ padding: "24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
+              
+              {/* Patient Info Card */}
+              <div style={{ backgroundColor: "#f0f9ff", borderRadius: "12px", padding: "14px 16px", border: "1px solid #bae6fd", fontSize: "0.85rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontWeight: 800, color: "#0369a1", fontSize: "0.95rem" }}>
+                    {rescheduleModalAppointment.patientName || rescheduleModalAppointment.patient_name || "Patient"}
+                  </div>
+                  <span style={{ fontSize: "0.75rem", backgroundColor: "#e0f2fe", color: "#0284c7", padding: "2px 8px", borderRadius: "4px", fontWeight: 700 }}>
+                    {rescheduleModalAppointment.patientCode || rescheduleModalAppointment.hprCode || "Walk-in"}
+                  </span>
+                </div>
+                <div style={{ color: "#475569", marginTop: "4px" }}>
+                  Current: <strong>{rescheduleModalAppointment.appointmentDate || selectedQueueDate}</strong> at <strong>{rescheduleModalAppointment.appointmentTime || "--"}</strong>
+                </div>
+                <div style={{ color: "#64748b", fontSize: "0.8rem", marginTop: "2px" }}>
+                  Doctor: {rescheduleModalAppointment.doctorName || rescheduleModalAppointment.doctors?.full_name || "Assigned Doctor"}
+                </div>
+              </div>
+
+              {/* Backend Submit Error Banner */}
+              {rescheduleSubmitError && (
+                <div style={{ backgroundColor: "#fef2f2", color: "#991b1b", padding: "12px 14px", borderRadius: "10px", border: "1px solid #fecaca", fontSize: "0.85rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
+                  <i className="fa-solid fa-triangle-exclamation" style={{ color: "#dc2626" }} />
+                  <div>{rescheduleSubmitError}</div>
+                </div>
+              )}
+
+              {/* Doctor Selector (if multiple doctors available) */}
+              {doctors && doctors.length > 1 && (
+                <div>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>Doctor</label>
+                  <select
+                    value={rescheduleDoctorId}
+                    onChange={(e) => setRescheduleDoctorId(e.target.value)}
+                    style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "0.85rem", outline: "none" }}
+                  >
+                    {doctors.map(d => (
+                      <option key={d.doctorId || d.id} value={d.doctorId || d.id}>
+                        {d.fullName || d.full_name} ({d.specialization || "General Medicine"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Date Selector */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  Select New Date <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => {
+                    setRescheduleDate(e.target.value);
+                    setRescheduleTime("");
+                    setRescheduleSubmitError("");
+                  }}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                  required
+                />
+              </div>
+
+              {/* Available Time Slots Grid */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  Select Available Time Slot <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+
+                {isSlotsLoading ? (
+                  <div style={{ padding: "20px", textAlign: "center", color: "#64748b", fontSize: "0.85rem" }}>
+                    <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: "8px", color: "#08AEB8" }} />
+                    Checking slot availability for {rescheduleDate}...
+                  </div>
+                ) : slotsError ? (
+                  <div style={{ backgroundColor: "#fffbe8", color: "#b45309", padding: "12px", borderRadius: "8px", border: "1px solid #fef08a", fontSize: "0.83rem", fontWeight: 600 }}>
+                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: "6px" }} />
+                    {slotsError}
+                  </div>
+                ) : availableSlots.length === 0 ? (
+                  <div style={{ padding: "16px", textAlign: "center", backgroundColor: "#f8fafc", borderRadius: "8px", color: "#64748b", fontSize: "0.83rem" }}>
+                    No slots available for this date. Please select another date.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "8px", maxHeight: "180px", overflowY: "auto", padding: "4px" }}>
+                    {availableSlots.map((slot, sIdx) => {
+                      const isSelected = rescheduleTime === slot.time;
+                      const isAvailable = slot.available;
+                      
+                      return (
+                        <button
+                          key={sIdx}
+                          type="button"
+                          disabled={!isAvailable}
+                          onClick={() => {
+                            if (isAvailable) {
+                              setRescheduleTime(slot.time);
+                              setRescheduleSubmitError("");
+                            }
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: "8px",
+                            border: isSelected ? "2px solid #08AEB8" : isAvailable ? "1px solid #cbd5e1" : "1px solid #f1f5f9",
+                            backgroundColor: isSelected ? "#e6f7f8" : isAvailable ? "#ffffff" : "#f1f5f9",
+                            color: isSelected ? "#08AEB8" : isAvailable ? "#1e293b" : "#94a3b8",
+                            fontWeight: isSelected ? 800 : 600,
+                            fontSize: "0.8rem",
+                            cursor: isAvailable ? "pointer" : "not-allowed",
+                            textAlign: "center",
+                            transition: "all 0.15s ease",
+                            textDecoration: !isAvailable ? "line-through" : "none"
+                          }}
+                        >
+                          {slot.time}
+                          {!isAvailable && (
+                            <div style={{ fontSize: "0.65rem", textDecoration: "none", marginTop: "2px" }}>
+                              {slot.reason || "Booked"}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {rescheduleTime && (
+                  <div style={{ marginTop: "8px", fontSize: "0.8rem", color: "#08AEB8", fontWeight: 700 }}>
+                    Selected Time: {rescheduleTime}
+                  </div>
+                )}
+              </div>
+
+              {/* Optional Reason TextArea */}
+              <div>
+                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                  Reschedule Reason (Optional)
+                </label>
+                <textarea
+                  placeholder="e.g. Patient requested time change, doctor delay, emergency..."
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  rows={2}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* Actions Footer */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalAppointment(null)}
+                  style={{ padding: "10px 18px", borderRadius: "8px", border: "1px solid #cbd5e1", backgroundColor: "#ffffff", color: "#475569", fontWeight: 700, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isActionSubmitting || !rescheduleDate || !rescheduleTime}
+                  style={{
+                    padding: "10px 20px",
+                    borderRadius: "8px",
+                    border: "none",
+                    backgroundColor: (isActionSubmitting || !rescheduleDate || !rescheduleTime) ? "#94a3b8" : "#0284c7",
+                    color: "#ffffff",
+                    fontWeight: 800,
+                    cursor: (isActionSubmitting || !rescheduleDate || !rescheduleTime) ? "not-allowed" : "pointer"
+                  }}
+                >
+                  {isActionSubmitting ? "Rescheduling..." : "Confirm Reschedule"}
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}

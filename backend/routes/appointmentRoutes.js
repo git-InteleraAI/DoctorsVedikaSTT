@@ -1,27 +1,90 @@
 const express = require("express");
 const router = express.Router();
+
 const appointmentController = require("../controllers/appointmentController");
 const { protect } = require("../middleware/authMiddleware");
 
 // All appointment routes require authentication
 router.use(protect);
 
-// Get dashboard metrics summary
-router.get("/metrics", (req, res) => appointmentController.getDashboardMetrics(req, res));
+/*
+ * ============================================================
+ * DOCTOR DASHBOARD — NEW APPOINTMENT APIs
+ * ============================================================
+ *
+ * These are intentionally placed BEFORE "/:id".
+ * Otherwise Express could interpret:
+ *   /calendar
+ *   /calendar/day
+ *   /daily
+ * as an appointment ID.
+ */
 
-// Book a new confirmed appointment
-router.post("/book", (req, res) => appointmentController.bookAppointment(req, res));
+// Today's operational tabs
+router.get(
+    "/daily",
+    (req, res) => appointmentController.getDailyAppointments(req, res)
+);
 
-// Get appointments with filters (tab, dateFilter)
-router.get("/", (req, res) => appointmentController.getAppointments(req, res));
+// Calendar month view
+router.get(
+    "/calendar",
+    (req, res) => appointmentController.getCalendarAppointments(req, res)
+);
 
-// Get appointment symptoms details from appointment_symptoms table
-router.get("/symptoms/details", (req, res) => appointmentController.getAppointmentSymptoms(req, res));
+// Selected calendar date
+router.get(
+    "/calendar/day",
+    (req, res) => appointmentController.getCalendarDayAppointments(req, res)
+);
 
-// Get a single appointment by ID
-router.get("/:id", (req, res) => appointmentController.getAppointmentById(req, res));
 
-// Update appointment status (e.g. pending, completed)
-router.patch("/:id", (req, res) => appointmentController.updateStatus(req, res));
+/*
+ * ============================================================
+ * EXISTING APPOINTMENT APIs
+ * ============================================================
+ */
+
+// Dashboard metrics
+router.get(
+    "/metrics",
+    (req, res) => appointmentController.getDashboardMetrics(req, res)
+);
+
+// Book appointment
+router.post(
+    "/book",
+    (req, res) => appointmentController.bookAppointment(req, res)
+);
+
+// Existing appointment listing
+router.get(
+    "/",
+    (req, res) => appointmentController.getAppointments(req, res)
+);
+
+// Appointment symptoms
+router.get(
+    "/symptoms/details",
+    (req, res) => appointmentController.getAppointmentSymptoms(req, res)
+);
+
+// Single appointment
+router.get(
+    "/:id",
+    (req, res) => appointmentController.getAppointmentById(req, res)
+);
+
+// Atomic reschedule appointment
+router.post(
+    "/:id/reschedule",
+    (req, res) => appointmentController.rescheduleAppointment(req, res)
+);
+
+// Existing status update
+router.patch(
+    "/:id",
+    (req, res) => appointmentController.updateStatus(req, res)
+);
 
 module.exports = router;

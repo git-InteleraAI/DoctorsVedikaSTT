@@ -113,14 +113,13 @@ const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
         }
         localStorage.setItem("doctors_vedika_last_portal", usedPortal);
 
-        setLoading(false);
         navigate(targetRoute, { replace: true });
       } else {
         setErrorMsg(res?.message || "Invalid credentials. Please check your email and password.");
-        setLoading(false);
       }
     } catch (err) {
       setErrorMsg(err.message || "Unable to connect to authentication service.");
+    } finally {
       setLoading(false);
     }
   };
