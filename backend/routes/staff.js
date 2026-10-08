@@ -1564,6 +1564,61 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
         }
 
         const calculatedFullName = (fullName || `${firstName || 'Walk-in'} ${lastName || ''}`).trim();
+        const normalizedInputPhone = phone ? String(phone).replace(/\D/g, "") : "";
+
+        // Check for duplicate walk-in submission for this doctor and date (e.g. rapid double-clicks)
+        const { data: candidateHprs } = await db
+            .from("hospital_patient_records")
+            .select("id, hospital_patient_code, full_name, phone, date_of_birth, created_at")
+            .eq("hospital_id", req.context.hospitalId)
+            .eq("date_of_birth", dateOfBirth.trim())
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        let existingMatchingHpr = null;
+        let activeVisitFound = null;
+
+        if (candidateHprs && candidateHprs.length > 0) {
+            for (const h of candidateHprs) {
+                const dec = decryptRecord("hospital_patient_records", h);
+                const decPhoneNorm = dec.phone ? String(dec.phone).replace(/\D/g, "") : "";
+                const decNameNorm = String(dec.full_name || "").toLowerCase().replace(/\s+/g, "");
+                const calcNameNorm = calculatedFullName.toLowerCase().replace(/\s+/g, "");
+
+                const phoneMatch = normalizedInputPhone && decPhoneNorm && normalizedInputPhone === decPhoneNorm;
+                const nameMatch = calcNameNorm && decNameNorm && (calcNameNorm === decNameNorm);
+
+                if ((phoneMatch && nameMatch) || (phoneMatch && !calcNameNorm) || (phoneMatch)) {
+                    // Check if this matching HPR has an active visit today
+                    const { data: activeVisits } = await db
+                        .from("patient_visits")
+                        .select("id, appointment_id, visit_stage, created_at")
+                        .eq("hospital_id", req.context.hospitalId)
+                        .eq("hospital_patient_id", h.id)
+                        .eq("doctor_id", doctorId)
+                        .in("visit_stage", ["scheduled", "checked_in", "waiting", "in_consultation"]);
+
+                    if (activeVisits && activeVisits.length > 0) {
+                        existingMatchingHpr = { ...dec, id: h.id };
+                        activeVisitFound = activeVisits[0];
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (existingMatchingHpr && activeVisitFound) {
+            return res.status(200).json({
+                success: true,
+                isDuplicatePrevented: true,
+                message: `Patient ${existingMatchingHpr.full_name || "Record"} already has an active visit for this doctor today.`,
+                appointmentId: activeVisitFound.appointment_id,
+                visitId: activeVisitFound.id,
+                hprId: existingMatchingHpr.id
+            });
+        }
+
         const patientCode = "DV-P-" + Math.floor(100000 + Math.random() * 900000);
 
         // 1. Create HPR with patient_id = NULL

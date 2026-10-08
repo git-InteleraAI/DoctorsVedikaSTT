@@ -192,6 +192,7 @@ export default function StaffPortal() {
 
   // Walk-in Registration Modal & Form State
   const [showWalkinModal, setShowWalkinModal] = useState(false);
+  const [isWalkinSubmitting, setIsWalkinSubmitting] = useState(false);
   const [walkinFirstName, setWalkinFirstName] = useState("");
   const [walkinLastName, setWalkinLastName] = useState("");
   const [walkinPhone, setWalkinPhone] = useState("");
@@ -1025,6 +1026,7 @@ export default function StaffPortal() {
   };
 
   const handleWalkinSubmitWithAction = async (actionType) => {
+    if (isWalkinSubmitting) return;
     setMessage({ text: "", type: "" });
 
     if (!selectedDoctorId) {
@@ -1040,6 +1042,7 @@ export default function StaffPortal() {
     }
 
     try {
+      setIsWalkinSubmitting(true);
       const endpoint = selectedCandidate ? `${API_BASE}/staff/patients/existing-walkin` : `${API_BASE}/staff/patients/walkin`;
       const payload = {
         selectedHprId: selectedCandidate ? selectedCandidate.id : null,
@@ -1090,6 +1093,8 @@ export default function StaffPortal() {
       }
     } catch (err) {
       setMessage({ text: err.message || "Connection error.", type: "error" });
+    } finally {
+      setIsWalkinSubmitting(false);
     }
   };
 
@@ -3664,24 +3669,27 @@ const qrUrgentIntakes = qrIntakes.filter(
                 <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "10px", flexWrap: "wrap" }}>
                   <button
                     type="button"
+                    disabled={isWalkinSubmitting}
                     onClick={() => setShowWalkinModal(false)}
-                    style={{ padding: "10px 16px", borderRadius: "8px", border: "1px solid #cbd5e1", backgroundColor: "#ffffff", color: "#475569", fontWeight: 700, cursor: "pointer" }}
+                    style={{ padding: "10px 16px", borderRadius: "8px", border: "1px solid #cbd5e1", backgroundColor: "#ffffff", color: "#475569", fontWeight: 700, cursor: isWalkinSubmitting ? "not-allowed" : "pointer", opacity: isWalkinSubmitting ? 0.6 : 1 }}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
+                    disabled={isWalkinSubmitting}
                     onClick={() => handleWalkinSubmitWithAction("register_only")}
-                    style={{ padding: "10px 18px", borderRadius: "8px", border: "1px solid #08AEB8", backgroundColor: "#ffffff", color: "#08AEB8", fontWeight: 800, cursor: "pointer" }}
+                    style={{ padding: "10px 18px", borderRadius: "8px", border: "1px solid #08AEB8", backgroundColor: "#ffffff", color: "#08AEB8", fontWeight: 800, cursor: isWalkinSubmitting ? "not-allowed" : "pointer", opacity: isWalkinSubmitting ? 0.6 : 1 }}
                   >
-                    Register Only (Scheduled)
+                    {isWalkinSubmitting ? "Processing..." : "Register Only (Scheduled)"}
                   </button>
                   <button
                     type="button"
+                    disabled={isWalkinSubmitting}
                     onClick={() => handleWalkinSubmitWithAction("register_and_checkin")}
-                    style={{ padding: "10px 20px", borderRadius: "8px", border: "none", backgroundColor: "#08AEB8", color: "#ffffff", fontWeight: 800, cursor: "pointer" }}
+                    style={{ padding: "10px 20px", borderRadius: "8px", border: "none", backgroundColor: "#08AEB8", color: "#ffffff", fontWeight: 800, cursor: isWalkinSubmitting ? "not-allowed" : "pointer", opacity: isWalkinSubmitting ? 0.6 : 1 }}
                   >
-                    Register &amp; Check In Walk-in
+                    {isWalkinSubmitting ? "Processing..." : "Register & Check In Walk-in"}
                   </button>
                 </div>
               </form>
