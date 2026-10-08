@@ -1,0 +1,66 @@
+.qr-patient-form-page {
+    min-height: 100dvh;
+    box-sizing: border-box;
+}
+
+.qr-patient-form-card {
+    box-sizing: border-box;
+}
+
+.qr-patient-name-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.qr-patient-name-grid > div {
+    min-width: 0;
+}
+
+.qr-patient-form-card input,
+.qr-patient-form-card select {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.qr-patient-form-card button {
+    box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+    .qr-patient-form-page {
+        align-items: flex-start !important;
+        padding: 16px !important;
+        overflow-y: auto;
+    }
+
+    .qr-patient-form-card {
+        padding: 24px !important;
+        border-radius: 16px !important;
+        margin: 8px 0;
+    }
+
+    .qr-patient-form-card h1 {
+        font-size: 24px !important;
+    }
+
+    .qr-patient-name-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+}
+
+@media (max-width: 380px) {
+    .qr-patient-form-page {
+        padding: 10px !important;
+    }
+
+    .qr-patient-form-card {
+        padding: 18px !important;
+    }
+
+    .qr-patient-form-card h1 {
+        font-size: 22px !important;
+    }
+}

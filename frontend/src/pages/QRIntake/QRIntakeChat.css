@@ -362,3 +362,375 @@
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
     border: 1px solid #e2e8f0;
 }
+
+/* Phase 2 onboarding */
+.qr-onboarding-card {
+    width: 100%;
+    max-width: 520px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 32px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+    text-align: center;
+}
+
+.qr-onboarding-brand {
+    color: #01b6af;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.qr-onboarding-title {
+    margin: 10px 0 8px;
+    color: #0f172a;
+    font-size: 24px;
+    font-weight: 800;
+}
+
+.qr-onboarding-body,
+.qr-onboarding-note {
+    color: #64748b;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.qr-onboarding-success-icon {
+    width: 64px;
+    height: 64px;
+    margin: 22px auto 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ecfdf5;
+    color: #059669;
+    font-size: 30px;
+    font-weight: 800;
+}
+
+.qr-onboarding-primary,
+.qr-onboarding-secondary,
+.qr-language-btn {
+    border-radius: 12px;
+    padding: 13px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.qr-onboarding-primary {
+    width: 100%;
+    border: 1px solid #01b6af;
+    background: #01b6af;
+    color: #ffffff;
+}
+
+.qr-onboarding-primary:hover:not(:disabled) {
+    background: #009e98;
+}
+
+.qr-onboarding-primary:disabled,
+.qr-onboarding-secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.qr-onboarding-secondary {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+}
+
+.qr-language-options {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.qr-language-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.qr-language-btn:hover,
+.qr-language-btn.selected {
+    border-color: #01b6af;
+    background: #ecfeff;
+    color: #007f7a;
+}
+
+.qr-consent-box {
+    margin: 20px 0;
+    padding: 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: #475569;
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.qr-consent-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.qr-consent-actions .qr-onboarding-primary {
+    width: auto;
+}
+
+.qr-onboarding-error {
+    margin: 12px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 13px;
+    text-align: left;
+}
+
+@media (max-width: 520px) {
+    .qr-onboarding-card {
+        padding: 24px 18px;
+    }
+
+    .qr-consent-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* =========================================================
+   QR INTAKE - RESPONSIVE MOBILE / TABLET
+   UI ONLY - DO NOT CHANGE CLINICAL LOGIC
+   ========================================================= */
+
+.qr-intake-page {
+    min-height: 100dvh;
+}
+
+.qr-message {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.qr-intake-header > div:first-child {
+    min-width: 0;
+}
+
+.qr-intake-title,
+.qr-intake-hospital {
+    overflow-wrap: anywhere;
+}
+
+.qr-review-card {
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.qr-intake-input {
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.qr-intake-send-btn {
+    flex-shrink: 0;
+}
+
+.qr-critical-action-btn {
+    box-sizing: border-box;
+    text-align: center;
+}
+
+@media (max-width: 640px) {
+    .qr-intake-page {
+        padding: 0;
+        align-items: stretch;
+        overflow: hidden;
+    }
+
+    .qr-intake-chat {
+        width: 100%;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+
+    .qr-intake-header {
+        padding: 14px 16px;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .qr-intake-title {
+        font-size: 16px;
+        line-height: 1.25;
+    }
+
+    .qr-intake-hospital {
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .qr-intake-safety-badge {
+        padding: 4px 8px;
+        font-size: 10px;
+        white-space: nowrap;
+    }
+
+    .qr-intake-messages {
+        padding: 16px 14px;
+        gap: 12px;
+    }
+
+    .qr-message {
+        max-width: 90%;
+        padding: 11px 13px;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .qr-review-card {
+        padding: 14px;
+    }
+
+    .qr-review-card-label {
+        min-width: 78px;
+    }
+
+    .qr-quick-chips-container {
+        padding: 10px 14px;
+        max-height: 110px;
+        overflow-y: auto;
+    }
+
+    .qr-chip-btn {
+        padding: 8px 11px;
+        font-size: 12.5px;
+    }
+
+    .qr-intake-composer {
+        padding: 10px 12px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    }
+
+    .qr-intake-form {
+        gap: 8px;
+    }
+
+    .qr-intake-input {
+        min-width: 0;
+        padding: 11px 13px;
+        font-size: 14px;
+    }
+
+    .qr-intake-send-btn {
+        padding: 11px 14px;
+        font-size: 13px;
+    }
+
+    .qr-critical-banner {
+        width: calc(100% - 24px) !important;
+        max-width: none !important;
+        margin: 12px;
+        padding: 20px 16px;
+        box-sizing: border-box;
+    }
+
+    .qr-critical-title {
+        font-size: 18px;
+        line-height: 1.3;
+    }
+
+    .qr-critical-message {
+        font-size: 14px;
+        line-height: 1.55;
+    }
+
+    .qr-critical-action-btn {
+        width: 100%;
+        display: block;
+        padding: 13px 16px;
+    }
+
+    .qr-success-card,
+    .qr-loading-container,
+    .qr-error-container {
+        width: calc(100% - 24px);
+        max-width: none;
+        box-sizing: border-box;
+        padding: 24px 18px;
+    }
+}
+
+@media (max-width: 380px) {
+    .qr-intake-header {
+        padding: 12px;
+    }
+
+    .qr-intake-title {
+        font-size: 15px;
+    }
+
+    .qr-intake-safety-badge {
+        font-size: 9px;
+        padding: 3px 6px;
+    }
+
+    .qr-message {
+        max-width: 94%;
+        font-size: 13.5px;
+    }
+
+    .qr-intake-form {
+        gap: 6px;
+    }
+
+    .qr-intake-send-btn {
+        padding: 11px 12px;
+    }
+}
+
+.qr-health-education-btn {
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto 20px;
+    padding: 13px 17px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    background: #01b6af;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 800;
+    box-shadow: 0 8px 20px rgba(1, 182, 175, 0.2);
+    transition:
+        transform 0.2s ease,
+        background 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.qr-health-education-btn span {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.qr-health-education-btn:hover {
+    background: #0f766e;
+    transform: translateY(-1px);
+}

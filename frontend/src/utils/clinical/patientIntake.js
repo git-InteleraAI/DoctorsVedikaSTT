@@ -7,51 +7,55 @@ export function createEmptyPatientIntake() {
         severity: null,
         current_medications: null,
         additional_notes: null,
+        clinical_details: {},
     };
 }
+
 function cleanString(value) {
-    if (typeof value !== 'string') {
-        return null;
-    }
+    if (typeof value !== 'string') return null;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
 }
+
 function normalizeSymptom(value) {
     return value.trim().replace(/\s+/g, ' ');
 }
-/**
- * Removes duplicate symptoms while preserving order.
- */
+
 export function normalizeSymptoms(symptoms) {
     const seen = new Set();
     const result = [];
-    for (const symptom of symptoms) {
+    for (const symptom of Array.isArray(symptoms) ? symptoms : []) {
+        if (typeof symptom !== 'string') continue;
         const normalized = normalizeSymptom(symptom);
-        if (!normalized) {
-            continue;
-        }
+        if (!normalized) continue;
         const key = normalized.toLowerCase();
-        if (seen.has(key)) {
-            continue;
-        }
+        if (seen.has(key)) continue;
         seen.add(key);
         result.push(normalized);
     }
     return result;
 }
-/**
- * Normalizes canonical patient intake.
- *
- * Missing clinical information remains null.
- * Nothing is invented.
- */
-export function normalizePatientIntake(input) {
-    const severity = input.severity === 'mild' ||
-        input.severity === 'moderate' ||
-        input.severity === 'severe' ||
-        input.severity === 'unsure'
+
+function normalizeClinicalDetails(details) {
+    if (!details || typeof details !== 'object' || Array.isArray(details)) return {};
+    const result = {};
+    for (const [key, value] of Object.entries(details)) {
+        if (!/^[a-zA-Z0-9_]{1,80}$/.test(key)) continue;
+        if (typeof value === 'boolean') {
+            result[key] = value;
+        } else if (typeof value === 'string') {
+            const cleaned = cleanString(value);
+            if (cleaned !== null) result[key] = cleaned;
+        }
+    }
+    return result;
+}
+
+export function normalizePatientIntake(input = {}) {
+    const severity = ['mild', 'moderate', 'severe', 'unsure'].includes(input.severity)
         ? input.severity
         : null;
+
     return {
         symptoms: normalizeSymptoms(input.symptoms ?? []),
         location: cleanString(input.location),
@@ -60,5 +64,6 @@ export function normalizePatientIntake(input) {
         severity,
         current_medications: cleanString(input.current_medications),
         additional_notes: cleanString(input.additional_notes),
+        clinical_details: normalizeClinicalDetails(input.clinical_details),
     };
 }

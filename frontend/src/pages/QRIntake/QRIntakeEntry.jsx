@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { getApiBaseUrl } from "../../utils/apiConfig";
+import "./QRIntakeEntry.css";
 
 const API = getApiBaseUrl();
 
@@ -86,6 +87,7 @@ export default function QRIntakeEntry() {
     if (loading) {
         return (
             <div
+                className="qr-entry-page"
                 style={{
                     minHeight: "100vh",
                     display: "flex",
@@ -146,6 +148,7 @@ export default function QRIntakeEntry() {
             }}
         >
             <div
+                className="qr-entry-card"
                 style={{
                     width: "100%",
                     maxWidth: "520px",

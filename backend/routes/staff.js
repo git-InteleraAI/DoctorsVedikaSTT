@@ -132,8 +132,8 @@ router.get("/qr-intakes", requirePermission("queue.view"), async (req, res) => {
                 created_at
             `)
             .eq("hospital_id", hospitalId)
-            .eq("status", "submitted")
-            .order("submitted_at", { ascending: false });
+            .in("status", ["collecting", "review", "submitted", "safety_blocked"])
+            .order("created_at", { ascending: false });
 
         if (error) throw error;
 

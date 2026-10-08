@@ -3,12 +3,24 @@ import { useParams, Link } from "react-router-dom";
 import axios from "axios";
 import { getApiBaseUrl } from "../../utils/apiConfig";
 
+
 import {
     initDialogue,
-    advanceDialogue,
+    advanceDialogueWithFallback,
 } from "../../services/clinical/dialogueEngine";
 
 import { evaluateSafety } from "../../services/clinical/safetyEngine";
+import { createQrGeminiFallback } from "../../services/clinical/qrGeminiFallback";
+import {
+    getQrLanguage,
+    localizeDialogue,
+    normalizeQrLanguage,
+    toCanonicalChip,
+    t,
+    translateDisplayValue,
+    formatLocalizedReviewSummary,
+    LANGUAGE_DISPLAY_NAMES,
+} from "../../services/clinical/clinicalLanguage";
 
 import {
     formatReviewSummary,
@@ -21,6 +33,8 @@ import {
 } from "../../utils/clinical/patientIntake";
 
 import "./QRIntakeChat.css";
+import "./QRPatientOnboarding.css";
+import LogoWithName from "../../assets/Logo_with_Name_Beside.png";
 
 const API = getApiBaseUrl();
 
@@ -86,6 +100,14 @@ export default function QRIntakeChat() {
     const [isExpired, setIsExpired] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [isCritical, setIsCritical] = useState(false);
+
+    // Phase 2 onboarding state. Clinical dialogue starts only after
+    // registration success, language selection, and explicit AI consent.
+    const [onboardingStep, setOnboardingStep] = useState("language");
+    const [selectedLanguage, setSelectedLanguage] = useState("");
+    const [aiConsent, setAiConsent] = useState(false);
+    const [consentSaving, setConsentSaving] = useState(false);
+    const [qrLanguage, setQrLanguage] = useState(() => getQrLanguage());
 
     const messagesEndRef = useRef(null);
 
@@ -173,37 +195,37 @@ export default function QRIntakeChat() {
                 const qKey = resolveHospitalQuestionnaireKey(hospitalData);
                 setQuestionnaireKey(qKey);
 
-                // Initialize dialogue engine
-                const dialogueContext = {
-                    intakeDraft: initialIntake,
-                    questionnaireKey: qKey,
-                };
+                // Do not initialize the clinical dialogue until the patient
+                // has selected a language and explicitly consented to AI processing.
+                // Registration success is already shown by the patient registration
+                // flow, so the chat flow starts at language selection.
+                const storedOnboarding = JSON.parse(
+                    sessionStorage.getItem("dv_qr_intake_onboarding") || "null"
+                );
+                const storedLanguage = storedOnboarding?.language || "";
+                const normalizedLanguage = normalizeQrLanguage(storedLanguage);
+                setQrLanguage(normalizedLanguage);
+                const storedConsent = sessionData.aiProcessingConsent === true;
 
-                const initialDialogue = initDialogue(dialogueContext);
-                setDialogueSession({
-                    ...initialDialogue,
-                    questionnaireKey: qKey,
-                });
+                setSelectedLanguage(storedLanguage);
+                setAiConsent(storedConsent);
 
-                if (initialDialogue.isCritical) {
-                    setIsCritical(true);
+                if (!storedLanguage) {
+                    setOnboardingStep("language");
                     setLoading(false);
                     return;
                 }
 
-                // Welcome message + initial prompt
-                const initialMessages = [
-                    createMessage(
-                        "assistant",
-                        `Welcome to ${
-                            hospitalData?.name || "the clinic"
-                        }. I will assist you with a brief clinical assessment of your symptoms before you see the doctor.`
-                    ),
-                    createMessage("assistant", initialDialogue.botMessage),
-                ];
+                if (!storedConsent) {
+                    setOnboardingStep("consent");
+                    setLoading(false);
+                    return;
+                }
 
-                setMessages(initialMessages);
-                setQuickChips(initialDialogue.quickChips || []);
+                setOnboardingStep("ready");
+                setLoading(false);
+                return;
+
             } catch (err) {
                 if (!isMounted) return;
                 console.error("[QR Intake] Session loading error:", err);
@@ -248,6 +270,96 @@ export default function QRIntakeChat() {
         } catch (err) {
             console.warn("[QR Intake] Background sync notice:", err.message);
         }
+    };
+
+    // -------------------------------------------------------------
+    // Phase 2 Onboarding Handlers
+    // -------------------------------------------------------------
+    const handleLanguageSelect = (language) => {
+        setSelectedLanguage(language);
+        setQrLanguage(normalizeQrLanguage(language));
+        sessionStorage.setItem(
+            "dv_qr_intake_onboarding",
+            JSON.stringify({ language, consent: aiConsent })
+        );
+        setOnboardingStep("consent");
+    };
+
+    const handleConsent = async (consentValue) => {
+        if (!accessToken || consentSaving) return;
+
+        try {
+            setConsentSaving(true);
+            setError("");
+
+            const response = await axios.patch(
+                `${API}/api/v1/public/qr/sessions/${encodeURIComponent(
+                    accessToken
+                )}/consent`,
+                { aiProcessingConsent: consentValue === true }
+            );
+
+            if (!response.data?.success) {
+                throw new Error(
+                    response.data?.message ||
+                        "Unable to save AI processing consent."
+                );
+            }
+
+            const consent = response.data?.data?.session?.aiProcessingConsent === true;
+            setAiConsent(consent);
+
+            sessionStorage.setItem(
+                "dv_qr_intake_onboarding",
+                JSON.stringify({ language: selectedLanguage, consent })
+            );
+
+            if (consent) {
+                startSymptomsAssessment(true);
+            }
+        } catch (err) {
+            console.error("[QR Intake] Consent update failed:", err);
+            setError(
+                err.response?.data?.message ||
+                    err.message ||
+                    "Unable to save your consent. Please try again."
+            );
+        } finally {
+            setConsentSaving(false);
+        }
+    };
+
+    function startSymptomsAssessment(consentOverride = aiConsent) {
+        if (!selectedLanguage || !consentOverride) return;
+
+        sessionStorage.setItem(
+            "dv_qr_intake_onboarding",
+            JSON.stringify({
+                language: selectedLanguage,
+                consent: true,
+            })
+        );
+
+        const dialogueContext = {
+            intakeDraft: intake,
+            questionnaireKey: questionnaireKey || "general",
+        };
+        const initialDialogue = initDialogue(dialogueContext);
+        const localizedDialogue = localizeDialogue(initialDialogue, qrLanguage);
+
+        setDialogueSession({
+            ...initialDialogue,
+            questionnaireKey: questionnaireKey || "general",
+        });
+        setMessages([
+            createMessage(
+                "assistant",
+                t("welcome", qrLanguage)(hospital?.name || "the clinic")
+            ),
+            createMessage("assistant", localizedDialogue.botMessage),
+        ]);
+        setQuickChips(localizedDialogue.quickChips || []);
+        setOnboardingStep("started");
     };
 
     // -------------------------------------------------------------
@@ -296,6 +408,10 @@ export default function QRIntakeChat() {
             return;
         }
 
+        const canonicalInput = isButton
+            ? toCanonicalChip(trimmed, qrLanguage)
+            : trimmed;
+
         setProcessing(true);
         setError("");
 
@@ -316,11 +432,21 @@ export default function QRIntakeChat() {
 
             const inputPayload = {
                 type: isButton ? "button" : "text",
-                value: trimmed,
+                value: canonicalInput,
             };
 
-            // 2. Advance canonical dialogue engine
-            const nextDialogue = advanceDialogue(currentDialogueState, inputPayload);
+            // 2. Advance canonical dialogue engine. Gemini is only used for
+            // LOW-confidence free-text input; buttons remain deterministic.
+            const fallbackFn = !isButton && accessToken
+                ? createQrGeminiFallback(API, accessToken)
+                : null;
+
+            const nextDialogue = await advanceDialogueWithFallback(
+                currentDialogueState,
+                inputPayload,
+                fallbackFn
+            );
+            const localizedDialogue = localizeDialogue(nextDialogue, qrLanguage);
             setDialogueSession({
                 ...nextDialogue,
                 questionnaireKey: activeQKey,
@@ -344,7 +470,7 @@ export default function QRIntakeChat() {
             if (nextDialogue.state === "CONFIRMING") {
                 setMessages((prev) => [
                     ...prev,
-                    createMessage("assistant", "Submitting your clinical assessment..."),
+                    createMessage("assistant", t("submitting", qrLanguage)),
                 ]);
                 await handleFinalSubmit(updatedIntake);
                 return;
@@ -353,10 +479,10 @@ export default function QRIntakeChat() {
             // 5. Append Assistant Response Message
             setMessages((prev) => [
                 ...prev,
-                createMessage("assistant", nextDialogue.botMessage),
+                createMessage("assistant", localizedDialogue.botMessage),
             ]);
 
-            setQuickChips(nextDialogue.quickChips || []);
+            setQuickChips(localizedDialogue.quickChips || []);
 
             // 6. Background persistence of current clinical intake
             const backendStatus = nextDialogue.state === "REVIEW" ? "review" : "collecting";
@@ -382,10 +508,10 @@ export default function QRIntakeChat() {
             <div className="qr-intake-page">
                 <div className="qr-loading-container">
                     <h2 style={{ fontSize: "20px", fontWeight: 800, margin: "0 0 8px 0" }}>
-                        Loading Assessment...
+                        {t("loadingAssessment", qrLanguage)}
                     </h2>
                     <p style={{ margin: 0, color: "#64748b" }}>
-                        Connecting to hospital clinical desk.
+                        {t("connecting", qrLanguage)}
                     </p>
                 </div>
             </div>
@@ -403,10 +529,10 @@ export default function QRIntakeChat() {
                         ⏳
                     </div>
                     <h2 style={{ fontSize: "20px", fontWeight: 800, margin: "0 0 10px 0" }}>
-                        Session Expired
+                        {t("sessionExpired", qrLanguage)}
                     </h2>
                     <p style={{ color: "#64748b", margin: "0 0 20px 0", lineHeight: 1.5 }}>
-                        This QR intake session has expired for patient safety. Please scan the hospital QR code again to start a new check-in.
+                        {t("sessionExpiredBody", qrLanguage)}
                     </p>
                     <Link
                         to={`/qr/${hospitalCode || "DV-HOSP-003"}`}
@@ -420,7 +546,7 @@ export default function QRIntakeChat() {
                             fontWeight: 700,
                         }}
                     >
-                        Scan New Check-in
+                        {t("scanNewCheckin", qrLanguage)}
                     </Link>
                 </div>
             </div>
@@ -435,22 +561,20 @@ export default function QRIntakeChat() {
             <div className="qr-intake-page">
                 <div className="qr-critical-banner" style={{ maxWidth: "560px", width: "100%" }}>
                     <div className="qr-critical-icon">⚠️</div>
-                    <h2 className="qr-critical-title">Urgent Medical Attention Required</h2>
+                    <h2 className="qr-critical-title">{t("urgentTitle", qrLanguage)}</h2>
                     <p className="qr-critical-message">
-                        The symptoms described may indicate an emergency requiring immediate medical care.
-                        Normal intake has been stopped for your safety.
-                        Please immediately notify the hospital reception staff or call emergency services.
+                        {t("urgentBody", qrLanguage)}
                     </p>
                     <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap", marginTop: "16px" }}>
                         <a href="tel:112" className="qr-critical-action-btn">
-                            Call Emergency (112)
+                            {t("emergency112", qrLanguage)}
                         </a>
                         <a href="tel:108" className="qr-critical-action-btn" style={{ background: "#991b1b" }}>
-                            Call Ambulance (108)
+                            {t("ambulance108", qrLanguage)}
                         </a>
                     </div>
                     <p style={{ marginTop: "20px", fontSize: "13px", color: "#991b1b" }}>
-                        Hospital: {hospital?.name || "Tooth Medic Family Dental Care"}
+                        {t("hospital", qrLanguage)}: {hospital?.name || t("hospitalNameFallback", qrLanguage)}
                     </p>
                 </div>
             </div>
@@ -461,37 +585,161 @@ export default function QRIntakeChat() {
     // Render States: COMPLETED / Submitted
     // -------------------------------------------------------------
     if (isSubmitted) {
-        return (
-            <div className="qr-intake-page">
-                <div className="qr-success-card">
-                    <div className="qr-success-icon">✓</div>
-                    <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#0f172a", margin: "0 0 8px 0" }}>
-                        Intake Submitted Successfully
-                    </h2>
-                    <p style={{ color: "#64748b", margin: "0 0 20px 0", fontSize: "14.5px" }}>
-                        Thank you, <strong>{session?.patientName || session?.firstName || "Patient"}</strong>. Your symptom details have been securely sent to the staff reception desk at <strong>{hospital?.name || "Tooth Medic Family Dental Care"}</strong>.
-                    </p>
+    return (
+        <div className="qr-intake-page">
+            <div
+                className="qr-success-card"
+                style={{
+                    maxWidth: "920px",
+                }}
+            >
+                <div className="qr-success-icon">✓</div>
 
-                    <div style={{ background: "#f8fafc", borderRadius: "14px", padding: "16px 20px", textAlign: "left", marginBottom: "20px", border: "1px solid #e2e8f0" }}>
-                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#01b6af", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>
-                            Recorded Assessment Summary
-                        </div>
-                        <div style={{ fontSize: "13.5px", color: "#334155", lineHeight: 1.6, whiteSpace: "pre-line" }}>
-                            {formatReviewSummary(intake)}
-                        </div>
+                <h2
+                    style={{
+                        fontSize: "22px",
+                        fontWeight: 800,
+                        color: "#0f172a",
+                        margin: "0 0 8px 0",
+                    }}
+                >
+                    Intake Submitted Successfully
+                </h2>
+
+                <p
+                    style={{
+                        color: "#64748b",
+                        margin: "0 0 20px 0",
+                        fontSize: "14.5px",
+                        lineHeight: 1.6,
+                    }}
+                >
+                    Thank you,{" "}
+                    <strong>
+                        {session?.patientName ||
+                            session?.firstName ||
+                            "Patient"}
+                    </strong>
+                    . Your symptom details have been securely sent
+                    to the staff reception desk at{" "}
+                    <strong>
+                        {hospital?.name ||
+                            "Doctors Vedika Hospital"}
+                    </strong>
+                    .
+                </p>
+
+                <div
+                    style={{
+                        background: "#f8fafc",
+                        borderRadius: "14px",
+                        padding: "16px 20px",
+                        textAlign: "left",
+                        marginBottom: "20px",
+                        border: "1px solid #e2e8f0",
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            color: "#01b6af",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            marginBottom: "8px",
+                        }}
+                    >
+                        Recorded Assessment Summary
                     </div>
 
-                    <p style={{ fontSize: "13.5px", color: "#475569", margin: "0 0 20px 0" }}>
-                        Please proceed to the reception desk or take a seat in the waiting area. The staff will call your name shortly.
-                    </p>
-
-                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>
-                        Submitted at: {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    <div
+                        style={{
+                            fontSize: "13.5px",
+                            color: "#334155",
+                            lineHeight: 1.6,
+                            whiteSpace: "pre-line",
+                        }}
+                    >
+                        {formatReviewSummary(intake)}
                     </div>
                 </div>
+
+                <div
+                    style={{
+                        padding: "16px",
+                        borderRadius: "14px",
+                        background: "#f0fdfa",
+                        border: "1px solid #ccfbf1",
+                        marginBottom: "20px",
+                    }}
+                >
+                    <div
+                        style={{
+                            fontSize: "15px",
+                            fontWeight: 800,
+                            color: "#115e59",
+                            marginBottom: "5px",
+                        }}
+                    >
+                        Your assessment is complete
+                    </div>
+
+                    <p
+                        style={{
+                            margin: 0,
+                            color: "#475569",
+                            fontSize: "13px",
+                            lineHeight: 1.5,
+                        }}
+                    >
+                        You can now explore general health
+                        education resources while you wait for the
+                        staff to assist you.
+                    </p>
+                </div>
+
+                <p
+                    style={{
+                        fontSize: "13.5px",
+                        color: "#475569",
+                        margin: "0 0 20px 0",
+                    }}
+                >
+                    Please proceed to the reception desk or take a
+                    seat in the waiting area. The staff will call
+                    your name shortly.
+                </p>
+                <Link
+    to={`/qr/${encodeURIComponent(
+        hospitalCode || "DV-HOSP-003"
+    )}/education/${encodeURIComponent(accessToken)}`}
+    className="qr-health-education-btn"
+>
+    <span>
+        <i className="fa-solid fa-heart-pulse" />
+        Watch Health Education
+    </span>
+
+    <i className="fa-solid fa-arrow-right" />
+</Link>
+
+                <div
+                    style={{
+                        marginTop: "20px",
+                        fontSize: "12px",
+                        color: "#94a3b8",
+                    }}
+                >
+                    Submitted at:{" "}
+                    {new Date().toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                    })}
+                </div>
             </div>
-        );
-    }
+        </div>
+    );
+}
 
     // -------------------------------------------------------------
     // Render States: General Error
@@ -501,7 +749,7 @@ export default function QRIntakeChat() {
             <div className="qr-intake-page">
                 <div className="qr-error-container">
                     <h2 style={{ fontSize: "20px", fontWeight: 800, margin: "0 0 10px 0" }}>
-                        Unable to Continue
+                        {t("unableContinue", qrLanguage)}
                     </h2>
                     <p style={{ color: "#64748b", margin: "0 0 20px 0" }}>{error}</p>
                     <button
@@ -510,11 +758,141 @@ export default function QRIntakeChat() {
                         className="qr-chip-btn"
                         style={{ background: "#01b6af", color: "#ffffff", padding: "10px 20px" }}
                     >
-                        Try Again
+                        {t("tryAgain", qrLanguage)}
                     </button>
                 </div>
             </div>
         );
+    }
+
+    // -------------------------------------------------------------
+    // Render States: Phase 2 Registration / Language / Consent / Ready
+    // -------------------------------------------------------------
+    if (onboardingStep !== "started" && !dialogueSession) {
+        const onboardingCard = (title, body, content) => (
+            <div className="qr-patient-shell">
+                <div className="qr-patient-card">
+                    <div className="qr-patient-logo-wrap">
+                        <img
+                            src={LogoWithName}
+                            alt="DoctorsVedika"
+                            className="qr-patient-logo"
+                        />
+                    </div>
+                    <div className="qr-patient-content">
+                        <h2 className="qr-patient-title">{title}</h2>
+                        {body && <div className="qr-patient-body">{body}</div>}
+                        {content}
+                    </div>
+                </div>
+            </div>
+        );
+
+        if (onboardingStep === "language") {
+            return (
+                <div className="qr-intake-page">
+                    {onboardingCard(
+                        t("chooseLanguage", qrLanguage),
+                        t("chooseLanguageBody", qrLanguage),
+                        <div className="qr-patient-language-options">
+                            {[
+                                ["English", "English"],
+                                ["Telugu", "తెలుగు"],
+                                ["Hindi", "हिन्दी"],
+                            ].map(([value, label]) => (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    className={`qr-patient-language-btn ${selectedLanguage === value ? "selected" : ""}`}
+                                    onClick={() => handleLanguageSelect(value)}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        if (onboardingStep === "consent") {
+            return (
+                <div className="qr-intake-page">
+                    {onboardingCard(
+                        t("aiConsent", qrLanguage),
+                        t("consentBody", qrLanguage),
+                        <>
+                            <div className="qr-patient-note">
+                                {t("consentNote", qrLanguage)}
+                            </div>
+
+                            {error && (
+                                <div className="qr-onboarding-error" role="alert">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div className="qr-patient-actions">
+                                <button
+                                    type="button"
+                                    className="qr-patient-secondary"
+                                    disabled={consentSaving}
+                                    onClick={() => {
+                                        setError("");
+                                        setOnboardingStep("language");
+                                    }}
+                                >
+                                    ← {t("changeLanguage", qrLanguage)}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    className="qr-patient-primary"
+                                    disabled={consentSaving}
+                                    onClick={() => handleConsent(true)}
+                                >
+                                    {consentSaving
+                                        ? t("saving", qrLanguage)
+                                        : t("startAssessment", qrLanguage)}
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                className="qr-patient-not-now"
+                                disabled={consentSaving}
+                                onClick={() => handleConsent(false)}
+                            >
+                                {t("doNotConsent", qrLanguage)}
+                            </button>
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        if (onboardingStep === "ready") {
+            return (
+                <div className="qr-intake-page">
+                    {onboardingCard(
+                        t("ready", qrLanguage),
+                        t("readyBody", qrLanguage)(LANGUAGE_DISPLAY_NAMES[selectedLanguage] || selectedLanguage),
+                        <>
+                            <div className="qr-onboarding-note">
+                                {t("readyNote", qrLanguage)}
+                            </div>
+                            <button
+                                type="button"
+                                className="qr-onboarding-primary"
+                                onClick={startSymptomsAssessment}
+                            >
+                                {t("startAssessment", qrLanguage)}
+                            </button>
+                        </>
+                    )}
+                </div>
+            );
+        }
     }
 
     const currentSafetyStatus = safetyResult?.status || "SAFE";
@@ -526,10 +904,10 @@ export default function QRIntakeChat() {
                 <header className="qr-intake-header">
                     <div>
                         <div className="qr-intake-brand-badge">DoctorsVedika</div>
-                        <h1 className="qr-intake-title">Clinical Intake Assessment</h1>
+                        <h1 className="qr-intake-title">{t("clinicalIntake", qrLanguage)}</h1>
                         <div className="qr-intake-hospital">
                             <span>🏥</span>
-                            <span>{hospital?.name || "Tooth Medic Family Dental Care"}</span>
+                            <span>{hospital?.name || t("hospitalNameFallback", qrLanguage)}</span>
                         </div>
                     </div>
                     <div>
@@ -555,7 +933,7 @@ export default function QRIntakeChat() {
                             className={`qr-message-group ${message.role}`}
                         >
                             <span className="qr-message-role">
-                                {message.role === "assistant" ? "Clinical Assistant" : "You"}
+                                {message.role === "assistant" ? t("clinicalAssistant", qrLanguage) : t("you", qrLanguage)}
                             </span>
                             <div className={`qr-message ${message.role}`}>
                                 {message.text}
@@ -568,38 +946,38 @@ export default function QRIntakeChat() {
                         <div className="qr-review-card">
                             <div className="qr-review-card-title">
                                 <span>📋</span>
-                                <span>Clinical Summary for Review</span>
+                                <span>{t("recordedSummary", qrLanguage)}</span>
                             </div>
                             <div className="qr-review-card-item">
-                                <span className="qr-review-card-label">Symptoms:</span>
+                                <span className="qr-review-card-label">{t("symptoms", qrLanguage)}:</span>
                                 <span>
                                     {intake.symptoms?.length
-                                        ? intake.symptoms.map(getSymptomDisplayName).join(", ")
-                                        : "None noted"}
+                                        ? intake.symptoms.map((id) => translateDisplayValue(getSymptomDisplayName(id), qrLanguage)).join(", ")
+                                        : t("noneNoted", qrLanguage)}
                                 </span>
                             </div>
                             {intake.location && (
                                 <div className="qr-review-card-item">
-                                    <span className="qr-review-card-label">Location:</span>
-                                    <span>{intake.location}</span>
+                                    <span className="qr-review-card-label">{t("location", qrLanguage)}:</span>
+                                    <span>{translateDisplayValue(intake.location, qrLanguage)}</span>
                                 </div>
                             )}
                             {intake.duration && (
                                 <div className="qr-review-card-item">
-                                    <span className="qr-review-card-label">Duration:</span>
-                                    <span>{intake.duration}</span>
+                                    <span className="qr-review-card-label">{t("duration", qrLanguage)}:</span>
+                                    <span>{translateDisplayValue(intake.duration, qrLanguage)}</span>
                                 </div>
                             )}
                             {intake.severity && (
                                 <div className="qr-review-card-item">
-                                    <span className="qr-review-card-label">Severity:</span>
-                                    <span>{intake.severity.toUpperCase()}</span>
+                                    <span className="qr-review-card-label">{t("severity", qrLanguage)}:</span>
+                                    <span>{translateDisplayValue(intake.severity.charAt(0).toUpperCase() + intake.severity.slice(1), qrLanguage)}</span>
                                 </div>
                             )}
                             {intake.recent_actions && (
                                 <div className="qr-review-card-item">
-                                    <span className="qr-review-card-label">Actions/Meds:</span>
-                                    <span>{intake.recent_actions}</span>
+                                    <span className="qr-review-card-label">{t("actionsMeds", qrLanguage)}:</span>
+                                    <span>{translateDisplayValue(intake.recent_actions, qrLanguage)}</span>
                                 </div>
                             )}
                         </div>
@@ -607,9 +985,9 @@ export default function QRIntakeChat() {
 
                     {processing && (
                         <div className="qr-message-group assistant">
-                            <span className="qr-message-role">Clinical Assistant</span>
+                            <span className="qr-message-role">{t("clinicalAssistant", qrLanguage)}</span>
                             <div className="qr-message assistant" style={{ color: "#64748b" }}>
-                                Processing your response...
+                                {t("processing", qrLanguage)}
                             </div>
                         </div>
                     )}
@@ -645,7 +1023,7 @@ export default function QRIntakeChat() {
                             type="text"
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            placeholder="Type your response here..."
+                            placeholder={t("typeResponse", qrLanguage)}
                             disabled={processing}
                             className="qr-intake-input"
                             autoComplete="off"
@@ -655,7 +1033,7 @@ export default function QRIntakeChat() {
                             disabled={processing || !input.trim()}
                             className="qr-intake-send-btn"
                         >
-                            Send
+                            {t("send", qrLanguage)}
                         </button>
                     </form>
                 </footer>

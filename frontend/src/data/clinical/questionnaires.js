@@ -1,24 +1,16 @@
 /**
  * Shared clinical questionnaire catalog.
  *
- * This is the single source of truth for questionnaire options used by:
- * - the doctor-discovery booking questionnaire
- * - the deterministic chatbot intake engine (Phase 2C+)
+ * Phase 3 adds deterministic symptom-specific follow-up questions while
+ * preserving the existing specialty catalog and generic questions.
  *
- * Keep clinical option IDs stable once persisted/used by the parser.
+ * Gemini is NOT used here. This file is the deterministic clinical SSOT.
  */
 export const QUESTIONNAIRE_KEYS = [
-    'dentist',
-    'dermatologist',
-    'cardiologist',
-    'orthopedist',
-    'gynecologist',
-    'pediatrician',
-    'ent',
-    'neurologist',
-    'psychiatrist',
-    'general',
+    'dentist', 'dermatologist', 'cardiologist', 'orthopedist',
+    'gynecologist', 'pediatrician', 'ent', 'neurologist', 'psychiatrist', 'general',
 ];
+
 export const GENERAL_CONSTITUTIONAL_SYMPTOMS = [
     { id: 'fever', label: 'Fever / Chills', icon: 'thermometer' },
     { id: 'headache', label: 'Headache', icon: 'head-snowflake-outline', isRedFlag: true },
@@ -26,6 +18,7 @@ export const GENERAL_CONSTITUTIONAL_SYMPTOMS = [
     { id: 'nausea', label: 'Nausea / Vomiting', icon: 'emoticon-sick-outline' },
     { id: 'body_ache', label: 'Body Ache', icon: 'human' },
 ];
+
 export const SPECIALTY_SYMPTOMS_MAP = {
     dentist: [
         { id: 'toothache', label: 'Toothache / Severe Tooth Pain', icon: 'tooth' },
@@ -109,22 +102,9 @@ export const SPECIALTY_SYMPTOMS_MAP = {
         { id: 'vomiting', label: 'Nausea / Vomiting', icon: 'emoticon-sick-outline' },
     ],
 };
-export const LATERALITY_OPTIONS = [
-    'Left Side',
-    'Right Side',
-    'Both Sides',
-    'Upper Area',
-    'Lower Area',
-    'Not Applicable',
-];
-export const DURATION_OPTIONS = [
-    '< 24 Hours',
-    '1 - 3 Days',
-    '4 - 7 Days',
-    '1 - 2 Weeks',
-    '1+ Month',
-    'Chronic / Ongoing',
-];
+
+export const LATERALITY_OPTIONS = ['Left Side', 'Right Side', 'Both Sides', 'Upper Area', 'Lower Area', 'Not Applicable'];
+export const DURATION_OPTIONS = ['< 24 Hours', '1 - 3 Days', '4 - 7 Days', '1 - 2 Weeks', '1+ Month', 'Chronic / Ongoing'];
 export const RECENT_ACTIONS_OPTIONS = [
     'Took OTC Medicine (e.g. Paracetamol)',
     'Tried Home Remedies / Ice / Rest',
@@ -133,43 +113,45 @@ export const RECENT_ACTIONS_OPTIONS = [
     'Nothing Yet',
 ];
 export const SEVERITY_OPTIONS = [
-    {
-        key: 'mild',
-        label: 'Mild',
-        badgeColor: '#10B981',
-        textColor: '#065F46',
-        bgColor: '#ECFDF5',
-        borderColor: '#A7F3D0',
-        description: 'Minor discomfort. Able to carry out regular daily activities.',
-    },
-    {
-        key: 'moderate',
-        label: 'Moderate',
-        badgeColor: '#F59E0B',
-        textColor: '#92400E',
-        bgColor: '#FFFBEB',
-        borderColor: '#FDE68A',
-        description: 'Noticeable pain/distress. Normal routine is partly affected.',
-    },
-    {
-        key: 'severe',
-        label: 'Severe',
-        badgeColor: '#EF4444',
-        textColor: '#991B1B',
-        bgColor: '#FEF2F2',
-        borderColor: '#FECACA',
-        description: 'Acute or intense pain. Greatly disrupts daily functioning.',
-    },
-    {
-        key: 'unsure',
-        label: 'Unsure / Need Evaluation',
-        badgeColor: '#6366F1',
-        textColor: '#3730A3',
-        bgColor: '#EEF2FF',
-        borderColor: '#C7D2FE',
-        description: 'Uncertain of severity. Seeking doctor’s professional evaluation.',
-    },
+    { key: 'mild', label: 'Mild', badgeColor: '#10B981', textColor: '#065F46', bgColor: '#ECFDF5', borderColor: '#A7F3D0', description: 'Minor discomfort. Able to carry out regular daily activities.' },
+    { key: 'moderate', label: 'Moderate', badgeColor: '#F59E0B', textColor: '#92400E', bgColor: '#FFFBEB', borderColor: '#FDE68A', description: 'Noticeable pain/distress. Normal routine is partly affected.' },
+    { key: 'severe', label: 'Severe', badgeColor: '#EF4444', textColor: '#991B1B', bgColor: '#FEF2F2', borderColor: '#FECACA', description: 'Acute or intense pain. Greatly disrupts daily functioning.' },
+    { key: 'unsure', label: 'Unsure / Need Evaluation', badgeColor: '#6366F1', textColor: '#3730A3', bgColor: '#EEF2FF', borderColor: '#C7D2FE', description: 'Uncertain of severity. Seeking doctor’s professional evaluation.' },
 ];
+
+/**
+ * Phase 3 deterministic symptom-specific questions.
+ *
+ * Only three pathways are intentionally activated in this phase:
+ * chest pain, toothache, and skin rash. Other symptoms continue through
+ * the existing generic questionnaire until their dedicated branch is added.
+ */
+export const SYMPTOM_SPECIFIC_QUESTIONS = {
+    chest_pain: [
+        { field: 'chest_character', label: 'Pain Character', prompt: 'How would you describe the chest discomfort?', quickChips: ['Pressure / Tightness', 'Sharp / Stabbing', 'Burning', 'Heavy / Squeezing', 'Not Sure'] },
+        { field: 'chest_radiation', label: 'Radiation', prompt: 'Does the chest discomfort spread anywhere else?', quickChips: ['No', 'Arm / Shoulder', 'Jaw / Neck', 'Back', 'Multiple Areas', 'Not Sure'] },
+        { field: 'breathlessness', label: 'Breathing Difficulty', prompt: 'Are you having any shortness of breath or difficulty breathing?', quickChips: ['No', 'Yes'] , yesSymptom: 'breathlessness' },
+        { field: 'chest_sweating', label: 'Sweating', prompt: 'Are you having unusual sweating along with the chest discomfort?', quickChips: ['No', 'Yes'] },
+        { field: 'chest_dizziness', label: 'Dizziness', prompt: 'Are you feeling dizzy or lightheaded?', quickChips: ['No', 'Yes'], yesSymptom: 'dizziness' },
+        { field: 'chest_nausea', label: 'Nausea', prompt: 'Are you feeling nauseated or vomiting?', quickChips: ['No', 'Yes'], yesSymptom: 'nausea' },
+        { field: 'chest_exertional', label: 'Exertional Pattern', prompt: 'Does the discomfort occur or become worse with walking, exercise, or physical effort?', quickChips: ['No', 'Yes', 'Not Sure'] },
+    ],
+    toothache: [
+        { field: 'tooth_area', label: 'Tooth Area', prompt: 'Which tooth or area is affected?', quickChips: ['Front Teeth', 'Back Teeth / Molars', 'Upper Teeth', 'Lower Teeth', 'Gum Area', 'Not Sure'] },
+        { field: 'tooth_swelling', label: 'Swelling', prompt: 'Is there any swelling around the tooth, gum, cheek, or jaw?', quickChips: ['No', 'Yes'] },
+        { field: 'tooth_sensitivity', label: 'Temperature Sensitivity', prompt: 'Does the tooth hurt with hot or cold food or drinks?', quickChips: ['No', 'Hot Only', 'Cold Only', 'Both Hot and Cold', 'Not Sure'] },
+        { field: 'tooth_fever', label: 'Fever', prompt: 'Have you had fever or chills along with the dental problem?', quickChips: ['No', 'Yes'] , yesSymptom: 'fever' },
+        { field: 'tooth_chewing', label: 'Chewing Pain', prompt: 'Does chewing or biting make the pain worse?', quickChips: ['No', 'Yes', 'Not Sure'] },
+    ],
+    skin_rash: [
+        { field: 'skin_onset', label: 'Onset', prompt: 'When did the skin problem first appear?', quickChips: ['Today', '1 - 3 Days', '4 - 7 Days', '1 - 2 Weeks', 'More than 2 Weeks', 'Not Sure'] },
+        { field: 'skin_itching', label: 'Itching', prompt: 'Is the affected skin itchy?', quickChips: ['No', 'Yes'] , yesSymptom: 'itching' },
+        { field: 'skin_pain', label: 'Skin Pain', prompt: 'Is the affected skin painful or tender?', quickChips: ['No', 'Yes'] },
+        { field: 'skin_spread', label: 'Spread', prompt: 'Has the rash or skin problem been spreading to other areas?', quickChips: ['No', 'Yes', 'Not Sure'] },
+        { field: 'skin_exposure', label: 'New Exposure', prompt: 'Did it start after a new product, medicine, food, cosmetic, soap, or other exposure?', quickChips: ['No', 'Yes', 'Not Sure'] },
+    ],
+};
+
 export const QUESTIONNAIRE_CATALOG = QUESTIONNAIRE_KEYS.reduce((acc, key) => {
     acc[key] = {
         key,
@@ -182,14 +164,22 @@ export const QUESTIONNAIRE_CATALOG = QUESTIONNAIRE_KEYS.reduce((acc, key) => {
     };
     return acc;
 }, {});
-/**
- * Returns the catalog entry for a resolver key.
- * Unknown/compound keys intentionally fall back to the existing general
- * questionnaire behavior rather than inventing a new clinical template.
- */
+
 export function getQuestionnaire(key) {
     if (key && Object.prototype.hasOwnProperty.call(QUESTIONNAIRE_CATALOG, key)) {
         return QUESTIONNAIRE_CATALOG[key];
     }
     return QUESTIONNAIRE_CATALOG.general;
+}
+
+export function getSymptomSpecificQuestions(symptoms = []) {
+    for (const symptom of symptoms) {
+        const id = String(symptom).toLowerCase().trim();
+        if (SYMPTOM_SPECIFIC_QUESTIONS[id]) return SYMPTOM_SPECIFIC_QUESTIONS[id];
+    }
+    return [];
+}
+
+export function getSymptomSpecificQuestion(field, symptoms = []) {
+    return getSymptomSpecificQuestions(symptoms).find((question) => question.field === field) || null;
 }

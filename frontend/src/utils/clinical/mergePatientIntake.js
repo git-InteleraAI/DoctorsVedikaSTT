@@ -23,5 +23,9 @@ export function mergePatientIntake(existing = {}, update = {}) {
         severity: pickField(update?.severity, existing?.severity),
         current_medications: pickField(update?.current_medications, existing?.current_medications),
         additional_notes: pickField(update?.additional_notes, existing?.additional_notes),
+        clinical_details: {
+            ...(existing?.clinical_details || {}),
+            ...(update?.clinical_details || {}),
+        },
     });
 }

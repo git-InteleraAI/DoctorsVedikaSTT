@@ -910,17 +910,17 @@ function sanitizeClinicalIntake(input) {
             ? input.additional_notes.trim()
             : null;
 
-            const clinical_details = {};
-            if (input.clinical_details && typeof input.clinical_details === "object" && !Array.isArray(input.clinical_details)) {
-                for (const [key, value] of Object.entries(input.clinical_details)) {
-                    if (!/^[a-zA-Z0-9_]{1,80}$/.test(key)) continue;
-                    if (typeof value === "boolean") {
-                        clinical_details[key] = value;
-                    } else if (typeof value === "string" && value.trim()) {
-                        clinical_details[key] = value.trim().slice(0, 300);
-                    }
-                }
+    const clinical_details = {};
+    if (input.clinical_details && typeof input.clinical_details === "object" && !Array.isArray(input.clinical_details)) {
+        for (const [key, value] of Object.entries(input.clinical_details)) {
+            if (!/^[a-zA-Z0-9_]{1,80}$/.test(key)) continue;
+            if (typeof value === "boolean") {
+                clinical_details[key] = value;
+            } else if (typeof value === "string" && value.trim()) {
+                clinical_details[key] = value.trim().slice(0, 300);
             }
+        }
+    }
 
     return {
         symptoms,
@@ -936,7 +936,7 @@ function sanitizeClinicalIntake(input) {
 
 /**
  * POST /api/v1/public/qr/sessions/:accessToken/interpret
- * 
+ *
  * Phase 4 Gemini fallback endpoint.
  * The browser sends only the latest patient message. The server owns the
  * Gemini credential, session state, consent state, and authoritative safety
@@ -1377,249 +1377,6 @@ router.post(
             return res.status(500).json({
                 success: false,
                 message: "Unable to submit clinical intake.",
-            });
-        }
-    }
-);
-
-/**
- * GET /api/v1/public/qr/sessions/:accessToken/education
- *
- * Returns active educational videos for a completed QR intake.
- *
- * Security / clinical rules:
- * - Access is controlled by the QR session access token.
- * - Session must exist and must not be expired.
- * - Education is available only after successful submission.
- * - CRITICAL / safety_blocked sessions are never allowed to receive videos.
- * - Only active educational_videos records are returned.
- * - No sample/fallback videos are returned.
- * - No admin synchronization is triggered.
- */
-router.get(
-    "/sessions/:accessToken/education",
-    rateLimitQrLookup,
-    async (req, res) => {
-        try {
-            if (!supabaseAdmin) {
-                return res.status(503).json({
-                    success: false,
-                    message:
-                        "Educational content service is temporarily unavailable.",
-                });
-            }
-
-            const accessToken = req.params.accessToken?.trim();
-
-            if (
-                !accessToken ||
-                !/^[0-9a-fA-F-]{36}$/.test(accessToken)
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid QR intake session token.",
-                });
-            }
-
-            // ---------------------------------------------------------
-            // Resolve QR session
-            // ---------------------------------------------------------
-
-            const { data: session, error: sessionError } =
-                await supabaseAdmin
-                    .from("qr_intake_sessions")
-                    .select(
-                        "id, access_token, status, expires_at, safety_status"
-                    )
-                    .eq("access_token", accessToken)
-                    .maybeSingle();
-
-            if (sessionError) {
-                console.error(
-                    "[QR Education] Session lookup failed:",
-                    sessionError.message
-                );
-
-                return res.status(500).json({
-                    success: false,
-                    message:
-                        "Unable to load educational content.",
-                });
-            }
-
-            if (!session) {
-                return res.status(404).json({
-                    success: false,
-                    message: "QR intake session not found.",
-                });
-            }
-
-            // ---------------------------------------------------------
-            // Expiry protection
-            // ---------------------------------------------------------
-
-            if (
-                session.expires_at &&
-                new Date(session.expires_at).getTime() <= Date.now()
-            ) {
-                return res.status(410).json({
-                    success: false,
-                    message:
-                        "This QR intake session has expired.",
-                });
-            }
-
-            // ---------------------------------------------------------
-            // Clinical lifecycle gate
-            // ---------------------------------------------------------
-
-            if (session.status === "safety_blocked") {
-                return res.status(403).json({
-                    success: false,
-                    safetyBlocked: true,
-                    message:
-                        "Educational content is unavailable because urgent medical attention is required.",
-                });
-            }
-
-            if (session.safety_status === "critical") {
-                return res.status(403).json({
-                    success: false,
-                    safetyBlocked: true,
-                    message:
-                        "Educational content is unavailable because urgent medical attention is required.",
-                });
-            }
-
-            if (session.status !== "submitted") {
-                return res.status(409).json({
-                    success: false,
-                    message:
-                        "Educational content becomes available after the symptom assessment is submitted.",
-                });
-            }
-
-            // ---------------------------------------------------------
-            // Fetch ONLY active educational videos
-            // ---------------------------------------------------------
-
-            const contentType = String(
-                req.query.contentType || "all"
-            )
-                .trim()
-                .toLowerCase();
-
-            let query = supabaseAdmin
-                .from("educational_videos")
-                .select(
-                    `
-                    id,
-                    platform,
-                    content_type,
-                    external_id,
-                    title,
-                    description,
-                    thumbnail_url,
-                    video_url,
-                    duration,
-                    views_count,
-                    published_at
-                    `
-                )
-                .eq("is_active", true)
-                .order("published_at", {
-                    ascending: false,
-                });
-
-            if (contentType === "video" || contentType === "short") {
-                query = query.eq("content_type", contentType);
-            } else if (contentType !== "all") {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Invalid educational content type.",
-                });
-            }
-
-            const { data: videos, error: videosError } =
-                await query;
-
-            if (videosError) {
-                console.error(
-                    "[QR Education] Video lookup failed:",
-                    videosError.message
-                );
-
-                return res.status(500).json({
-                    success: false,
-                    message:
-                        "Unable to load educational content.",
-                });
-            }
-
-            // ---------------------------------------------------------
-            // Normalize safe patient-facing video objects
-            // ---------------------------------------------------------
-
-            const normalizedVideos = (videos || []).map((video) => {
-                let videoUrl = video.video_url || null;
-
-                if (
-                    video.platform === "youtube" &&
-                    video.external_id
-                ) {
-                    videoUrl =
-                        `https://www.youtube.com/embed/${video.external_id}`;
-                } else if (
-                    videoUrl &&
-                    videoUrl.includes("/shorts/")
-                ) {
-                    videoUrl = videoUrl.replace(
-                        "/shorts/",
-                        "/embed/"
-                    );
-                }
-
-                return {
-                    id: video.id,
-                    platform: video.platform,
-                    contentType: video.content_type,
-                    externalId: video.external_id,
-                    title: video.title,
-                    description: video.description,
-                    thumbnailUrl: video.thumbnail_url ||
-                        (
-                            video.external_id
-                                ? `https://img.youtube.com/vi/${video.external_id}/hqdefault.jpg`
-                                : null
-                        ),
-                    videoUrl,
-                    duration: video.duration,
-                    viewsCount: video.views_count,
-                    doctorName: null,
-                    category: null,
-                    isVerified: null,
-                    publishedAt: video.published_at,
-                };
-            });
-
-            return res.status(200).json({
-                success: true,
-                data: {
-                    videos: normalizedVideos,
-                    total: normalizedVideos.length,
-                },
-            });
-        } catch (error) {
-            console.error(
-                "[QR Education] Unexpected error:",
-                error.message
-            );
-
-            return res.status(500).json({
-                success: false,
-                message:
-                    "Unable to load educational content.",
             });
         }
     }

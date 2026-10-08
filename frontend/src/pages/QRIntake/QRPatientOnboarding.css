@@ -1,0 +1,200 @@
+/* Simple patient-first onboarding UI. Keeps the existing clinical chat styles untouched. */
+.qr-patient-shell {
+    min-height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 16px;
+    box-sizing: border-box;
+}
+
+.qr-patient-card {
+    width: min(100%, 560px);
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 20px;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+}
+
+.qr-patient-logo-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 28px 28px 16px;
+}
+
+.qr-patient-logo {
+    display: block;
+    width: min(230px, 70%);
+    max-height: 64px;
+    object-fit: contain;
+}
+
+.qr-patient-content {
+    padding: 10px 34px 32px;
+    text-align: center;
+}
+
+.qr-patient-title {
+    margin: 0 0 16px;
+    color: #0f172a;
+    font-size: clamp(24px, 4vw, 32px);
+    line-height: 1.25;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+}
+
+.qr-patient-body {
+    color: #475569;
+    font-size: 16px;
+    line-height: 1.72;
+    text-align: left;
+    white-space: pre-line;
+}
+
+.qr-patient-body::first-line {
+    font-weight: 500;
+}
+
+.qr-patient-note {
+    margin-top: 22px;
+    padding: 13px 15px;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.55;
+    text-align: left;
+}
+
+.qr-patient-actions {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.qr-patient-primary,
+.qr-patient-secondary {
+    min-height: 50px;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.qr-patient-primary {
+    border: 1px solid #01b6af;
+    background: #01b6af;
+    color: #ffffff;
+    box-shadow: 0 7px 16px rgba(1, 182, 175, 0.18);
+}
+
+.qr-patient-secondary {
+    border: 1px solid #d7dee8;
+    background: #ffffff;
+    color: #334155;
+}
+
+.qr-patient-primary:hover:not(:disabled),
+.qr-patient-secondary:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.qr-patient-primary:disabled,
+.qr-patient-secondary:disabled,
+.qr-patient-not-now:disabled,
+.qr-patient-language-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.qr-patient-not-now {
+    display: block;
+    margin: 13px auto 0;
+    padding: 5px 8px;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.qr-patient-language-options {
+    display: grid;
+    gap: 11px;
+    margin-top: 24px;
+}
+
+.qr-patient-language-btn {
+    width: 100%;
+    min-height: 54px;
+    padding: 12px 18px;
+    border: 1px solid #d7dee8;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #1e293b;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.qr-patient-language-btn:hover {
+    transform: translateY(-1px);
+    border-color: #01b6af;
+}
+
+.qr-patient-language-btn.selected {
+    border-color: #01b6af;
+    background: #effcfb;
+    color: #007f7a;
+}
+
+@media (max-width: 600px) {
+    .qr-patient-shell {
+        padding: 16px 12px;
+        align-items: flex-start;
+    }
+
+    .qr-patient-card {
+        margin-top: 10px;
+        border-radius: 16px;
+    }
+
+    .qr-patient-logo-wrap {
+        padding: 24px 20px 12px;
+    }
+
+    .qr-patient-logo {
+        width: min(210px, 78%);
+        max-height: 58px;
+    }
+
+    .qr-patient-content {
+        padding: 8px 20px 24px;
+    }
+
+    .qr-patient-title {
+        font-size: 24px;
+        margin-bottom: 13px;
+    }
+
+    .qr-patient-body {
+        font-size: 15px;
+        line-height: 1.65;
+    }
+
+    .qr-patient-actions {
+        grid-template-columns: 1fr;
+    }
+}

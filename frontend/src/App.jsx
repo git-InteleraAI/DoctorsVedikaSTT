@@ -25,6 +25,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import QRIntakeEntry from "./pages/QRIntake/QRIntakeEntry";
 import QRPatientForm from "./pages/QRIntake/QRPatientForm";
 import QRIntakeChat from "./pages/QRIntake/QRIntakeChat";
+import QREducationVideos from "./pages/QRIntake/QREducationVideos";
 
 function App() {
   return (
@@ -98,6 +99,11 @@ function App() {
         <Route
           path="/qr/:hospitalCode/chat/:accessToken"
           element={<QRIntakeChat />}
+        />
+
+        <Route
+        path="/qr/:hospitalCode/education/:accessToken"
+       element={<QREducationVideos />}
         />
 
         <Route
