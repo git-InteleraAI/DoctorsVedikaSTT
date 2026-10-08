@@ -100,6 +100,68 @@ router.get("/hospital-info", async (req, res) => {
 });
 
 /**
+ * GET /api/v1/staff/qr-intakes
+ * Returns list of submitted QR intakes for staff review.
+ * Never exposes anonymous access_token to staff UI.
+ */
+router.get("/qr-intakes", requirePermission("queue.view"), async (req, res) => {
+    try {
+        const db = getSupabaseClient();
+        const hospitalId = req.context.hospitalId;
+        if (!db || !hospitalId) {
+            return res.json({ success: true, intakes: [] });
+        }
+
+        const { data, error } = await db
+            .from("qr_intake_sessions")
+            .select(`
+                id,
+                hospital_id,
+                first_name,
+                last_name,
+                full_name,
+                phone,
+                email,
+                date_of_birth,
+                gender,
+                status,
+                clinical_intake,
+                safety_status,
+                safety_result,
+                submitted_at,
+                created_at
+            `)
+            .eq("hospital_id", hospitalId)
+            .in("status", ["collecting", "review", "submitted", "safety_blocked"])
+            .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        const intakes = (data || []).map((row) => ({
+            id: row.id,
+            patientName: row.full_name,
+            firstName: row.first_name,
+            lastName: row.last_name,
+            phone: row.phone,
+            email: row.email,
+            dateOfBirth: row.date_of_birth,
+            gender: row.gender,
+            status: row.status,
+            clinicalIntake: row.clinical_intake || {},
+            safetyStatus: row.safety_status || "safe",
+            safetyResult: row.safety_result || {},
+            submittedAt: row.submitted_at,
+            createdAt: row.created_at,
+        }));
+
+        return res.json({ success: true, intakes });
+    } catch (err) {
+        console.error("[Staff] Failed to load QR intakes:", err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
  * GET /api/v1/staff/dashboard-stats
  * Staff Portal metrics overview: Today's Appointments, Waiting, In Consultation, Completed, Cancelled, Queue Count
  */
@@ -1600,6 +1662,20 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             metadata: { hprId: hprRecord.id, appointmentId: appRow.id, doctorId, actionType }
         });
 
+        if (req.body.qrSessionId) {
+            await db
+                .from("qr_intake_sessions")
+                .update({
+                    hospital_patient_id: hprRecord.id,
+                    patient_visit_id: visitRow.id,
+                    status: "converted",
+                    converted_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", req.body.qrSessionId)
+                .eq("hospital_id", req.context.hospitalId);
+        }
+
         return res.status(201).json({
             success: true,
             message: `Temporary walk-in patient registered (${targetVisitStage}) successfully.`,
@@ -1750,6 +1826,20 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
             resourceId: visitRow.id,
             metadata: { hprId: hprRecord.id, appointmentId: appRow.id, doctorId, actionType }
         });
+
+        if (req.body.qrSessionId) {
+            await db
+                .from("qr_intake_sessions")
+                .update({
+                    hospital_patient_id: hprRecord.id,
+                    patient_visit_id: visitRow.id,
+                    status: "converted",
+                    converted_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", req.body.qrSessionId)
+                .eq("hospital_id", req.context.hospitalId);
+        }
 
         return res.status(201).json({
             success: true,

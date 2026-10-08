@@ -256,6 +256,14 @@ export default function StaffPortal() {
   });
   const [isSavingVitals, setIsSavingVitals] = useState(false);
 
+  // QR Intake State
+  const [qrIntakes, setQrIntakes] = useState([]);
+  const [selectedQrIntake, setSelectedQrIntake] = useState(null);
+  const [showQrDetailsModal, setShowQrDetailsModal] = useState(false);
+  const [activeQrSessionId, setActiveQrSessionId] = useState(null);
+  const [lastNotifiedQrCount, setLastNotifiedQrCount] = useState(0);
+  const [lastQrStatuses, setLastQrStatuses] = useState({});
+
   // Patient Detail History Modal State
   const [selectedHprDetail, setSelectedHprDetail] = useState(null);
   const [showHprModal, setShowHprModal] = useState(false);
@@ -366,12 +374,14 @@ export default function StaffPortal() {
     const interval = setInterval(() => {
       fetchStats();
       fetchQueue();
+      fetchQrIntakes();
     }, 2000);
 
     const handleStorageUpdate = (e) => {
       if (!e || e.key === "doctors_vedika_queue_updated") {
         fetchStats();
         fetchQueue();
+        fetchQrIntakes();
       }
     };
 
@@ -839,6 +849,144 @@ export default function StaffPortal() {
     }
   };
 
+  const fetchQrIntakes = async () => {
+  try {
+    const res = await fetch(
+      `${API_BASE}/staff/qr-intakes?_t=${Date.now()}`,
+      { headers: getAuthHeaders() }
+    );
+
+    const data = await res.json();
+
+    if (data.success && Array.isArray(data.intakes)) {
+      const incomingIntakes = data.intakes;
+
+      const currentStatuses = {};
+      incomingIntakes.forEach((intake) => {
+        currentStatuses[intake.id] = String(
+          intake?.status || ""
+        ).toLowerCase();
+      });
+
+      // Detect newly created QR sessions.
+      const isInitialLoad = lastNotifiedQrCount === 0;
+
+      if (
+        !isInitialLoad &&
+        incomingIntakes.length > lastNotifiedQrCount
+      ) {
+        const newestIntake = incomingIntakes[0];
+        const newestStatus = String(
+          newestIntake?.status || ""
+        ).toLowerCase();
+
+        let notificationText =
+          `New QR patient: ${newestIntake?.patientName || "Patient"}`;
+
+        if (newestStatus === "collecting") {
+          notificationText +=
+            " has registered and symptoms are still pending.";
+        } else if (newestStatus === "review") {
+          notificationText +=
+            " is currently completing the symptom assessment.";
+        } else if (newestStatus === "submitted") {
+          notificationText +=
+            " has submitted their symptoms.";
+        } else if (newestStatus === "safety_blocked") {
+          notificationText +=
+            " requires urgent clinical attention.";
+        }
+
+        setMessage({
+          text: notificationText,
+          type:
+            newestStatus === "safety_blocked"
+              ? "error"
+              : "success"
+        });
+      }
+
+      // Detect lifecycle status changes for existing QR patients.
+      if (!isInitialLoad) {
+        for (const intake of incomingIntakes) {
+          const previousStatus = lastQrStatuses[intake.id];
+          const currentStatus = currentStatuses[intake.id];
+
+          if (
+            previousStatus &&
+            previousStatus !== currentStatus
+          ) {
+            let notificationText = "";
+            let notificationType = "success";
+
+            if (currentStatus === "review") {
+              notificationText =
+                `${intake.patientName || "Patient"} is now completing the symptom assessment.`;
+            } else if (currentStatus === "submitted") {
+              notificationText =
+                `${intake.patientName || "Patient"} has submitted their symptoms.`;
+            } else if (currentStatus === "safety_blocked") {
+              notificationText =
+                `${intake.patientName || "Patient"} requires urgent clinical attention.`;
+              notificationType = "error";
+            } else if (currentStatus === "collecting") {
+              notificationText =
+                `${intake.patientName || "Patient"} is registered but symptoms are still pending.`;
+            }
+
+            if (notificationText) {
+              setMessage({
+                text: notificationText,
+                type: notificationType
+              });
+            }
+
+            break;
+          }
+        }
+      }
+
+      setQrIntakes(incomingIntakes);
+      setLastNotifiedQrCount(incomingIntakes.length);
+      setLastQrStatuses(currentStatuses);
+    }
+  } catch (err) {
+    console.warn("Fetch QR intakes error:", err);
+  }
+};
+
+  const handleStartWalkinFromQr = (intake) => {
+    const fName = intake.firstName || (intake.patientName ? intake.patientName.split(" ")[0] : "");
+    const lName = intake.lastName || (intake.patientName ? intake.patientName.split(" ").slice(1).join(" ") : "");
+    
+    const symptoms = Array.isArray(intake.clinicalIntake?.symptoms) ? intake.clinicalIntake.symptoms.join(", ") : "";
+    let complaintText = symptoms ? `Symptoms: ${symptoms}` : "";
+    if (intake.clinicalIntake?.duration) {
+      complaintText += complaintText ? ` | Duration: ${intake.clinicalIntake.duration}` : `Duration: ${intake.clinicalIntake.duration}`;
+    }
+    if (intake.clinicalIntake?.severity) {
+      complaintText += complaintText ? ` | Severity: ${intake.clinicalIntake.severity}` : `Severity: ${intake.clinicalIntake.severity}`;
+    }
+    if (intake.clinicalIntake?.location) {
+      complaintText += complaintText ? ` | Location: ${intake.clinicalIntake.location}` : `Location: ${intake.clinicalIntake.location}`;
+    }
+    if (intake.clinicalIntake?.recent_actions) {
+      complaintText += complaintText ? ` | Actions: ${intake.clinicalIntake.recent_actions}` : `Actions: ${intake.clinicalIntake.recent_actions}`;
+    }
+
+    setWalkinFirstName(fName);
+    setWalkinLastName(lName);
+    setWalkinPhone(intake.phone || "");
+    setWalkinDob(intake.dateOfBirth || "");
+    setWalkinGender(intake.gender ? (intake.gender.charAt(0).toUpperCase() + intake.gender.slice(1)) : "Male");
+    setChiefComplaints(complaintText);
+    setActiveQrSessionId(intake.id);
+    setCandidatePhoneQuery(intake.phone || "");
+
+    setShowWalkinModal(true);
+    setShowQrDetailsModal(false);
+  };
+
   // -------------------------------------------------------------------------
   // Handlers & Actions
   // -------------------------------------------------------------------------
@@ -904,7 +1052,8 @@ export default function StaffPortal() {
         doctorId: selectedDoctorId,
         chiefComplaints,
         vitals: walkinVitals, // Optional vitals during registration
-        actionType // 'register_only' | 'register_and_checkin'
+        actionType, // 'register_only' | 'register_and_checkin'
+        qrSessionId: activeQrSessionId || null
       };
 
       const res = await fetch(endpoint, {
@@ -918,6 +1067,7 @@ export default function StaffPortal() {
         const actionLabel = actionType === "register_only" ? "registered (scheduled)" : "checked in to queue";
         setMessage({ text: `Walk-in patient ${actionLabel} successfully!`, type: "success" });
         setShowWalkinModal(false);
+        setActiveQrSessionId(null);
         // Reset Form
         setSelectedCandidate(null);
         setCandidatePhoneQuery("");
@@ -934,6 +1084,7 @@ export default function StaffPortal() {
         fetchQueue();
         fetchAppointments();
         fetchPatients();
+        fetchQrIntakes();
       } else {
         setMessage({ text: data.message || "Failed to register walk-in patient.", type: "error" });
       }
@@ -1226,6 +1377,20 @@ export default function StaffPortal() {
   const staffName = currentUser?.fullName || currentUser?.doctor_name || "Ravi Kumar";
   const hospitalName = currentUser?.hospitalName || currentUser?.hospital_name || hospitalInfo?.name || "Doctors Vedika Hospital";
 
+const qrPendingIntakes = qrIntakes.filter(
+  (item) => String(item?.status || "").toLowerCase() === "collecting"
+);
+
+const qrReviewIntakes = qrIntakes.filter(
+  (item) => String(item?.status || "").toLowerCase() === "review"
+);
+
+const qrUrgentIntakes = qrIntakes.filter(
+  (item) =>
+    String(item?.status || "").toLowerCase() === "safety_blocked" ||
+    String(item?.safetyStatus || "").toLowerCase() === "critical"
+);
+
   return (
     <DashboardLayout activePage="staff" searchPlaceholder="Search patients, appointments, phone numbers...">
       <div style={{ display: "flex", flexDirection: "column", gap: "24px", width: "100%", paddingBottom: "40px" }}>
@@ -1386,6 +1551,650 @@ export default function StaffPortal() {
               </div>
 
             </div>
+
+            {/* Doctor & Specialization Filtering Bar */}
+            {/* Incoming QR Patient Intakes Section */}
+<div
+  style={{
+    backgroundColor: "#ffffff",
+    borderRadius: "16px",
+    padding: "20px 24px",
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px"
+  }}
+>
+  {/* Header */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      flexWrap: "wrap",
+      gap: "14px"
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+      <div
+        style={{
+          width: "38px",
+          height: "38px",
+          borderRadius: "10px",
+          backgroundColor: "#e0f2fe",
+          color: "#0284c7",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "1.1rem",
+          flexShrink: 0
+        }}
+      >
+        <i className="fa-solid fa-qrcode" />
+      </div>
+
+      <div>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: "1.1rem",
+            fontWeight: 800,
+            color: "#0b1c2d"
+          }}
+        >
+          Incoming QR Patient Intakes
+        </h3>
+
+        <p
+          style={{
+            margin: "3px 0 0",
+            fontSize: "0.8rem",
+            color: "#64748b"
+          }}
+        >
+          Live patient registration and symptom assessment status
+        </p>
+      </div>
+    </div>
+
+    {/* Summary + Refresh */}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        flexWrap: "wrap"
+      }}
+    >
+      {(() => {
+        const pendingCount = qrIntakes.filter(
+          (item) => item.status === "collecting"
+        ).length;
+
+        const reviewCount = qrIntakes.filter(
+          (item) => item.status === "review"
+        ).length;
+
+        const submittedCount = qrIntakes.filter(
+          (item) => item.status === "submitted"
+        ).length;
+
+        const urgentCount = qrIntakes.filter(
+          (item) => item.status === "safety_blocked"
+        ).length;
+
+        return (
+          <>
+            <span
+              style={{
+                padding: "5px 10px",
+                borderRadius: "20px",
+                fontSize: "0.75rem",
+                fontWeight: 800,
+                backgroundColor: "#fff7ed",
+                color: "#c2410c"
+              }}
+            >
+              🟠 {pendingCount} Pending
+            </span>
+
+            <span
+              style={{
+                padding: "5px 10px",
+                borderRadius: "20px",
+                fontSize: "0.75rem",
+                fontWeight: 800,
+                backgroundColor: "#fff7ed",
+                color: "#c2410c"
+              }}
+            >
+              🟠 {reviewCount} In Progress
+            </span>
+
+            <span
+              style={{
+                padding: "5px 10px",
+                borderRadius: "20px",
+                fontSize: "0.75rem",
+                fontWeight: 800,
+                backgroundColor: "#ecfdf5",
+                color: "#047857"
+              }}
+            >
+              🟢 {submittedCount} Submitted
+            </span>
+
+            {urgentCount > 0 && (
+              <span
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: "20px",
+                  fontSize: "0.75rem",
+                  fontWeight: 800,
+                  backgroundColor: "#fef2f2",
+                  color: "#b91c1c"
+                }}
+              >
+                🔴 {urgentCount} Urgent
+              </span>
+            )}
+          </>
+        );
+      })()}
+
+      <button
+        onClick={fetchQrIntakes}
+        style={{
+          background: "none",
+          border: "1px solid #e2e8f0",
+          borderRadius: "8px",
+          padding: "7px 11px",
+          cursor: "pointer",
+          fontSize: "0.8rem",
+          color: "#64748b",
+          fontWeight: 700
+        }}
+        title="Refresh QR Intakes"
+      >
+        <i
+          className="fa-solid fa-rotate-right"
+          style={{ marginRight: "5px" }}
+        />
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  {qrPendingIntakes.length > 0 && (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "12px 14px",
+      marginBottom: "10px",
+      borderRadius: "10px",
+      backgroundColor: "#fff7ed",
+      border: "1px solid #fed7aa",
+      color: "#9a3412"
+    }}
+  >
+    <div
+      style={{
+        width: "34px",
+        height: "34px",
+        borderRadius: "50%",
+        backgroundColor: "#ffedd5",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0
+      }}
+    >
+      <i className="fa-solid fa-bell" />
+    </div>
+
+    <div style={{ flex: 1 }}>
+      <div
+        style={{
+          fontWeight: 800,
+          fontSize: "0.84rem"
+        }}
+      >
+        {qrPendingIntakes.length}{" "}
+        {qrPendingIntakes.length === 1
+          ? "patient has"
+          : "patients have"}{" "}
+        not completed their symptom assessment
+      </div>
+
+      <div
+        style={{
+          marginTop: "2px",
+          fontSize: "0.75rem",
+          color: "#c2410c"
+        }}
+      >
+        Registered through QR but symptoms are still pending.
+        Please remind the patient to continue the assessment.
+      </div>
+    </div>
+
+    <span
+      style={{
+        padding: "5px 9px",
+        borderRadius: "20px",
+        backgroundColor: "#ffedd5",
+        color: "#c2410c",
+        fontSize: "0.7rem",
+        fontWeight: 800,
+        whiteSpace: "nowrap"
+      }}
+    >
+      ACTION REQUIRED
+    </span>
+  </div>
+)}
+
+{qrUrgentIntakes.length > 0 && (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "12px 14px",
+      marginBottom: "10px",
+      borderRadius: "10px",
+      backgroundColor: "#fef2f2",
+      border: "1px solid #fca5a5",
+      color: "#991b1b"
+    }}
+  >
+    <div
+      style={{
+        width: "34px",
+        height: "34px",
+        borderRadius: "50%",
+        backgroundColor: "#fee2e2",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0
+      }}
+    >
+      <i className="fa-solid fa-triangle-exclamation" />
+    </div>
+
+    <div style={{ flex: 1 }}>
+      <div
+        style={{
+          fontWeight: 800,
+          fontSize: "0.84rem"
+        }}
+      >
+        {qrUrgentIntakes.length}{" "}
+        {qrUrgentIntakes.length === 1
+          ? "patient requires"
+          : "patients require"}{" "}
+        immediate attention
+      </div>
+
+      <div
+        style={{
+          marginTop: "2px",
+          fontSize: "0.75rem",
+          color: "#b91c1c"
+        }}
+      >
+        Critical safety assessment detected. Follow the existing
+        clinical safety workflow immediately.
+      </div>
+    </div>
+
+    <span
+      style={{
+        padding: "5px 9px",
+        borderRadius: "20px",
+        backgroundColor: "#fee2e2",
+        color: "#b91c1c",
+        fontSize: "0.7rem",
+        fontWeight: 800,
+        whiteSpace: "nowrap"
+      }}
+    >
+      URGENT
+    </span>
+  </div>
+)}
+
+  {/* Patient Intake List */}
+  {qrIntakes.length === 0 ? (
+    <div
+      style={{
+        textAlign: "center",
+        padding: "28px 10px",
+        color: "#94a3b8",
+        fontSize: "0.88rem"
+      }}
+    >
+      <i
+        className="fa-solid fa-clipboard-check"
+        style={{
+          fontSize: "1.5rem",
+          marginBottom: "8px",
+          display: "block",
+          color: "#cbd5e1"
+        }}
+      />
+
+      No active QR patient intakes at this moment.
+    </div>
+  ) : (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px"
+      }}
+    >
+      {qrIntakes.map((item) => {
+        const symptomsList = Array.isArray(
+          item.clinicalIntake?.symptoms
+        )
+          ? item.clinicalIntake.symptoms
+          : [];
+
+        const lifecycleStatus = String(
+          item.status || ""
+        ).toLowerCase();
+
+        const safetyStatus = String(
+          item.safetyStatus || "unknown"
+        ).toLowerCase();
+
+        const isPending = lifecycleStatus === "collecting";
+        const isReview = lifecycleStatus === "review";
+        const isSubmitted = lifecycleStatus === "submitted";
+        const isSafetyBlocked =
+          lifecycleStatus === "safety_blocked";
+
+        const isCritical =
+          isSafetyBlocked || safetyStatus === "critical";
+
+        const isCaution =
+          !isCritical && safetyStatus === "caution";
+
+        let statusLabel = "Unknown";
+        let statusIcon = "fa-circle-question";
+        let statusBackground = "#f1f5f9";
+        let statusColor = "#64748b";
+        let cardBorder = "#e2e8f0";
+
+        if (isPending) {
+          statusLabel = "Symptoms Pending";
+          statusIcon = "fa-hourglass-half";
+          statusBackground = "#fff7ed";
+          statusColor = "#c2410c";
+          cardBorder = "#fed7aa";
+        } else if (isReview) {
+          statusLabel = "Assessment In Progress";
+          statusIcon = "fa-stethoscope";
+          statusBackground = "#fff7ed";
+          statusColor = "#c2410c";
+          cardBorder = "#fed7aa";
+        } else if (isSubmitted) {
+          statusLabel = "Symptoms Submitted";
+          statusIcon = "fa-circle-check";
+          statusBackground = "#ecfdf5";
+          statusColor = "#047857";
+          cardBorder = "#bbf7d0";
+        } else if (isSafetyBlocked) {
+          statusLabel = "Urgent / Safety Blocked";
+          statusIcon = "fa-triangle-exclamation";
+          statusBackground = "#fef2f2";
+          statusColor = "#b91c1c";
+          cardBorder = "#fca5a5";
+        }
+
+        return (
+          <div
+            key={item.id}
+            style={{
+              backgroundColor: isSafetyBlocked
+                ? "#fffafa"
+                : "#f8fafc",
+              borderRadius: "12px",
+              padding: "16px 20px",
+              border: `1px solid ${cardBorder}`,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "14px",
+              boxShadow: isPending
+                ? "0 0 0 1px rgba(249,115,22,0.04)"
+                : isSafetyBlocked
+                  ? "0 0 0 1px rgba(239,68,68,0.06)"
+                  : "none"
+            }}
+          >
+            {/* Patient Information */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "5px",
+                minWidth: "220px",
+                flex: 1
+              }}
+            >
+              {/* Name + Lifecycle Status */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "9px",
+                  flexWrap: "wrap"
+                }}
+              >
+                <span
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "0.98rem",
+                    color: "#0f172a"
+                  }}
+                >
+                  {item.patientName || "Anonymous Patient"}
+                </span>
+
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "3px 9px",
+                    borderRadius: "6px",
+                    fontSize: "0.7rem",
+                    fontWeight: 800,
+                    backgroundColor: statusBackground,
+                    color: statusColor
+                  }}
+                >
+                  <i className={`fa-solid ${statusIcon}`} />
+                  {statusLabel}
+                </span>
+
+                {/* Safety badge */}
+                {!isPending && !isReview && (
+                  <span
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.68rem",
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      backgroundColor: isCritical
+                        ? "#fee2e2"
+                        : isCaution
+                          ? "#fef3c7"
+                          : "#ecfdf5",
+                      color: isCritical
+                        ? "#b91c1c"
+                        : isCaution
+                          ? "#b45309"
+                          : "#047857"
+                    }}
+                  >
+                    {item.safetyStatus || "UNKNOWN"}
+                  </span>
+                )}
+              </div>
+
+              {/* Patient Demographics */}
+              <div
+                style={{
+                  fontSize: "0.82rem",
+                  color: "#64748b"
+                }}
+              >
+                <span>
+                  📞 {item.phone || "No phone"}
+                </span>
+
+                <span style={{ margin: "0 8px" }}>•</span>
+
+                <span>
+                  DOB: {item.dateOfBirth || "N/A"}
+                </span>
+
+                <span style={{ margin: "0 8px" }}>•</span>
+
+                <span>
+                  {item.gender
+                    ? item.gender.toUpperCase()
+                    : "N/A"}
+                </span>
+              </div>
+
+              {/* Symptoms */}
+              <div
+                style={{
+                  fontSize: "0.82rem",
+                  color: "#334155",
+                  marginTop: "2px"
+                }}
+              >
+                <strong>Symptoms:</strong>{" "}
+                {symptomsList.length > 0
+                  ? symptomsList.join(", ")
+                  : isPending
+                    ? "Not submitted yet"
+                    : "General assessment"}
+
+                {item.clinicalIntake?.duration
+                  ? ` (${item.clinicalIntake.duration})`
+                  : ""}
+
+                {item.clinicalIntake?.severity
+                  ? ` • Severity: ${item.clinicalIntake.severity}`
+                  : ""}
+              </div>
+
+              {/* Pending reminder */}
+              {isPending && (
+                <div
+                  style={{
+                    marginTop: "3px",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: "#c2410c"
+                  }}
+                >
+                  <i
+                    className="fa-solid fa-bell"
+                    style={{ marginRight: "5px" }}
+                  />
+                  Patient registered but symptoms are still pending.
+                </div>
+              )}
+
+              {/* Urgent reminder */}
+              {isSafetyBlocked && (
+                <div
+                  style={{
+                    marginTop: "3px",
+                    fontSize: "0.75rem",
+                    fontWeight: 800,
+                    color: "#b91c1c"
+                  }}
+                >
+                  <i
+                    className="fa-solid fa-triangle-exclamation"
+                    style={{ marginRight: "5px" }}
+                  />
+                  Immediate clinical attention required.
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap"
+              }}
+            >
+              <button
+                onClick={() => {
+                  setSelectedQrIntake(item);
+                  setShowQrDetailsModal(true);
+                }}
+                style={{
+                  backgroundColor: "#ffffff",
+                  color: "#334155",
+                  border: "1px solid #cbd5e1",
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                <i
+                  className="fa-solid fa-file-lines"
+                  style={{ marginRight: "6px" }}
+                />
+                View Intake
+              </button>
+
+              <button
+                onClick={() => handleStartWalkinFromQr(item)}
+                style={{
+                  backgroundColor: "#08AEB8",
+                  color: "#ffffff",
+                  border: "none",
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+              >
+                <i className="fa-solid fa-user-plus" />
+                Register &amp; Walk-in
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
 
             {/* Doctor & Specialization Filtering Bar */}
             <div style={{ backgroundColor: "#ffffff", borderRadius: "16px", padding: "20px 24px", border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.02)", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
@@ -3614,6 +4423,112 @@ export default function StaffPortal() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: QR CLINICAL INTAKE DETAILS
+      ========================================================================= */}
+      {showQrDetailsModal && selectedQrIntake && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(11, 28, 45, 0.6)", backdropFilter: "blur(6px)", zIndex: 4000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", boxSizing: "border-box" }}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: "18px", width: "100%", maxWidth: "600px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", border: "1px solid #e2e8f0", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+            
+            <div style={{ padding: "18px 24px", backgroundColor: "#0b1c2d", color: "#ffffff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800 }}>QR Clinical Intake Details</h3>
+                <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>Structured pre-consultation symptom assessment</span>
+              </div>
+              <button onClick={() => setShowQrDetailsModal(false)} style={{ background: "none", border: "none", color: "#ffffff", fontSize: "1.2rem", cursor: "pointer" }}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto" }}>
+              {/* Patient Basic Info */}
+              <div style={{ backgroundColor: "#f8fafc", padding: "14px 18px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a" }}>
+                  {selectedQrIntake.patientName}
+                </div>
+                <div style={{ fontSize: "0.85rem", color: "#64748b", marginTop: "4px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                  <span>Phone: {selectedQrIntake.phone}</span>
+                  <span>DOB: {selectedQrIntake.dateOfBirth}</span>
+                  <span>Gender: {selectedQrIntake.gender}</span>
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "4px" }}>
+                  Submitted: {selectedQrIntake.submittedAt ? new Date(selectedQrIntake.submittedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "Recently"}
+                </div>
+              </div>
+
+              {/* Clinical Intake Fields */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800, color: "#08AEB8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Clinical Intake Summary
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: "8px", fontSize: "0.9rem" }}>
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Symptoms:</span>
+                  <span style={{ color: "#0f172a", fontWeight: 600 }}>
+                    {Array.isArray(selectedQrIntake.clinicalIntake?.symptoms) && selectedQrIntake.clinicalIntake.symptoms.length > 0
+                      ? selectedQrIntake.clinicalIntake.symptoms.join(", ")
+                      : "None recorded"}
+                  </span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Duration:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.duration || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Severity:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.severity ? selectedQrIntake.clinicalIntake.severity.toUpperCase() : "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Location:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.location || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Recent Actions:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.recent_actions || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Medications:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.current_medications || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Patient Notes:</span>
+                  <span style={{ color: "#0f172a" }}>{selectedQrIntake.clinicalIntake?.additional_notes || "--"}</span>
+
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Safety Status:</span>
+                  <span>
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        fontSize: "0.75rem",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                        backgroundColor: selectedQrIntake.safetyStatus?.toLowerCase() === "caution" ? "#fef3c7" : "#ecfdf5",
+                        color: selectedQrIntake.safetyStatus?.toLowerCase() === "caution" ? "#b45309" : "#047857"
+                      }}
+                    >
+                      {selectedQrIntake.safetyStatus || "safe"}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "16px 24px", backgroundColor: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setShowQrDetailsModal(false)}
+                style={{ padding: "10px 18px", borderRadius: "8px", border: "1px solid #cbd5e1", backgroundColor: "#ffffff", color: "#475569", fontWeight: 700, cursor: "pointer" }}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStartWalkinFromQr(selectedQrIntake)}
+                style={{ padding: "10px 20px", borderRadius: "8px", border: "none", backgroundColor: "#08AEB8", color: "#ffffff", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <i className="fa-solid fa-user-plus" /> Proceed to Walk-in Registration
+              </button>
+            </div>
+
           </div>
         </div>
       )}

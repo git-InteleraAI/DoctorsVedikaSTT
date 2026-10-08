@@ -208,10 +208,12 @@ app.use("/api/questions", questionRoutes);
 const hospitalAdminRoutes = require("./routes/hospitalAdmin");
 const staffRoutes = require("./routes/staff");
 const queueRoutes = require("./routes/queue");
+const qrIntakeRoutes = require("./routes/qrIntake");
 
 app.use("/api/v1/hospital-admin", hospitalAdminRoutes);
 app.use("/api/v1/staff", staffRoutes);
 app.use("/api/v1/queue", queueRoutes);
+app.use("/api/v1/public/qr", qrIntakeRoutes);
 
 
 // =====================================================
