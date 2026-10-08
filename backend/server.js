@@ -208,10 +208,12 @@ app.use("/api/questions", questionRoutes);
 const hospitalAdminRoutes = require("./routes/hospitalAdmin");
 const staffRoutes = require("./routes/staff");
 const queueRoutes = require("./routes/queue");
+const qrIntakeRoutes = require("./routes/qrIntake");
 
 app.use("/api/v1/hospital-admin", hospitalAdminRoutes);
 app.use("/api/v1/staff", staffRoutes);
 app.use("/api/v1/queue", queueRoutes);
+app.use("/api/v1/public/qr", qrIntakeRoutes);
 
 
 // =====================================================
@@ -802,6 +804,7 @@ app.get(
             let doctor = null;
             let appointment = null;
             let visitData = null;
+            let docId = null;
 
             const rawAppId = consultationId.replace("consultation-app-", "").replace("consultation-db-", "");
 
@@ -842,6 +845,28 @@ app.get(
                     patient = pData;
                 }
 
+                if (!patient && patientId) {
+                    let hprQuery = targetDb.from("hospital_patient_records").select("*");
+                    if (isUuid(patientId)) {
+                        hprQuery = hprQuery.or(`id.eq.${patientId},patient_id.eq.${patientId}`);
+                    } else {
+                        hprQuery = hprQuery.eq("hospital_patient_code", patientId);
+                    }
+                    const { data: hprDirect } = await hprQuery.maybeSingle();
+                    if (hprDirect) {
+                        const decHpr = decryptRecord("hospital_patient_records", hprDirect);
+                        patient = {
+                            id: decHpr.id,
+                            full_name: decHpr.full_name || `${decHpr.first_name || ""} ${decHpr.last_name || ""}`.trim(),
+                            first_name: decHpr.first_name,
+                            last_name: decHpr.last_name,
+                            patient_code: decHpr.hospital_patient_code,
+                            gender: decHpr.gender,
+                            date_of_birth: decHpr.date_of_birth
+                        };
+                    }
+                }
+
                 if (!patient && appointment?.hospital_patient_id) {
                     const { data: hprData } = await targetDb
                         .from("hospital_patient_records")
@@ -862,6 +887,21 @@ app.get(
                     }
                 }
 
+                // If appointment wasn't fetched yet by UUID, find the latest appointment for this patient
+                if (!appointment && patient) {
+                    const patId = patient.id || patient.user_id;
+                    if (patId) {
+                        const { data: latestApp } = await targetDb
+                            .from("appointments")
+                            .select("*")
+                            .or(`patient_id.eq.${patId},hospital_patient_id.eq.${patId}`)
+                            .order("created_at", { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+                        if (latestApp) appointment = latestApp;
+                    }
+                }
+
                 // 3. Fetch consultation note
                 if (isUuid(rawAppId)) {
                     const { data: notesData } = await targetDb
@@ -870,6 +910,15 @@ app.get(
                         .eq("appointment_id", rawAppId)
                         .maybeSingle();
                     note = notesData;
+                }
+
+                if (!note && appointment?.id && isUuid(appointment.id)) {
+                    const { data: notesData } = await targetDb
+                        .from("consultation_notes")
+                        .select("*")
+                        .eq("appointment_id", appointment.id)
+                        .maybeSingle();
+                    if (notesData) note = notesData;
                 }
 
                 if (!note && patient) {
@@ -884,10 +933,10 @@ app.get(
                     }
                 }
 
-                const targetAppId = note?.appointment_id || rawAppId;
+                const targetAppId = note?.appointment_id || (isUuid(rawAppId) ? rawAppId : appointment?.id);
 
                 // 4. Fetch prescription
-                if (isUuid(targetAppId)) {
+                if (targetAppId && isUuid(targetAppId)) {
                     const { data: rxData } = await targetDb
                         .from("prescriptions")
                         .select("*")
@@ -897,14 +946,47 @@ app.get(
                 }
 
                 // 5. Fetch doctor & visit record for vitals/DOB
-                const docId = note?.doctor_id || appointment?.doctor_id;
+                docId = note?.doctor_id || appointment?.doctor_id || rx?.doctor_id || null;
                 if (docId && isUuid(docId)) {
                     const { data: docData } = await targetDb
                         .from("doctors")
                         .select("*")
-                        .or(`doctor_id.eq.${docId},user_id.eq.${docId},id.eq.${docId}`)
+                        .or(`doctor_id.eq.${docId},user_id.eq.${docId}`)
                         .maybeSingle();
                     doctor = docData;
+
+                    if (!doctor) {
+                        const { data: memberData } = await targetDb
+                            .from("hospital_members")
+                            .select("doctor_id, user_id")
+                            .or(`id.eq.${docId},user_id.eq.${docId},doctor_id.eq.${docId}`)
+                            .limit(1)
+                            .maybeSingle();
+                        const resolvedDocUuid = memberData?.doctor_id || memberData?.user_id;
+                        if (resolvedDocUuid && isUuid(resolvedDocUuid)) {
+                            const { data: fallbackDoc } = await targetDb
+                                .from("doctors")
+                                .select("*")
+                                .or(`doctor_id.eq.${resolvedDocUuid},user_id.eq.${resolvedDocUuid}`)
+                                .maybeSingle();
+                            if (fallbackDoc) doctor = fallbackDoc;
+                        }
+                    }
+
+                    if (!doctor) {
+                        const { data: userData } = await targetDb
+                            .from("users")
+                            .select("*")
+                            .eq("id", docId)
+                            .maybeSingle();
+                        if (userData) {
+                            doctor = {
+                                doctor_name: userData.full_name || `${userData.first_name || ""} ${userData.last_name || ""}`.trim(),
+                                doctor_email: userData.email,
+                                doctor_mobile: userData.phone,
+                            };
+                        }
+                    }
                 }
 
                 visitData = null;
@@ -1053,7 +1135,9 @@ app.get(
                 }
             }
 
-            const doctorSpecialty = doctor?.doctor_specialization || doctor?.specialization || doctor?.specialty || doctor?.speciality || "";
+            const doctorSpecialty = doctor?.doctor_specialization || doctor?.specialization || doctor?.specialty || doctor?.doctor_specialty || doctor?.speciality || "";
+            const doctorQualification = doctor?.doctor_qualification || doctor?.qualification || doctor?.qualifications || doctor?.degrees || "";
+            const doctorRegNo = doctor?.doctor_registration_number || doctor?.registration_number || doctor?.reg_number || doctor?.reg_no || doctor?.registrationNumber || "";
             const rawDocName = doctor?.doctor_name || doctor?.full_name || doctor?.name;
             let doctorName = rawDocName ? (rawDocName.toLowerCase().startsWith('dr') ? rawDocName : `Dr. ${rawDocName}`) : "";
             if (!doctorName) {
@@ -1065,7 +1149,7 @@ app.get(
 
             const clinicName = hospital?.name || doctor?.doctor_clinic_name || doctor?.clinic_name || doctor?.clinicName || "";
             const clinicAddress = hospital?.address || doctor?.doctor_clinic_address || doctor?.clinic_address || doctor?.clinicAddress || "";
-            const clinicPhone = hospital?.phone || doctor?.doctor_phone || doctor?.phone || "";
+            const clinicPhone = hospital?.phone || doctor?.doctor_mobile || doctor?.doctor_phone || doctor?.phone || "";
             const clinicEmail = hospital?.email || doctor?.doctor_email || doctor?.email || "";
 
             const finalMedicinesList = (Array.isArray(rx?.medicines) && rx.medicines.length > 0)

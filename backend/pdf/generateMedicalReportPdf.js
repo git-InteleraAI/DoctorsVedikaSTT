@@ -374,7 +374,7 @@ function renderPdfToStream(patientRecord, stream) {
         printPair('Age / Gender', ageGender, col1X, col1ValX, col1ValW, rowY3);
         printPair('Appointment ID', appointmentId, col1X, col1ValX, col1ValW, rowY4);
 
-        printPair('Doctor Name', doctorName, col2X, col2ValX, col2ValW, rowY1);
+        printPair('Doctor Name', doctorName || '-', col2X, col2ValX, col2ValW, rowY1);
         printPair('Date', dateStr, col2X, col2ValX, col2ValW, rowY2);
         printPair('Time', timeStr, col2X, col2ValX, col2ValW, rowY3);
         printPair('Clinic Name', clinicName, col2X, col2ValX, col2ValW, rowY4);

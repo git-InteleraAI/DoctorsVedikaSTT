@@ -51,6 +51,50 @@ const formatAppointmentTime = (time) => {
     });
 };
 
+const formatWaitingTime = (app) => {
+    if (!app) return "Waiting";
+    const startTimeStr = app.checked_in_at || app.started_waiting_at;
+    let diffMinutes = 0;
+    const now = Date.now();
+
+    if (startTimeStr) {
+        const start = new Date(startTimeStr).getTime();
+        if (!isNaN(start) && now >= start) {
+            diffMinutes = Math.floor((now - start) / 60000);
+        }
+    } else if (app.appointment_date && app.appointment_time) {
+        try {
+            const timeStr = String(app.appointment_time).trim();
+            const parts = timeStr.split(":");
+            if (parts.length >= 2) {
+                const h = parseInt(parts[0], 10);
+                const m = parseInt(parts[1], 10);
+                if (!isNaN(h) && !isNaN(m)) {
+                    const appDate = new Date(`${app.appointment_date}T00:00:00`);
+                    appDate.setHours(h, m, 0, 0);
+                    const appMs = appDate.getTime();
+                    if (now >= appMs) {
+                        diffMinutes = Math.floor((now - appMs) / 60000);
+                    }
+                }
+            }
+        } catch {
+            diffMinutes = 0;
+        }
+    } else if (app.created_at) {
+        const start = new Date(app.created_at).getTime();
+        if (!isNaN(start) && now >= start) {
+            diffMinutes = Math.floor((now - start) / 60000);
+        }
+    }
+
+    if (diffMinutes <= 1) return "Waiting 1 min";
+    if (diffMinutes < 60) return `Waiting ${diffMinutes} mins`;
+    const hrs = Math.floor(diffMinutes / 60);
+    const remMins = diffMinutes % 60;
+    return `Waiting ${hrs}h ${remMins > 0 ? `${remMins}m` : ""}`.trim();
+};
+
 const formatAppointmentSource = (source) => {
     switch (source) {
         case "app":
@@ -193,6 +237,12 @@ const Dashboard = () => {
     const [metrics, setMetrics] = useState({ todayCount: 0, tomorrowCount: 0, completedCount: 0, confirmedCount: 0 });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [, setCurrentTimeTick] = useState(Date.now());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTimeTick(Date.now()), 30000);
+        return () => clearInterval(timer);
+    }, []);
 
     const loadMetrics = async () => {
         if (!doctor) return;
@@ -1299,22 +1349,22 @@ const Dashboard = () => {
                                 }} />
 
                                 <div>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "14px", paddingLeft: "10px" }}>
-                                        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px", marginBottom: "14px" }}>
+                                        <div style={{ display: "flex", gap: "10px", alignItems: "center", minWidth: 0, flex: 1 }}>
                                             <img
                                                 src={app.patientPhoto || "/images/human.png"}
                                                 alt="Patient"
-                                                style={{ width: "46px", height: "46px", borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid #f1f5f9" }}
+                                                style={{ width: "44px", height: "44px", borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid #f1f5f9" }}
                                                 onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(app.patientName || "Patient")}&background=0d9488&color=fff`; }}
                                             />
-                                            <div style={{ minWidth: 0 }}>
-                                                <h3 style={{ margin: 0, fontSize: "1.02rem", fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+                                                <h3 style={{ margin: 0, fontSize: "0.98rem", fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                                     {app.patientName || app.patient_name}
                                                 </h3>
-                                                <p style={{ margin: "2px 0 0 0", fontSize: "0.8rem", color: "#64748b" }}>
+                                                <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                                     {app.patientCode || (app.patientId ? `DV-P-${String(app.patientId).slice(0, 6).toUpperCase()}` : "Walk-in Patient")}
                                                 </p>
-                                                <p style={{ margin: "2px 0 0 0", fontSize: "0.8rem", color: "#64748b" }}>
+                                                <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", color: "#64748b" }}>
                                                     {app.age ? `${app.age} yrs` : ""} {app.gender ? `• ${app.gender}` : ""}
                                                 </p>
                                             </div>
@@ -1325,13 +1375,14 @@ const Dashboard = () => {
                                                 background: "#f0f9ff",
                                                 border: "1px solid #bae6fd",
                                                 color: "#0284c7",
-                                                padding: "4px 10px",
+                                                padding: "4px 8px",
                                                 borderRadius: "8px",
-                                                fontSize: "0.82rem",
+                                                fontSize: "0.78rem",
                                                 fontWeight: 700,
-                                                display: "flex",
+                                                display: "inline-flex",
                                                 alignItems: "center",
-                                                gap: "4px"
+                                                gap: "4px",
+                                                whiteSpace: "nowrap"
                                             }}>
                                                 <i className="fa-regular fa-clock"></i> {formatAppointmentTime(app.time || app.appointment_time)}
                                             </span>
@@ -1343,13 +1394,14 @@ const Dashboard = () => {
                                                     color: "#c2410c",
                                                     padding: "3px 8px",
                                                     borderRadius: "6px",
-                                                    fontSize: "0.74rem",
+                                                    fontSize: "0.72rem",
                                                     fontWeight: 600,
-                                                    display: "flex",
+                                                    display: "inline-flex",
                                                     alignItems: "center",
-                                                    gap: "4px"
+                                                    gap: "4px",
+                                                    whiteSpace: "nowrap"
                                                 }}>
-                                                    <i className="fa-regular fa-hourglass-half"></i> Waiting 10 mins
+                                                    <i className="fa-regular fa-hourglass-half"></i> {formatWaitingTime(app)}
                                                 </span>
                                             )}
                                         </div>

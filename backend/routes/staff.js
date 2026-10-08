@@ -100,6 +100,68 @@ router.get("/hospital-info", async (req, res) => {
 });
 
 /**
+ * GET /api/v1/staff/qr-intakes
+ * Returns list of submitted QR intakes for staff review.
+ * Never exposes anonymous access_token to staff UI.
+ */
+router.get("/qr-intakes", requirePermission("queue.view"), async (req, res) => {
+    try {
+        const db = getSupabaseClient();
+        const hospitalId = req.context.hospitalId;
+        if (!db || !hospitalId) {
+            return res.json({ success: true, intakes: [] });
+        }
+
+        const { data, error } = await db
+            .from("qr_intake_sessions")
+            .select(`
+                id,
+                hospital_id,
+                first_name,
+                last_name,
+                full_name,
+                phone,
+                email,
+                date_of_birth,
+                gender,
+                status,
+                clinical_intake,
+                safety_status,
+                safety_result,
+                submitted_at,
+                created_at
+            `)
+            .eq("hospital_id", hospitalId)
+            .in("status", ["collecting", "review", "submitted", "safety_blocked"])
+            .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        const intakes = (data || []).map((row) => ({
+            id: row.id,
+            patientName: row.full_name,
+            firstName: row.first_name,
+            lastName: row.last_name,
+            phone: row.phone,
+            email: row.email,
+            dateOfBirth: row.date_of_birth,
+            gender: row.gender,
+            status: row.status,
+            clinicalIntake: row.clinical_intake || {},
+            safetyStatus: row.safety_status || "safe",
+            safetyResult: row.safety_result || {},
+            submittedAt: row.submitted_at,
+            createdAt: row.created_at,
+        }));
+
+        return res.json({ success: true, intakes });
+    } catch (err) {
+        console.error("[Staff] Failed to load QR intakes:", err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
  * GET /api/v1/staff/dashboard-stats
  * Staff Portal metrics overview: Today's Appointments, Waiting, In Consultation, Completed, Cancelled, Queue Count
  */
@@ -1502,6 +1564,61 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
         }
 
         const calculatedFullName = (fullName || `${firstName || 'Walk-in'} ${lastName || ''}`).trim();
+        const normalizedInputPhone = phone ? String(phone).replace(/\D/g, "") : "";
+
+        // Check for duplicate walk-in submission for this doctor and date (e.g. rapid double-clicks)
+        const { data: candidateHprs } = await db
+            .from("hospital_patient_records")
+            .select("id, hospital_patient_code, full_name, phone, date_of_birth, created_at")
+            .eq("hospital_id", req.context.hospitalId)
+            .eq("date_of_birth", dateOfBirth.trim())
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        let existingMatchingHpr = null;
+        let activeVisitFound = null;
+
+        if (candidateHprs && candidateHprs.length > 0) {
+            for (const h of candidateHprs) {
+                const dec = decryptRecord("hospital_patient_records", h);
+                const decPhoneNorm = dec.phone ? String(dec.phone).replace(/\D/g, "") : "";
+                const decNameNorm = String(dec.full_name || "").toLowerCase().replace(/\s+/g, "");
+                const calcNameNorm = calculatedFullName.toLowerCase().replace(/\s+/g, "");
+
+                const phoneMatch = normalizedInputPhone && decPhoneNorm && normalizedInputPhone === decPhoneNorm;
+                const nameMatch = calcNameNorm && decNameNorm && (calcNameNorm === decNameNorm);
+
+                if ((phoneMatch && nameMatch) || (phoneMatch && !calcNameNorm) || (phoneMatch)) {
+                    // Check if this matching HPR has an active visit today
+                    const { data: activeVisits } = await db
+                        .from("patient_visits")
+                        .select("id, appointment_id, visit_stage, created_at")
+                        .eq("hospital_id", req.context.hospitalId)
+                        .eq("hospital_patient_id", h.id)
+                        .eq("doctor_id", doctorId)
+                        .in("visit_stage", ["scheduled", "checked_in", "waiting", "in_consultation"]);
+
+                    if (activeVisits && activeVisits.length > 0) {
+                        existingMatchingHpr = { ...dec, id: h.id };
+                        activeVisitFound = activeVisits[0];
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (existingMatchingHpr && activeVisitFound) {
+            return res.status(200).json({
+                success: true,
+                isDuplicatePrevented: true,
+                message: `Patient ${existingMatchingHpr.full_name || "Record"} already has an active visit for this doctor today.`,
+                appointmentId: activeVisitFound.appointment_id,
+                visitId: activeVisitFound.id,
+                hprId: existingMatchingHpr.id
+            });
+        }
+
         const patientCode = "DV-P-" + Math.floor(100000 + Math.random() * 900000);
 
         // 1. Create HPR with patient_id = NULL
@@ -1599,6 +1716,20 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             resourceId: visitRow.id,
             metadata: { hprId: hprRecord.id, appointmentId: appRow.id, doctorId, actionType }
         });
+
+        if (req.body.qrSessionId) {
+            await db
+                .from("qr_intake_sessions")
+                .update({
+                    hospital_patient_id: hprRecord.id,
+                    patient_visit_id: visitRow.id,
+                    status: "converted",
+                    converted_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", req.body.qrSessionId)
+                .eq("hospital_id", req.context.hospitalId);
+        }
 
         return res.status(201).json({
             success: true,
@@ -1750,6 +1881,20 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
             resourceId: visitRow.id,
             metadata: { hprId: hprRecord.id, appointmentId: appRow.id, doctorId, actionType }
         });
+
+        if (req.body.qrSessionId) {
+            await db
+                .from("qr_intake_sessions")
+                .update({
+                    hospital_patient_id: hprRecord.id,
+                    patient_visit_id: visitRow.id,
+                    status: "converted",
+                    converted_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", req.body.qrSessionId)
+                .eq("hospital_id", req.context.hospitalId);
+        }
 
         return res.status(201).json({
             success: true,

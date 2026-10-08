@@ -410,7 +410,7 @@ const ConsultationSummary = () => {
                     }
                     setFetchedPatient({
                         name: matched.full_name || (matched.first_name ? `${matched.first_name} ${matched.last_name || ""}`.trim() : "") || matched.name || "Patient",
-                        displayId: matched.patient_code || matched.id || "DV-P-000086",
+                        displayId: matched.patient_code || matched.patient_number || (matched.id && matched.id.length > 20 ? `DV-P-${matched.id.substring(0, 6).toUpperCase()}` : matched.id) || (resolvedPatientId ? (resolvedPatientId.length > 20 ? `DV-P-${resolvedPatientId.substring(0, 6).toUpperCase()}` : resolvedPatientId) : "N/A"),
                         age: ageVal || null,
                         gender: matched.gender ? (matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1)) : null,
                         bloodGroup: matched.blood_group || null,
@@ -426,15 +426,17 @@ const ConsultationSummary = () => {
         fetchedPatient?.name ||
         (patient?.name && patient?.name !== "Unknown Patient" && patient?.name !== "Patient" && patient?.name !== "Walk-in Patient" ? patient.name : null) ||
         state?.patientName ||
-        "John";
+        patient?.name ||
+        "Patient";
 
     const displayPatientId =
         fetchedPatient?.displayId ||
         patient?.displayId ||
         patient?.patient_code ||
+        patient?.patient_number ||
         (resolvedPatientId && resolvedPatientId.length > 20
             ? (patient?.patient_code || `DV-P-${resolvedPatientId.substring(0, 6).toUpperCase()}`)
-            : resolvedPatientId || "DV-P-000001");
+            : resolvedPatientId || "N/A");
 
     const displayPatientAge =
         fetchedPatient?.age ||
@@ -1369,7 +1371,7 @@ const ConsultationSummary = () => {
                     );
 
                     if (matched) {
-                        let calcAge = "36";
+                        let calcAge = null;
                         if (matched.date_of_birth) {
                             const dob = new Date(matched.date_of_birth);
                             if (!isNaN(dob.getTime())) {
@@ -1377,15 +1379,16 @@ const ConsultationSummary = () => {
                             }
                         }
 
-                        setFetchedPatient({
-                            name: matched.full_name || matched.first_name || matched.name || "John",
-                            age: matched.age || calcAge,
-                            gender: matched.gender ? (matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1)) : "Male",
-                            displayId: matched.patient_code || matched.patient_number || `DV-P-000086`,
-                            bloodGroup: matched.blood_group || "O+",
-                            weight: matched.weight || "68 kg",
-                            allergies: matched.allergies || "None",
-                        });
+                        setFetchedPatient((prev) => ({
+                            ...prev,
+                            name: matched.full_name || (matched.first_name ? `${matched.first_name} ${matched.last_name || ""}`.trim() : "") || matched.name || prev?.name || "Patient",
+                            age: matched.age || calcAge || prev?.age || null,
+                            gender: matched.gender ? (matched.gender.charAt(0).toUpperCase() + matched.gender.slice(1)) : (prev?.gender || null),
+                            displayId: matched.patient_code || matched.patient_number || (matched.id && matched.id.length > 20 ? `DV-P-${matched.id.substring(0, 6).toUpperCase()}` : matched.id) || prev?.displayId || (pid.length > 20 ? `DV-P-${pid.substring(0, 6).toUpperCase()}` : pid),
+                            bloodGroup: matched.blood_group || prev?.bloodGroup || null,
+                            weight: matched.weight || prev?.weight || null,
+                            allergies: matched.allergies || prev?.allergies || null,
+                        }));
                         return null;
                     }
                     return fetch(`${NODE_API_URL}/api/appointments`, { headers }).then(r => r.ok ? r.json() : null);
@@ -1402,20 +1405,21 @@ const ConsultationSummary = () => {
                             a.appointment_id === pid
                     );
                     if (matched) {
-                        setFetchedPatient({
-                            name: matched.patient_name || matched.patientName || matched.full_name || matched.name || "John",
-                            age: matched.age || matched.patient_age || "36",
-                            gender: matched.gender || matched.patient_gender || "Male",
-                            displayId: matched.patient_code || matched.patient_number || `DV-P-000086`,
-                            bloodGroup: matched.blood_group || matched.bloodGroup || "O+",
-                            weight: matched.weight || "68 kg",
-                            allergies: matched.allergies || "None",
-                        });
+                        setFetchedPatient((prev) => ({
+                            ...prev,
+                            name: matched.patient_name || matched.patientName || matched.full_name || matched.name || prev?.name || "Patient",
+                            age: matched.age || matched.patient_age || prev?.age || null,
+                            gender: matched.gender || matched.patient_gender || prev?.gender || null,
+                            displayId: matched.patient_code || matched.patient_number || prev?.displayId || (pid.length > 20 ? `DV-P-${pid.substring(0, 6).toUpperCase()}` : pid),
+                            bloodGroup: matched.blood_group || matched.bloodGroup || prev?.bloodGroup || null,
+                            weight: matched.weight || prev?.weight || null,
+                            allergies: matched.allergies || prev?.allergies || null,
+                        }));
                     }
                 })
                 .catch((err) => console.warn("[ConsultationSummary] Error fetching patient details:", err));
         }
-    }, [patientIdFromPath]);
+    }, [patientIdFromPath, state?.patientId]);
 
 
     /* ======================================================================
@@ -3237,7 +3241,7 @@ const ConsultationSummary = () => {
                                 </div>
                                 <div>
                                     <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Age / Gender</div>
-                                    <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "0.9rem" }}>{fetchedPatient?.age || patient.age || "36"} yrs / {fetchedPatient?.gender || patient.gender || "Male"}</div>
+                                    <div style={{ fontWeight: 600, color: "#0f172a", fontSize: "0.9rem" }}>{displayPatientAge ? `${displayPatientAge} yrs` : "N/A"}{displayPatientGender ? ` / ${displayPatientGender}` : ""}</div>
                                 </div>
                                 <div>
                                     <div style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "uppercase", fontWeight: 700 }}>Date</div>

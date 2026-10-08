@@ -253,9 +253,9 @@ function renderPrescriptionPdfToStream(patientRecord, stream) {
         rawDocName = `Dr. ${rawDocName}`;
     }
     const doctorName = cleanString(rawDocName, '');
-    const doctorSpecialty = cleanString(patientRecord.doctorSpecialty || patientRecord.doctor_specialization || patientRecord.doctor?.specialization, '');
-    const doctorQual = cleanString(patientRecord.doctorQualification || patientRecord.qualification, '');
-    const doctorRegNo = cleanString(patientRecord.doctorRegNo || patientRecord.registration_number, '');
+    const doctorSpecialty = cleanString(patientRecord.doctorSpecialty || patientRecord.doctor_specialization || patientRecord.doctorSpecialization || patientRecord.doctor?.doctor_specialization || patientRecord.doctor?.specialization, '');
+    const doctorQual = cleanString(patientRecord.doctorQualification || patientRecord.doctor_qualification || patientRecord.qualification || patientRecord.doctor?.doctor_qualification, '');
+    const doctorRegNo = cleanString(patientRecord.doctorRegNo || patientRecord.doctor_registration_number || patientRecord.registration_number || patientRecord.doctor?.doctor_registration_number, '');
     const qualRegCombined = [doctorQual, doctorRegNo ? `Reg: ${doctorRegNo}` : ''].filter(Boolean).join(' | ');
 
     const dateStr = formatISTDate(patientRecord.consultationDate);

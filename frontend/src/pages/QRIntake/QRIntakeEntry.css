@@ -1,0 +1,40 @@
+.qr-entry-page {
+    min-height: 100dvh;
+    box-sizing: border-box;
+}
+
+.qr-entry-card {
+    box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+    .qr-entry-page {
+        padding: 16px !important;
+        align-items: flex-start !important;
+        padding-top: 32px !important;
+    }
+
+    .qr-entry-card {
+        padding: 24px !important;
+        border-radius: 16px !important;
+    }
+
+    .qr-entry-card h1 {
+        font-size: 26px !important;
+    }
+}
+
+@media (max-width: 380px) {
+    .qr-entry-page {
+        padding: 10px !important;
+        padding-top: 24px !important;
+    }
+
+    .qr-entry-card {
+        padding: 18px !important;
+    }
+
+    .qr-entry-card h1 {
+        font-size: 23px !important;
+    }
+}
