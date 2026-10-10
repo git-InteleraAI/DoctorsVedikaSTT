@@ -4,7 +4,7 @@ import authService from "../services/authService";
 import "./DoctorAuth.css";
 
 // Assets
-import vedikaLogo from "../assets/vedika_logo.png";
+import vedikaLogo from "/images/logo.png";
 import doctorCutout from "../assets/doctor_bg.png";
 import iconSecure from "../assets/secure.png";
 import iconNeedHelp from "../assets/need_help.png";
@@ -24,13 +24,13 @@ const ResetPassword = () => {
 
   useEffect(() => {
     let token = "";
-    
+
     // Check URL hash (#access_token=...)
     if (location.hash) {
       const params = new URLSearchParams(location.hash.substring(1));
       token = params.get("access_token") || "";
     }
-    
+
     // Check URL search (?access_token=... or ?token=...)
     if (!token && location.search) {
       const params = new URLSearchParams(location.search);

@@ -25,13 +25,13 @@ export default function LandingPage() {
             setIsAuthModalOpen(true);
         }
     };
-    
+
     useEffect(() => {
         if (window.location.hash.includes('access_token=')) {
             navigate('/auth/callback' + window.location.hash);
             return;
         }
-        
+
         const observerOptions = { root: null, rootMargin: '0px', threshold: 0.15 };
         const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
@@ -71,7 +71,7 @@ export default function LandingPage() {
                         <a href="/login" onClick={handleAuthActionClick} className="btn-nav-action desktop-only">
                             Partner With Us <i className="fa-solid fa-arrow-up-right"></i>
                         </a>
-                        <button 
+                        <button
                             className="mobile-menu-toggle"
                             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                             style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--dark-slate)', display: 'none' }}
@@ -80,7 +80,7 @@ export default function LandingPage() {
                         </button>
                     </div>
                 </div>
-                
+
                 {/* Mobile Menu Overlay */}
                 <div className={`mobile-menu-overlay ${isMobileMenuOpen ? 'open' : ''}`}>
                     <div className="mobile-nav-links">

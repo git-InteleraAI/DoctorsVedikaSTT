@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
-import vedikaLogo from "../assets/vedika_logo.png";
+import vedikaLogo from "/images/logo.png";
 import { getApiV1Url } from "../utils/apiConfig";
+import { QRCodeCanvas } from "qrcode.react";
 
 const API_BASE = getApiV1Url();
 
@@ -1237,7 +1238,7 @@ export default function HospitalAdmin() {
                         </div>
 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "24px" }}>
-                            
+
                             {/* Primary Account & Role Information */}
                             <div style={{ backgroundColor: "#ffffff", borderRadius: "16px", padding: "28px", border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px", borderBottom: "1px solid #f1f5f9", paddingBottom: "12px" }}>

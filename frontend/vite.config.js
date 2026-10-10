@@ -11,9 +11,17 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
         secure: false,
+        configure: (proxy) => {
+          proxy.on('error', (err, _req, res) => {
+            if (res && !res.headersSent && typeof res.writeHead === 'function') {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Backend service offline or reconnecting' }));
+            }
+          });
+        },
       }
     }
   },

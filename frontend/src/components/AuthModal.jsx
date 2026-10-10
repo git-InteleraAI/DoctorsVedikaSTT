@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import vedikaLogo from "../assets/vedika_logo.png";
+import vedikaLogo from "/images/logo.png";
 
 import { getApiBaseUrl } from "../utils/apiConfig";
 
@@ -144,7 +144,7 @@ export default function AuthModal({ isOpen, onClose }) {
 
         {/* Action Buttons */}
         <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "14px" }}>
-          
+
           {/* Sign in with Email / Portal */}
           <button
             onClick={handleEmailLoginDirect}

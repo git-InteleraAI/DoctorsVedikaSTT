@@ -65,16 +65,16 @@
     .desktop-only {
         display: none !important;
     }
-    
+
     .mobile-menu-toggle {
         display: block !important;
     }
-    
+
     .premium-nav {
         padding: 0 1rem;
         top: 0.5rem;
     }
-    
+
     .nav-container {
         padding: 0.75rem 1.25rem;
     }
@@ -85,56 +85,59 @@
     .hero-section {
         padding: 7rem 1.5rem 3rem 1.5rem;
     }
-    
+
     .hero-title {
         font-size: 2.25rem;
     }
-    
+
     .hero-subtitle {
         font-size: 1rem;
     }
-    
+
     .hero-actions {
         flex-direction: column;
         gap: 1rem;
         width: 100%;
     }
-    
-    .hero-actions > * {
+
+    .hero-actions>* {
         width: 100%;
         text-align: center;
         justify-content: center;
     }
-    
+
     .scene-3d-container {
         transform: scale(0.8);
     }
-    
+
     /* Bento Grid */
-    .clinical-intelligence-section, .automation-section {
+    .clinical-intelligence-section,
+    .automation-section {
         padding: 5rem 1.5rem;
     }
-    
+
     .bento-card {
         padding: 1.5rem;
     }
-    
+
     .bento-card.has-mockup {
         gap: 2rem;
     }
-    
-    .bento-icon-badge, .aurora-icon-badge {
+
+    .bento-icon-badge,
+    .aurora-icon-badge {
         width: 40px;
         height: 40px;
         font-size: 1.1rem;
     }
-    
+
     /* Aurora Cards */
     .aurora-card {
         padding: 1.5rem;
     }
-    
-    .aurora-main-title, .modules-main-title {
+
+    .aurora-main-title,
+    .modules-main-title {
         font-size: 2rem;
     }
 }

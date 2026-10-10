@@ -5,7 +5,7 @@ import authService from "../services/authService";
 import "./DoctorAuth.css";
 
 // Assets
-import vedikaLogo from "../assets/vedika_logo.png";
+import vedikaLogo from "/images/logo.png";
 import doctorCutout from "../assets/doctor_bg.png";
 import iconSecure from "../assets/secure.png";
 import iconNeedHelp from "../assets/need_help.png";
@@ -284,13 +284,13 @@ const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
           <div className="auth-card-header">
             <h2>
               {activePortal === "admin" ? "Hospital Admin Sign In" :
-               activePortal === "staff" ? "Staff Desk Sign In" :
-               "Doctor Portal Sign In"}
+                activePortal === "staff" ? "Staff Desk Sign In" :
+                  "Doctor Portal Sign In"}
             </h2>
             <p>
               {activePortal === "admin" ? "Sign in to manage hospital members & tenant operations" :
-               activePortal === "staff" ? "Sign in to manage walk-in patients & live queue" :
-               "Sign in to access your clinical workspace & consultations"}
+                activePortal === "staff" ? "Sign in to manage walk-in patients & live queue" :
+                  "Sign in to access your clinical workspace & consultations"}
             </p>
           </div>
 
@@ -370,9 +370,9 @@ const DoctorLogin = ({ portal: initialPortal = "doctor" }) => {
 
             {/* Forgot Password */}
             <div className="auth-forgot-row">
-              <button 
-                type="button" 
-                className="auth-link-btn" 
+              <button
+                type="button"
+                className="auth-link-btn"
                 onClick={handleForgotPassword}
                 disabled={resetLoading}
               >

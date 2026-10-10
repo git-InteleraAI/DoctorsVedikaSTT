@@ -224,12 +224,11 @@ router.post(
                 typeof fullName === "string"
                     ? fullName.trim()
                     : `${typeof firstName === "string"
-                          ? firstName.trim()
-                          : ""} ${
-                          typeof lastName === "string"
-                              ? lastName.trim()
-                              : ""
-                      }`.trim();
+                        ? firstName.trim()
+                        : ""} ${typeof lastName === "string"
+                            ? lastName.trim()
+                            : ""
+                        }`.trim();
 
             if (
                 !normalizedFullName ||
@@ -406,11 +405,12 @@ router.post(
                 .single();
 
             if (sessionError) {
-                console.error(
-                    "[QR Intake] Session creation failed:",
-                    sessionError.message
-                );
-
+                console.error("[QR Intake] Session creation failed:", {
+                    code: sessionError.code,
+                    message: sessionError.message,
+                    details: sessionError.details,
+                    hint: sessionError.hint,
+                });
                 return res.status(500).json({
                     success: false,
                     message:
@@ -894,33 +894,33 @@ function sanitizeClinicalIntake(input) {
     const validSeverities = ["mild", "moderate", "severe", "unsure"];
     const severity =
         typeof input.severity === "string" &&
-        validSeverities.includes(input.severity.toLowerCase().trim())
+            validSeverities.includes(input.severity.toLowerCase().trim())
             ? input.severity.toLowerCase().trim()
             : null;
 
     const current_medications =
         typeof input.current_medications === "string" &&
-        input.current_medications.trim()
+            input.current_medications.trim()
             ? input.current_medications.trim()
             : null;
 
     const additional_notes =
         typeof input.additional_notes === "string" &&
-        input.additional_notes.trim()
+            input.additional_notes.trim()
             ? input.additional_notes.trim()
             : null;
 
-            const clinical_details = {};
-            if (input.clinical_details && typeof input.clinical_details === "object" && !Array.isArray(input.clinical_details)) {
-                for (const [key, value] of Object.entries(input.clinical_details)) {
-                    if (!/^[a-zA-Z0-9_]{1,80}$/.test(key)) continue;
-                    if (typeof value === "boolean") {
-                        clinical_details[key] = value;
-                    } else if (typeof value === "string" && value.trim()) {
-                        clinical_details[key] = value.trim().slice(0, 300);
-                    }
-                }
+    const clinical_details = {};
+    if (input.clinical_details && typeof input.clinical_details === "object" && !Array.isArray(input.clinical_details)) {
+        for (const [key, value] of Object.entries(input.clinical_details)) {
+            if (!/^[a-zA-Z0-9_]{1,80}$/.test(key)) continue;
+            if (typeof value === "boolean") {
+                clinical_details[key] = value;
+            } else if (typeof value === "string" && value.trim()) {
+                clinical_details[key] = value.trim().slice(0, 300);
             }
+        }
+    }
 
     return {
         symptoms,

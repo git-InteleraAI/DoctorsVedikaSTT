@@ -5,7 +5,7 @@ import { getApiBaseUrl } from "../utils/apiConfig";
 import "./DoctorAuth.css";
 
 // Assets
-import vedikaLogo from "../assets/vedika_logo.png";
+import vedikaLogo from "/images/logo.png";
 import doctorCutout from "../assets/doctor_bg.png";
 import iconSecure from "../assets/secure.png";
 import iconNeedHelp from "../assets/need_help.png";
