@@ -65,7 +65,7 @@ export default function DashboardLayout({
         ? doctor.fullName 
         : (doctor?.doctor_name && doctor.doctor_name !== "Patient" 
             ? doctor.doctor_name 
-            : (isAdminRoute ? "Hospital Admin" : "Dr. Harshini"));
+            : (isAdminRoute ? "Hospital Admin" : "Doctor"));
 
     const doctorAvatar =
         doctor?.avatarUrl ||

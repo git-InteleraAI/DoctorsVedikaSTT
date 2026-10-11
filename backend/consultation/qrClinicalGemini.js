@@ -157,17 +157,40 @@ async function interpretQrClinicalText({ text, questionnaireKey, knownIntake, ac
         .update(`${accessToken}:${questionnaireKey || "general"}:${value}`)
         .digest("hex");
 
+    const candidateModels = [
+        ...(process.env.GEMINI_MODEL ? [process.env.GEMINI_MODEL] : []),
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite"
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
+
     const response = await geminiRequestManager.enqueue({
         priority: "LOW",
         idempotencyKey: `qr-clinical:${idempotencyKey}`,
-        requestFn: async () => ai.models.generateContent({
-            model: MODEL,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                temperature: 0,
-            },
-        }),
+        requestFn: async () => {
+            let lastErr = null;
+            for (const m of candidateModels) {
+                try {
+                    const res = await ai.models.generateContent({
+                        model: m,
+                        contents: prompt,
+                        config: {
+                            responseMimeType: "application/json",
+                            temperature: 0,
+                        },
+                    });
+                    if (res?.text || res?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        return res;
+                    }
+                } catch (err) {
+                    lastErr = err;
+                    console.warn(`[QR Clinical Gemini] Model ${m} unavailable (${err?.message || err}). Trying next fallback...`);
+                }
+            }
+            throw lastErr || new Error("All Gemini models exhausted for QR clinical interpretation.");
+        },
     });
 
     const responseText = typeof response?.text === "string"

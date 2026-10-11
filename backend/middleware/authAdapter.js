@@ -56,45 +56,46 @@ const authenticateAdapter = async (req, res, next) => {
     let authType = "custom_jwt";
 
     // 1. Verify Token
+    if (!process.env.JWT_SECRET) {
+        return res.status(500).json({
+            success: false,
+            message: "Authentication service misconfiguration: JWT_SECRET is not configured.",
+        });
+    }
+
     try {
-        const secret = process.env.JWT_SECRET || "doctors-vedika-super-secret-jwt-key-2026";
-        const decoded = jwt.verify(token, secret);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         userId = decoded.userId || decoded.id;
     } catch (jwtErr) {
-        // Fallback: Check Supabase Auth JWT token
-        try {
-            const decodedSupabase = jwt.decode(token);
-            if (decodedSupabase && decodedSupabase.sub) {
-                userId = decodedSupabase.sub;
-                authType = "supabase_auth";
-            } else {
-                return res.status(401).json({
-                    success: false,
-                    message: "Invalid or expired authorization token.",
-                });
+        // If custom JWT verification failed, check if it's a valid Supabase Auth token
+        const { supabase, supabaseAdmin } = require("../config/supabase");
+        const client = supabase || supabaseAdmin;
+        if (client) {
+            try {
+                const { data: userData, error: userErr } = await client.auth.getUser(token);
+                if (!userErr && userData?.user?.id) {
+                    userId = userData.user.id;
+                    authType = "supabase_auth";
+                }
+            } catch (sbErr) {
+                // Not a valid Supabase token
             }
-        } catch (e) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid authorization token format.",
-            });
         }
     }
 
     if (!userId) {
         return res.status(401).json({
             success: false,
-            message: "Unable to resolve caller identity from token.",
+            message: "Invalid or expired authorization token.",
         });
     }
 
-    // 2. Load Hospital Memberships
+    // 2. Load Hospital Memberships and Identity from DB
     try {
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-
         let activeMembership = null;
         let allMemberships = [];
+        let doctorRecord = null;
+        let userRecord = null;
 
         if (supabaseAdmin) {
             const { data: members, error: memErr } = await supabaseAdmin
@@ -106,60 +107,43 @@ const authenticateAdapter = async (req, res, next) => {
                 const activeMembers = members.filter(m => !m.status || String(m.status).toLowerCase() === "active");
                 if (activeMembers.length > 0) {
                     allMemberships = activeMembers;
-                } else {
-                    allMemberships = members;
-                }
-            }
-        }
-
-        // Default Primary Legacy Hospital fallback if no DB memberships recorded yet
-        if (allMemberships.length === 0) {
-            const legacyHospitalId = "00000000-0000-0000-0000-000000000001";
-            let detectedRole = req.headers["x-portal-context"] || (req.originalUrl?.includes("/staff") ? "staff" : req.originalUrl?.includes("/hospital-admin") ? "hospital_admin" : "staff");
-
-            if (supabaseAdmin) {
-                try {
-                    const { data: userRecord } = await supabaseAdmin
-                        .from("users")
-                        .select("role, email")
-                        .eq("id", userId)
-                        .maybeSingle();
-
-                    if (userRecord && userRecord.role) {
-                        detectedRole = String(userRecord.role).toLowerCase();
-                    } else if (userRecord && userRecord.email) {
-                        const em = userRecord.email.toLowerCase();
-                        if (em.includes("staff") || em.includes("swetha") || em.includes("reception")) {
-                            detectedRole = "staff";
-                        }
-                    }
-                } catch (e) {
-                    console.warn("[AuthAdapter] User role lookup fallback warning:", e.message);
                 }
             }
 
-            allMemberships = [{
-                id: `legacy-${userId}`,
-                hospital_id: legacyHospitalId,
-                user_id: userId,
-                doctor_id: (detectedRole === "doctor" || detectedRole === "doc") ? userId : null,
-                role: detectedRole,
-                status: "active",
-                hospitals: {
-                    id: legacyHospitalId,
-                    name: "Doctors Vedika Main Hospital",
-                    code: "DV-MAIN"
-                }
-            }];
+            const { data: docData } = await supabaseAdmin
+                .from("doctors")
+                .select("doctor_id, user_id, doctor_name, doctor_email, doctor_verification_status, doctor_is_active, onboarding_completed")
+                .or(`user_id.eq.${userId},doctor_id.eq.${userId}`)
+                .maybeSingle();
+
+            if (docData) {
+                doctorRecord = docData;
+            }
+
+            const { data: uData } = await supabaseAdmin
+                .from("users")
+                .select("id, email, role, full_name, status")
+                .eq("id", userId)
+                .maybeSingle();
+
+            if (uData) {
+                userRecord = uData;
+            }
         }
 
-        // 3. Resolve Hospital Context from X-Hospital-Id Header & X-Portal-Context Header
+        // Fail closed if user identity is not found in database
+        if (allMemberships.length === 0 && !doctorRecord && !userRecord) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied. User profile or membership not found."
+            });
+        }
+
+        // 3. Resolve Hospital Context and Role from verified records
         const rawRequestedHospitalId = req.headers["x-hospital-id"];
         const requestedHospitalId = (rawRequestedHospitalId && rawRequestedHospitalId !== "null" && rawRequestedHospitalId !== "undefined") ? String(rawRequestedHospitalId).trim() : null;
-        const portalContext = req.headers["x-portal-context"] || (req.originalUrl?.includes("/hospital-admin") ? "hospital_admin" : req.originalUrl?.includes("/staff") ? "staff" : null);
-
-        const isLegacyId = requestedHospitalId === "00000000-0000-0000-0000-000000000001";
-        const hasRealMemberships = allMemberships.some(m => m.hospital_id && m.hospital_id !== "00000000-0000-0000-0000-000000000001");
+        const rawPortalContext = req.headers["x-portal-context"];
+        const requestedRole = rawPortalContext ? String(rawPortalContext).toLowerCase().trim() : null;
 
         const isStaffRoleMatch = (roleStr) => {
             const r = String(roleStr || "").toLowerCase();
@@ -171,50 +155,119 @@ const authenticateAdapter = async (req, res, next) => {
             return r === "hospital_admin" || r === "admin";
         };
 
-        if (requestedHospitalId && (!isLegacyId || !hasRealMemberships)) {
-            activeMembership = allMemberships.find(m => m.hospital_id === requestedHospitalId && (portalContext === "staff" ? isStaffRoleMatch(m.role) : portalContext === "hospital_admin" ? isAdminRoleMatch(m.role) : true));
-            if (!activeMembership) {
-                activeMembership = allMemberships.find(m => m.hospital_id === requestedHospitalId);
+        const isDoctorRoleMatch = (roleStr, docId) => {
+            const r = String(roleStr || "").toLowerCase();
+            return r === "doctor" || Boolean(docId);
+        };
+
+        // Determine user's authorized roles across memberships & doctor record
+        const userHasAdminMembership = allMemberships.some(m => isAdminRoleMatch(m.role));
+        const userHasStaffMembership = allMemberships.some(m => isStaffRoleMatch(m.role));
+        const userHasDoctorRole = Boolean(doctorRecord) || allMemberships.some(m => isDoctorRoleMatch(m.role, m.doctor_id));
+
+        // Reject requested role if user is not authorized for it
+        if (requestedRole) {
+            if (requestedRole === "staff" && !userHasStaffMembership) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You are not authorized for the requested staff role."
+                });
             }
-            if (!activeMembership) {
+            if (requestedRole === "hospital_admin" && !userHasAdminMembership) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You are not authorized for the requested hospital administrator role."
+                });
+            }
+            if (requestedRole === "doctor" && !userHasDoctorRole) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You are not authorized for the requested doctor role."
+                });
+            }
+        }
+
+        // Resolve hospital membership
+        if (requestedHospitalId) {
+            const hospitalMemberships = allMemberships.filter(m => m.hospital_id === requestedHospitalId);
+            if (hospitalMemberships.length === 0) {
                 return res.status(403).json({
                     success: false,
                     message: "Access denied. You do not have an active membership for the requested hospital.",
                     requestedHospitalId
                 });
             }
-        } else if (allMemberships.length > 0) {
-            const realMemberships = allMemberships.filter(m => m.hospital_id && m.hospital_id !== "00000000-0000-0000-0000-000000000001");
-            const pool = realMemberships.length > 0 ? realMemberships : allMemberships;
-            if (portalContext) {
-                activeMembership = pool.find(m => portalContext === "staff" ? isStaffRoleMatch(m.role) : portalContext === "hospital_admin" ? isAdminRoleMatch(m.role) : m.role === portalContext) || pool[0];
+
+            if (requestedRole) {
+                const matched = hospitalMemberships.find(m => {
+                    if (requestedRole === "staff") return isStaffRoleMatch(m.role);
+                    if (requestedRole === "hospital_admin") return isAdminRoleMatch(m.role);
+                    if (requestedRole === "doctor") return isDoctorRoleMatch(m.role, m.doctor_id);
+                    return m.role === requestedRole;
+                });
+
+                if (!matched) {
+                    return res.status(403).json({
+                        success: false,
+                        message: `Access denied. You do not hold the '${requestedRole}' role at the requested hospital.`
+                    });
+                }
+                activeMembership = matched;
             } else {
-                activeMembership = pool[0];
+                activeMembership = hospitalMemberships[0];
+            }
+        } else if (allMemberships.length > 0) {
+            if (requestedRole) {
+                const matched = allMemberships.find(m => {
+                    if (requestedRole === "staff") return isStaffRoleMatch(m.role);
+                    if (requestedRole === "hospital_admin") return isAdminRoleMatch(m.role);
+                    if (requestedRole === "doctor") return isDoctorRoleMatch(m.role, m.doctor_id);
+                    return m.role === requestedRole;
+                });
+                activeMembership = matched || allMemberships[0];
+            } else {
+                activeMembership = allMemberships[0];
             }
         }
 
-        // 4. Construct req.context with explicit clean capabilities
-        const refererIsStaff = req.headers.referer && req.headers.referer.includes("/staff");
-        const isStaffPortalReq = req.headers["x-portal-context"] === "staff" || (req.originalUrl && req.originalUrl.includes("/staff")) || refererIsStaff;
+        // Determine effectiveRole strictly from verified authorization
+        let effectiveRole = "doctor";
+        if (activeMembership) {
+            if (requestedRole) {
+                effectiveRole = requestedRole;
+            } else if (isAdminRoleMatch(activeMembership.role)) {
+                effectiveRole = "hospital_admin";
+            } else if (isStaffRoleMatch(activeMembership.role)) {
+                effectiveRole = "staff";
+            } else if (isDoctorRoleMatch(activeMembership.role, activeMembership.doctor_id)) {
+                effectiveRole = "doctor";
+            } else {
+                effectiveRole = activeMembership.role;
+            }
+        } else if (doctorRecord) {
+            effectiveRole = "doctor";
+        } else if (userRecord && userRecord.role) {
+            effectiveRole = userRecord.role;
+        }
 
-        const effectiveRole = isStaffPortalReq ? "staff" : activeMembership.role;
-
+        const activeHospitalId = activeMembership?.hospital_id || null;
         const capabilities = {
-            hospitalAdmin: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'hospital_admin' || m.role === 'admin')),
-            doctor: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'doctor' || m.doctor_id !== null)),
-            staff: allMemberships.some(m => m.hospital_id === activeMembership.hospital_id && (m.role === 'staff' || m.role === 'assistant' || m.role === 'receptionist')) || isStaffPortalReq || effectiveRole === "staff" || effectiveRole === "reception_staff" || effectiveRole === "assistant"
+            hospitalAdmin: allMemberships.some(m => (!activeHospitalId || m.hospital_id === activeHospitalId) && isAdminRoleMatch(m.role)),
+            doctor: Boolean(doctorRecord) || allMemberships.some(m => (!activeHospitalId || m.hospital_id === activeHospitalId) && isDoctorRoleMatch(m.role, m.doctor_id)),
+            staff: allMemberships.some(m => (!activeHospitalId || m.hospital_id === activeHospitalId) && isStaffRoleMatch(m.role))
         };
 
-        const resolvedDoctorId = activeMembership.doctor_id ?? userId;
+        const resolvedDoctorId = activeMembership?.doctor_id || doctorRecord?.doctor_id || userId;
+        const hospitalName = activeMembership?.hospitals?.name || "Doctors Vedika Hospital";
 
         req.context = {
             userId,
             authType,
-            hospitalId: activeMembership.hospital_id,
-            hospitalName: activeMembership.hospitals?.name || "Doctors Vedika Main Hospital",
+            hospitalId: activeHospitalId,
+            hospitalName,
             role: effectiveRole,
             doctorId: resolvedDoctorId,
-            membershipId: activeMembership.id,
+            membershipId: activeMembership?.id || null,
             capabilities,
             allMemberships: allMemberships.map(m => ({
                 hospitalId: m.hospital_id,
@@ -231,7 +284,7 @@ const authenticateAdapter = async (req, res, next) => {
             userId,
             role: effectiveRole,
             hospitalRole: effectiveRole === "staff" ? "Reception Staff" : effectiveRole === "hospital_admin" ? "Hospital Administrator" : "Doctor",
-            hospitalId: activeMembership.hospital_id,
+            hospitalId: activeHospitalId,
             capabilities,
             permissions: req.context.permissions
         };
@@ -256,24 +309,17 @@ const requirePermission = (permission) => {
             return res.status(403).json({ success: false, message: "Forbidden. Context not initialized." });
         }
 
-        if (req.context.role === "hospital_admin" || req.context.role === "admin" || req.context.capabilities?.hospitalAdmin) {
+        const userPerms = req.context.permissions || [];
+
+        // Check if user has explicit permission
+        if (userPerms.includes(permission)) {
             return next();
         }
 
-        const userPerms = req.context.permissions || [];
-        if (!userPerms.includes(permission)) {
-            const isStaffPerm = ["patients.view", "patients.search", "walkin.register", "appointments.create", "appointments.checkin", "queue.view", "doctors.view"].includes(permission);
-            if (isStaffPerm && (req.context.capabilities?.staff || req.context.role === "staff" || req.context.role === "assistant")) {
-                return next();
-            }
-
-            return res.status(403).json({
-                success: false,
-                message: `Forbidden. Required permission '${permission}' is missing for role '${req.context.role}'.`
-            });
-        }
-
-        next();
+        return res.status(403).json({
+            success: false,
+            message: `Forbidden. Required permission '${permission}' is missing for role '${req.context.role}'.`
+        });
     };
 };
 

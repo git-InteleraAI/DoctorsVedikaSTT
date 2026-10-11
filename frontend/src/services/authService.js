@@ -167,15 +167,13 @@ class AuthService {
             const data = await response.json();
 
             if (data?.doctor) {
+                const serverRole = data.doctor.role || cachedUser?.role || "doctor";
+                const serverCaps = data.doctor.capabilities || cachedUser?.capabilities || {};
                 const mergedDoctor = {
                     ...cachedUser,
                     ...data.doctor,
-                    role: isStaffPortal ? "staff" : (data.doctor.role || cachedUser?.role || "doctor"),
-                    capabilities: {
-                        ...(cachedUser?.capabilities || {}),
-                        ...(data.doctor.capabilities || {}),
-                        staff: isStaffPortal || data.doctor.capabilities?.staff || cachedUser?.capabilities?.staff || false
-                    }
+                    role: (isStaffPortal && serverCaps.staff) ? "staff" : serverRole,
+                    capabilities: serverCaps
                 };
 
                 const resolvedHospitalId = mergedDoctor?.hospitalId || mergedDoctor?.hospital_id;

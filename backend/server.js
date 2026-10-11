@@ -63,7 +63,7 @@ app.use(cors({
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Portal-Context", "X-Requested-With"]
+    allowedHeaders: ["Content-Type", "Authorization", "X-Portal-Context", "X-Hospital-Id", "X-Requested-With"]
 }));
 app.use(express.json({ limit: "20mb" }));
 
@@ -255,10 +255,11 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
     let patUuid = isUuid(patientId) ? patientId : null;
     let docUuid = isUuid(doctorId) ? doctorId : null;
     let appUuid = isUuid(appointmentId) ? appointmentId : null;
+    let hprUuid = null;
     let doctorName = null;
 
     if (!isSupabaseConfigured || !db) {
-        return { patUuid, docUuid, appUuid, doctorName: doctorName || "Doctor", patientDetails: { age: null, gender: null, name: null } };
+        return { patUuid, docUuid, appUuid, hprUuid, doctorName: doctorName || "Doctor", patientDetails: { age: null, gender: null, name: null } };
     }
 
     let patientDetails = { age: null, gender: null, name: null };
@@ -291,6 +292,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
                 const { data: hprData } = await hprQuery.limit(1).maybeSingle();
                 if (hprData) {
                     pData = hprData;
+                    hprUuid = hprData.id;
                     isWalkIn = true;
                 }
             }
@@ -321,6 +323,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
             if (appRow) {
                 if (!patUuid && appRow.patient_id) patUuid = appRow.patient_id;
                 if (!docUuid && appRow.doctor_id) docUuid = appRow.doctor_id;
+                if (!hprUuid && appRow.hospital_patient_id) hprUuid = appRow.hospital_patient_id;
             }
         } catch (err) {}
     }
@@ -415,7 +418,7 @@ async function resolveSupabaseDetails({ patientId, doctorId, appointmentId, reqD
         }
     }
 
-    return { patUuid, docUuid, appUuid, doctorName, patientDetails };
+    return { patUuid, docUuid, appUuid, hprUuid, doctorName, patientDetails };
 }
 
 function formatFollowUpDate(val) {
@@ -476,7 +479,7 @@ app.post(
             }
 
             // Resolve Supabase valid UUIDs, doctor name & patient details
-            const { patUuid, docUuid, appUuid, doctorName, patientDetails } = await resolveSupabaseDetails({
+            const { patUuid, docUuid, appUuid, hprUuid, doctorName, patientDetails } = await resolveSupabaseDetails({
                 patientId,
                 doctorId,
                 appointmentId,
@@ -550,6 +553,7 @@ app.post(
                     let resolvedAppUuid = appUuid;
                     let resolvedDocUuid = docUuid;
                     let resolvedPatUuid = patUuid;
+                    let resolvedHprUuid = hprUuid;
 
                     if (!resolvedAppUuid || !resolvedDocUuid) {
                         const details = await resolveSupabaseDetails({
@@ -561,9 +565,10 @@ app.post(
                         resolvedAppUuid = details.appUuid;
                         resolvedDocUuid = details.docUuid;
                         resolvedPatUuid = details.patUuid;
+                        resolvedHprUuid = details.hprUuid;
                     }
 
-                    if (resolvedAppUuid || req.body.visit_id || req.body.visitId || resolvedPatUuid) {
+                    if (resolvedAppUuid || req.body.visit_id || req.body.visitId || resolvedPatUuid || resolvedHprUuid) {
                         const nowIso = new Date().toISOString();
                         
                         // Update appointments status to completed
@@ -582,6 +587,13 @@ app.post(
                         if (resolvedPatUuid && isUuidStr(resolvedPatUuid)) {
                             visitConds.push(`hospital_patient_id.eq.${resolvedPatUuid}`);
                             visitConds.push(`patient_id.eq.${resolvedPatUuid}`);
+                        }
+                        if (resolvedHprUuid && isUuidStr(resolvedHprUuid)) {
+                            visitConds.push(`hospital_patient_id.eq.${resolvedHprUuid}`);
+                        }
+                        if (patientId && isUuidStr(patientId)) {
+                            visitConds.push(`hospital_patient_id.eq.${patientId}`);
+                            visitConds.push(`patient_id.eq.${patientId}`);
                         }
 
                         if (visitConds.length > 0) {
@@ -651,7 +663,7 @@ app.post(
                         const noteRecord = {
                             appointment_id: resolvedAppUuid,
                             doctor_id: resolvedDocUuid,
-                            patient_id: resolvedPatUuid || (isUuid(patientId) ? patientId : '00000000-0000-0000-0000-000000000000'),
+                            patient_id: resolvedPatUuid || resolvedHprUuid || (isUuid(patientId) ? patientId : '00000000-0000-0000-0000-000000000000'),
                             notes: notesStorageString,
                             symptoms: symptomsText || "No symptoms recorded",
                             diagnosis: diagnosisText || null,
@@ -671,7 +683,7 @@ app.post(
                         const prescriptionRecord = {
                             appointment_id: resolvedAppUuid,
                             doctor_id: resolvedDocUuid,
-                            patient_id: resolvedPatUuid || (isUuid(patientId) ? patientId : '00000000-0000-0000-0000-000000000000'),
+                            patient_id: resolvedPatUuid || resolvedHprUuid || (isUuid(patientId) ? patientId : '00000000-0000-0000-0000-000000000000'),
                             medicines: formatMedicines(medications, prescription),
                             advice: formatAdvice(prescription?.advice || s.advice),
                             follow_up_date: formatFollowUpDate(prescription?.follow_up_date || prescription?.follow_up),
@@ -1030,27 +1042,101 @@ app.get(
                 } catch (e) {}
             }
 
-            if (!summaryObj || typeof summaryObj !== "object" || Object.keys(summaryObj).length === 0) {
-                // Fallback to local JSON record on disk if DB record is empty/missing
-                try {
-                    const folder = resolvePatientFolder(patientId);
-                    const jsonFile = path.join(folder, `${consultationId}.json`);
-                    let localRecord = null;
-                    if (fs.existsSync(jsonFile)) {
-                        localRecord = JSON.parse(fs.readFileSync(jsonFile, "utf8"));
-                    } else if (fs.existsSync(folder)) {
-                        const files = fs.readdirSync(folder).filter(f => f.endsWith(".json"));
-                        if (files.length > 0) {
-                            localRecord = JSON.parse(fs.readFileSync(path.join(folder, files[files.length - 1]), "utf8"));
+            // Always check for local record on disk for fallback and rich consultation metadata
+            let localRecord = null;
+            try {
+                const candidateFolders = [
+                    patientId,
+                    patient?.patient_code,
+                    patient?.hospital_patient_code,
+                    visitData?.hospital_patient_records?.hospital_patient_code,
+                    visitData?.hospital_patient_id,
+                    appointment?.hospital_patient_id,
+                    appointment?.patient_id,
+                    appointment?.id,
+                    rawAppId,
+                    consultationId
+                ].filter(Boolean);
+
+                for (const cand of candidateFolders) {
+                    const folder = resolvePatientFolder(cand);
+                    if (!fs.existsSync(folder)) continue;
+
+                    const candidateFiles = [
+                        path.join(folder, `${consultationId}.json`),
+                        path.join(folder, `consultation-app-${rawAppId}.json`),
+                        path.join(folder, `${rawAppId}.json`),
+                        path.join(folder, `${cand}.json`)
+                    ];
+
+                    for (const cf of candidateFiles) {
+                        if (fs.existsSync(cf)) {
+                            try {
+                                const parsed = JSON.parse(fs.readFileSync(cf, "utf8"));
+                                if (parsed && (parsed.summary || parsed.prescription || parsed.medications || parsed.consultationTime)) {
+                                    localRecord = parsed;
+                                    break;
+                                }
+                            } catch (e) {}
                         }
                     }
 
-                    if (localRecord && localRecord.summary) {
-                        summaryObj = localRecord.summary;
+                    if (!localRecord) {
+                        const allFiles = fs.readdirSync(folder).filter(f => f.endsWith(".json"));
+                        for (const f of allFiles) {
+                            try {
+                                const parsed = JSON.parse(fs.readFileSync(path.join(folder, f), "utf8"));
+                                if (parsed && (parsed.summary || parsed.prescription || parsed.medications || parsed.consultationTime)) {
+                                    localRecord = parsed;
+                                    break;
+                                }
+                            } catch (e) {}
+                        }
                     }
-                } catch (diskFallbackErr) {
-                    console.warn("[Clinical PDF] Disk fallback read notice:", diskFallbackErr.message);
+
+                    if (localRecord && (localRecord.summary || localRecord.prescription || localRecord.medications || localRecord.consultationTime)) break;
                 }
+
+                if (!localRecord) {
+                    try {
+                        const allPatientDirs = fs.readdirSync(patientRecordsDir, { withFileTypes: true });
+                        for (const dirEnt of allPatientDirs) {
+                            if (!dirEnt.isDirectory()) continue;
+                            const folder = path.join(patientRecordsDir, dirEnt.name);
+                            const cFiles = [
+                                path.join(folder, `${consultationId}.json`),
+                                path.join(folder, `consultation-app-${rawAppId}.json`),
+                                path.join(folder, `${rawAppId}.json`)
+                            ];
+                            for (const cf of cFiles) {
+                                if (fs.existsSync(cf)) {
+                                    try {
+                                        const parsed = JSON.parse(fs.readFileSync(cf, "utf8"));
+                                        if (parsed && (parsed.summary || parsed.prescription || parsed.medications || parsed.consultationTime)) {
+                                            localRecord = parsed;
+                                            break;
+                                        }
+                                    } catch (e) {}
+                                }
+                            }
+                            if (localRecord) break;
+                        }
+                    } catch (e) {}
+                }
+
+                if (localRecord) {
+                    if (localRecord.summary && (!summaryObj?.consultation_overview || Object.keys(summaryObj).length === 0)) {
+                        summaryObj = { ...(summaryObj || {}), ...localRecord.summary };
+                    }
+                    if (localRecord.prescription) {
+                        rx = { ...(rx || {}), ...localRecord.prescription };
+                    }
+                    if (Array.isArray(localRecord.medications) && localRecord.medications.length > 0 && (!rx?.medicines || rx.medicines.length === 0)) {
+                        rx = { ...(rx || {}), medicines: localRecord.medications };
+                    }
+                }
+            } catch (diskFallbackErr) {
+                console.warn("[Clinical PDF] Disk fallback read notice:", diskFallbackErr.message);
             }
 
             if (!summaryObj || typeof summaryObj !== "object" || Object.keys(summaryObj).length === 0) {
@@ -1182,8 +1268,58 @@ app.get(
                 hospitalEmail: hospital?.email || clinicEmail || "",
                 hospitalCode: hospital?.code || "",
                 visitType: appointment?.appointment_type || "Consultation",
-                consultationDate: appointment?.appointment_date || (note?.created_at ? new Date(note.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) : new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })),
-                consultationTime: note?.created_at ? new Date(note.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : (rx?.created_at ? new Date(rx.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }) : ((appointment?.appointment_time && !String(appointment.appointment_time).startsWith('05:30') && !String(appointment.appointment_time).startsWith('00:00')) ? appointment.appointment_time : new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }))),
+                consultationDate: (() => {
+                    const formatDateFromTs = (ts) => {
+                        if (!ts) return null;
+                        const d = new Date(ts);
+                        return isNaN(d.getTime()) ? null : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+                    };
+                    return localRecord?.consultationDate ||
+                        (visitData?.consultation_started_at ? formatDateFromTs(visitData.consultation_started_at) : null) ||
+                        (visitData?.visit_date ? formatDateFromTs(visitData.visit_date) : null) ||
+                        (note?.created_at ? formatDateFromTs(note.created_at) : null) ||
+                        (rx?.created_at ? formatDateFromTs(rx.created_at) : null) ||
+                        appointment?.appointment_date ||
+                        new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+                })(),
+                consultationTime: (() => {
+                    const isPlaceholderTime = (val) => {
+                        if (!val) return true;
+                        const s = String(val).trim().toLowerCase();
+                        return s === "05:30:00" || s === "05:30 am" || s === "05:30" || s === "00:00:00" || s === "00:00" || s === "n/a";
+                    };
+                    const formatTimeFromTs = (ts) => {
+                        if (!ts) return null;
+                        const d = new Date(ts);
+                        return isNaN(d.getTime()) ? null : d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
+                    };
+
+                    if (localRecord?.consultationTime && !isPlaceholderTime(localRecord.consultationTime)) {
+                        return localRecord.consultationTime;
+                    }
+                    if (localRecord?.startedAt) {
+                        return formatTimeFromTs(localRecord.startedAt);
+                    }
+                    if (visitData?.consultation_started_at || visitData?.started_at) {
+                        return formatTimeFromTs(visitData.consultation_started_at || visitData.started_at);
+                    }
+                    if (note?.created_at) {
+                        return formatTimeFromTs(note.created_at);
+                    }
+                    if (rx?.created_at) {
+                        return formatTimeFromTs(rx.created_at);
+                    }
+                    if (localRecord?.savedAt || localRecord?.completedAt) {
+                        return formatTimeFromTs(localRecord.savedAt || localRecord.completedAt);
+                    }
+                    if (visitData?.consultation_completed_at || visitData?.completed_at) {
+                        return formatTimeFromTs(visitData.consultation_completed_at || visitData.completed_at);
+                    }
+                    if (appointment?.appointment_time && !isPlaceholderTime(appointment.appointment_time)) {
+                        return appointment.appointment_time;
+                    }
+                    return new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
+                })(),
                 summary: summaryObj,
                 diagnosis: parsedDiagnosis,
                 medications: finalMedicinesList,
@@ -1297,7 +1433,7 @@ app.patch(
                 summary: finalSummary,
             });
 
-            const { patUuid, docUuid, appUuid } = await resolveSupabaseDetails({
+            const { patUuid, docUuid, appUuid, hprUuid } = await resolveSupabaseDetails({
                 patientId,
                 doctorId: existingNote?.doctor_id,
                 appointmentId: rawAppId,
@@ -1306,7 +1442,7 @@ app.patch(
 
             const targetAppId = existingNote?.appointment_id || appUuid || (isUuid(rawAppId) ? rawAppId : (isUuid(consultationId) ? consultationId : null));
             const targetDocId = existingNote?.doctor_id || docUuid || null;
-            const targetPatId = existingNote?.patient_id || patUuid || (isUuid(patientId) ? patientId : null);
+            const targetPatId = existingNote?.patient_id || patUuid || hprUuid || (isUuid(patientId) ? patientId : "00000000-0000-0000-0000-000000000000");
 
             if (targetAppId) {
                 const nowIso = new Date().toISOString();
@@ -1446,7 +1582,7 @@ app.patch(
             const targetDb = db || supabase;
 
             let rawAppId = consultationId.replace("consultation-app-", "").replace("consultation-db-", "");
-            const { patUuid, docUuid, appUuid } = await resolveSupabaseDetails({
+            const { patUuid, docUuid, appUuid, hprUuid } = await resolveSupabaseDetails({
                 patientId,
                 doctorId: req.doctor?.id,
                 appointmentId: rawAppId,
@@ -1457,27 +1593,35 @@ app.patch(
 
             const nowIso = new Date().toISOString();
             if (isSupabaseConfigured && targetDb && targetAppId) {
-                await targetDb
-                    .from("appointments")
-                    .update({ status: "completed", updated_at: nowIso })
-                    .eq("id", targetAppId);
+                if (isUuid(targetAppId)) {
+                    await targetDb
+                        .from("appointments")
+                        .update({ status: "completed", updated_at: nowIso })
+                        .eq("id", targetAppId);
+                }
 
                 const isUuidStr = (str) => typeof str === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-                const conds = [`appointment_id.eq.${targetAppId}`];
+                const conds = [];
+                if (isUuidStr(targetAppId)) conds.push(`appointment_id.eq.${targetAppId}`);
                 if (isUuidStr(patientId)) {
                     conds.push(`patient_id.eq.${patientId}`);
                     conds.push(`hospital_patient_id.eq.${patientId}`);
                 }
-                await targetDb
-                    .from("patient_visits")
-                    .update({
-                        visit_stage: "completed",
-                        status: "completed",
-                        completed_at: nowIso,
-                        consultation_completed_at: nowIso,
-                        updated_at: nowIso
-                    })
-                    .or(conds.join(","));
+                if (hprUuid && isUuidStr(hprUuid)) {
+                    conds.push(`hospital_patient_id.eq.${hprUuid}`);
+                }
+                if (conds.length > 0) {
+                    await targetDb
+                        .from("patient_visits")
+                        .update({
+                            visit_stage: "completed",
+                            status: "completed",
+                            completed_at: nowIso,
+                            consultation_completed_at: nowIso,
+                            updated_at: nowIso
+                        })
+                        .or(conds.join(","));
+                }
             }
 
             return res.json({

@@ -22,7 +22,7 @@ class GeminiRequestManager {
     constructor() {
         this.maxConcurrency = parseInt(process.env.GEMINI_MAX_CONCURRENCY || "5", 10);
         this.maxRetries = parseInt(process.env.GEMINI_MAX_RETRIES || "4", 10);
-        this.timeoutMs = parseInt(process.env.GEMINI_REQUEST_TIMEOUT_MS || "20000", 10);
+        this.timeoutMs = parseInt(process.env.GEMINI_REQUEST_TIMEOUT_MS || "50000", 10);
         this.maxQueueSize = parseInt(process.env.GEMINI_QUEUE_MAX_SIZE || "1000", 10);
 
         this.activeRequests = 0;

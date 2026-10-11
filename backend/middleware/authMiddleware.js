@@ -1,8 +1,6 @@
 const jwt = require("jsonwebtoken");
 const authService = require("../services/authService");
 
-const JWT_SECRET = process.env.JWT_SECRET || "doctors-vedika-super-secret-jwt-key-2026";
-
 /**
  * Protect routes: Validates Authorization Bearer token
  */
@@ -23,11 +21,40 @@ const protect = async (req, res, next) => {
         });
     }
 
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const userId = decoded.id || decoded.userId;
-        const portalHeader = req.headers["x-portal-context"] || (req.headers.referer?.includes("/staff") ? "staff" : req.originalUrl?.includes("/staff") ? "staff" : null);
+    if (!process.env.JWT_SECRET) {
+        return res.status(500).json({
+            success: false,
+            message: "Authentication service misconfiguration: JWT_SECRET is not configured.",
+        });
+    }
 
+    let userId = null;
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded.id || decoded.userId;
+    } catch (jwtErr) {
+        const { supabase, supabaseAdmin } = require("../config/supabase");
+        const client = supabase || supabaseAdmin;
+        if (client) {
+            try {
+                const { data: userData, error: userErr } = await client.auth.getUser(token);
+                if (!userErr && userData?.user?.id) {
+                    userId = userData.user.id;
+                }
+            } catch (sbErr) {}
+        }
+    }
+
+    if (!userId) {
+        return res.status(401).json({
+            success: false,
+            message: "Invalid or expired authorization token",
+        });
+    }
+
+    try {
+        const portalHeader = req.headers["x-portal-context"] || null;
         const doctor = await authService.getDoctorById(userId, portalHeader);
 
         if (!doctor) {
@@ -37,17 +64,16 @@ const protect = async (req, res, next) => {
             });
         }
 
-        if (portalHeader === "staff") {
+        // Only adopt requested staff context if user is authorized for staff role
+        if (portalHeader === "staff" && (doctor.capabilities?.staff || doctor.role === "staff")) {
             doctor.role = "staff";
             doctor.hospitalRole = "Reception Staff";
-            if (!doctor.capabilities) doctor.capabilities = {};
-            doctor.capabilities.staff = true;
         }
 
         req.doctor = doctor;
         next();
     } catch (err) {
-        console.error("[AuthMiddleware] Token verification failed:", err.message);
+        console.error("[AuthMiddleware] Context resolution failed:", err.message);
         return res.status(401).json({
             success: false,
             message: "Invalid or expired authorization token",

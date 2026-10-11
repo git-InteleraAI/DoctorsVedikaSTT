@@ -82,8 +82,9 @@ export default function PrescriptionPreviewModal({ show, patient, visit, doctor,
     const patientGender = patient?.gender || recordData?.patientGender || "—";
     const displayPatientId = patient?.patientCode || patient?.hospital_patient_code || recordData?.patientId || (patientId ? `DV-P-${String(patientId).slice(0, 6).toUpperCase()}` : "—");
 
-    const doctorName = doctor?.name || doctor?.doctor_name || recordData?.doctorName || "Dr. Harshini";
-    const doctorSpecialty = doctor?.specialization || doctor?.specialty || recordData?.doctorSpecialty || "Cardiology";
+    const doctorName = doctor?.name || doctor?.doctor_name || doctor?.fullName || recordData?.doctorName || "Doctor";
+    const doctorSpecialty = doctor?.specialization || doctor?.specialty || recordData?.doctorSpecialty || "";
+    const doctorQualification = doctor?.qualification || doctor?.degrees || recordData?.doctorQualification || "";
 
     const formattedDate = visit?.date ? new Date(visit.date).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : (recordData?.consultationDate || "7 October 2026");
 
@@ -294,14 +295,18 @@ export default function PrescriptionPreviewModal({ show, patient, visit, doctor,
                     {/* SIGNATURE & STAMP FOOTER */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "12px", borderTop: "1px solid #f1f5f9" }}>
                         <div>
-                            <div style={{ fontFamily: "cursive, 'Outfit'", fontSize: "1.2rem", color: "#082B68", fontWeight: 700, fontStyle: "italic" }}>
-                                Harshini
+                            <div style={{ fontFamily: "cursive, 'Outfit', sans-serif", fontSize: "1.2rem", color: "#082B68", fontWeight: 700, fontStyle: "italic", minHeight: "26px", display: "flex", alignItems: "flex-end" }}>
+                                {doctor?.signature_url || recordData?.signature_url ? (
+                                    <img src={doctor?.signature_url || recordData?.signature_url} alt="Doctor Signature" style={{ maxHeight: "36px", maxWidth: "140px", objectFit: "contain" }} />
+                                ) : (
+                                    doctorName && doctorName !== "Doctor" ? doctorName.replace(/^Dr\.?\s*/i, "") : ""
+                                )}
                             </div>
-                            <div style={{ height: "1px", width: "120px", background: "#cbd5e1", margin: "4px 0" }}></div>
+                            <div style={{ height: "1px", width: "140px", background: "#cbd5e1", margin: "4px 0" }}></div>
                             <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#0f172a" }}>{doctorName.startsWith("Dr") ? doctorName : `Dr. ${doctorName}`}</div>
-                            <div style={{ fontSize: "0.72rem", color: "#64748b" }}>MBBS, MD ({doctorSpecialty})</div>
-                            <div style={{ fontSize: "0.72rem", color: "#64748b" }}>Consultant {doctorSpecialty}</div>
-                            <div style={{ fontSize: "0.72rem", color: "#64748b" }}>Doctors Vedika Hospital</div>
+                            {doctorQualification && <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{doctorQualification} {doctorSpecialty ? `(${doctorSpecialty})` : ""}</div>}
+                            {doctorSpecialty && !doctorQualification && <div style={{ fontSize: "0.72rem", color: "#64748b" }}>Consultant {doctorSpecialty}</div>}
+                            <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{recordData?.clinicName || recordData?.hospitalName || "Doctors Vedika Hospital"}</div>
                         </div>
 
                         {/* STAMP */}

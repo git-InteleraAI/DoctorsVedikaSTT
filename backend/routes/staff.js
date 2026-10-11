@@ -46,11 +46,10 @@ router.use((req, res, next) => {
     next();
 });
 
-// Explicit guard: Staff role, staff capability, or staff portal context can access /staff routes
+// Explicit guard: Only authenticated users with verified staff role or capability can access /staff routes
 const requireStaffRole = (req, res, next) => {
-    const isStaffPortalHeader = req.headers["x-portal-context"] === "staff";
-    if (!req.context || (req.context.role !== "staff" && !req.context.capabilities?.staff && req.context.role !== "hospital_admin" && !isStaffPortalHeader)) {
-        console.log("[Staff Guard Debug] req.context:", JSON.stringify(req.context));
+    const isStaff = req.context?.role === "staff" || req.context?.capabilities?.staff === true;
+    if (!req.context || !isStaff) {
         return res.status(403).json({
             success: false,
             message: "Access forbidden. Staff privileges required."
@@ -132,7 +131,7 @@ router.get("/qr-intakes", requirePermission("queue.view"), async (req, res) => {
                 created_at
             `)
             .eq("hospital_id", hospitalId)
-            .in("status", ["collecting", "review", "submitted", "safety_blocked"])
+            .in("status", ["review", "submitted", "safety_blocked"])
             .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -178,26 +177,36 @@ router.get("/dashboard-stats", requirePermission("queue.view"), async (req, res)
         let cancelled = 0;
 
         if (db) {
-            const todayStart = new Date().toISOString().split("T")[0] + "T00:00:00.000Z";
             const todayStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date());
+            const targetDate = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : todayStr;
+            const dayStart = new Date(`${targetDate}T00:00:00+05:30`).toISOString();
+            const dayEnd = new Date(`${targetDate}T23:59:59.999+05:30`).toISOString();
 
-            // Count appointments scheduled or created for today
-            const { count: appCount } = await db
+            // Count appointments scheduled or created for targetDate
+            let appQuery = db
                 .from("appointments")
-                .select("id", { count: "exact", head: true })
+                .select("id, status", { count: "exact" })
                 .eq("hospital_id", hospitalId)
-                .or(`appointment_date.eq.${todayStr},created_at.gte.${todayStart}`);
+                .eq("appointment_date", targetDate);
 
+            const { data: apps, count: appCount } = await appQuery;
             totalAppointments = appCount || 0;
 
-            // Fetch visit stage counts
-            const { data: visits } = await db
+            // Fetch visit stage counts for targetDate
+            let visitQuery = db
                 .from("patient_visits")
-                .select("visit_stage")
-                .eq("hospital_id", hospitalId)
-                .gte("created_at", todayStart);
+                .select("id, visit_stage, appointment_id, created_at, checked_in_at")
+                .eq("hospital_id", hospitalId);
 
-            if (visits) {
+            if (targetDate === todayStr) {
+                visitQuery = visitQuery.gte("created_at", dayStart);
+            } else {
+                visitQuery = visitQuery.gte("created_at", dayStart).lte("created_at", dayEnd);
+            }
+
+            const { data: visits } = await visitQuery;
+
+            if (visits && visits.length > 0) {
                 visits.forEach(v => {
                     if (v.visit_stage === "checked_in") checkedIn++;
                     else if (v.visit_stage === "waiting") waiting++;
@@ -205,19 +214,28 @@ router.get("/dashboard-stats", requirePermission("queue.view"), async (req, res)
                     else if (v.visit_stage === "completed" || v.visit_stage === "exited") completed++;
                     else if (v.visit_stage === "cancelled") cancelled++;
                 });
+            } else if (apps && apps.length > 0) {
+                // If visits table doesn't have records for this date, derive from appointments
+                apps.forEach(a => {
+                    if (a.status === "in_consultation" || a.status === "in_progress") inConsultation++;
+                    else if (a.status === "completed" || a.status === "exited") completed++;
+                    else if (a.status === "cancelled") cancelled++;
+                    else waiting++;
+                });
             }
         }
 
+        const calculatedTotal = waiting + checkedIn + inConsultation + completed;
         return res.json({
             success: true,
             stats: {
-                totalAppointments,
+                totalAppointments: totalAppointments > calculatedTotal ? totalAppointments : calculatedTotal,
                 waiting: waiting + checkedIn,
                 checkedIn,
                 inConsultation,
                 completed,
                 cancelled,
-                queueCount: checkedIn + waiting + inConsultation + completed
+                queueCount: calculatedTotal
             }
         });
     } catch (err) {
@@ -234,7 +252,8 @@ router.get("/appointments", requirePermission("appointments.create"), async (req
         const db = getSupabaseClient();
         if (!db) return res.json({ success: true, appointments: [] });
 
-        const { data, error } = await db
+        const requestedDate = req.query.date || null;
+        let apptQuery = db
             .from("appointments")
             .select(`
                 id,
@@ -251,9 +270,15 @@ router.get("/appointments", requirePermission("appointments.create"), async (req
                 doctors(doctor_id, doctor_name, doctor_specialization),
                 hospital_patient_records(id, hospital_patient_code, full_name, phone)
             `)
-            .eq("hospital_id", req.context.hospitalId)
+            .eq("hospital_id", req.context.hospitalId);
+
+        if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+            apptQuery = apptQuery.eq("appointment_date", requestedDate);
+        }
+
+        const { data, error } = await apptQuery
             .order("created_at", { ascending: false })
-            .limit(50);
+            .limit(100);
 
         if (error) throw error;
 
@@ -538,7 +563,7 @@ router.get("/patients/:id/history", requirePermission("patients.view"), async (r
 
         // If not found by HPR id, try searching by patient_visits.id or appointment_id to find linked hospital_patient_id
         if (!hpr) {
-            const { data: vRecord } = await db.from("patient_visits").select("hospital_patient_id").eq("id", rawId).maybeSingle();
+            const { data: vRecord } = await db.from("patient_visits").select("hospital_patient_id").eq("id", rawId).eq("hospital_id", hospitalId).maybeSingle();
             const hId = vRecord?.hospital_patient_id;
             if (hId) {
                 const { data: foundHpr } = await db.from("hospital_patient_records").select("*").eq("id", hId).eq("hospital_id", hospitalId).maybeSingle();
@@ -818,6 +843,25 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
             }
         });
 
+        const doctorIdsList = formattedDoctors.map(d => String(d.doctorId)).filter(Boolean);
+        if (doctorIdsList.length > 0) {
+            const { data: availRows } = await db
+                .from("availability")
+                .select("doctor_id, day_of_week, time_windows, start_time, end_time, is_available")
+                .in("doctor_id", doctorIdsList);
+            
+            const availMap = {};
+            (availRows || []).forEach(a => {
+                const docId = String(a.doctor_id);
+                if (!availMap[docId]) availMap[docId] = [];
+                availMap[docId].push(a);
+            });
+
+            formattedDoctors.forEach(doc => {
+                doc.availability = availMap[String(doc.doctorId)] || [];
+            });
+        }
+
         console.log("[STAFF DOCTORS] returning formatted doctors count =", formattedDoctors.length);
 
         return res.json({
@@ -850,19 +894,154 @@ router.get("/doctors", requirePermission("doctors.view"), async (req, res) => {
 });
 
 /**
+ * GET /api/v1/staff/doctors/:doctorId/availability
+ * Fetch schedule & blocked dates for a specific doctor in staff's hospital
+ */
+router.get("/doctors/:doctorId/availability", requirePermission("doctors.view"), async (req, res) => {
+    try {
+        const { doctorId } = req.params;
+        const db = getSupabaseClient();
+
+        if (!db) {
+            return res.status(500).json({
+                success: false,
+                message: "Database connection unavailable."
+            });
+        }
+
+        const rawHeaderHospId = req.headers["x-hospital-id"];
+        const validHeaderHospId = (rawHeaderHospId && rawHeaderHospId !== "null" && rawHeaderHospId !== "undefined") ? String(rawHeaderHospId).trim() : null;
+        const rawQueryHospId = req.query.hospitalId;
+        const validQueryHospId = (rawQueryHospId && rawQueryHospId !== "null" && rawQueryHospId !== "undefined") ? String(rawQueryHospId).trim() : null;
+        const hospitalId = validHeaderHospId || validQueryHospId || req.context?.hospitalId;
+
+        if (!hospitalId) {
+            return res.status(403).json({
+                success: false,
+                message: "No authenticated hospital context."
+            });
+        }
+
+        // Verify doctor belongs to current hospital via hospital_members
+        const { data: memberRows, error: memberErr } = await db
+            .from("hospital_members")
+            .select("doctor_id, user_id")
+            .eq("hospital_id", hospitalId)
+            .or(`doctor_id.eq.${doctorId},user_id.eq.${doctorId}`);
+
+        if (memberErr || !memberRows || memberRows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Doctor is not assigned to this hospital."
+            });
+        }
+
+        const actualDoctorId = memberRows[0].doctor_id || memberRows[0].user_id || doctorId;
+
+        // Query availability table
+        const { data: availData, error: availErr } = await db
+            .from("availability")
+            .select("*")
+            .eq("doctor_id", actualDoctorId);
+
+        if (availErr) {
+            console.error("[Staff Doctor Availability Error]:", availErr);
+            throw availErr;
+        }
+
+        // Query blocked_dates table
+        const { data: blockedData, error: blockedErr } = await db
+            .from("blocked_dates")
+            .select("*")
+            .eq("doctor_id", actualDoctorId);
+
+        const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+        const scheduleMap = {};
+        (availData || []).forEach(item => {
+            if (item.day_of_week) {
+                const dayKey = item.day_of_week.trim().toLowerCase();
+                scheduleMap[dayKey] = item;
+            }
+        });
+
+        const fullSchedule = DAYS.map(day => {
+            const dayKey = day.toLowerCase();
+            const existing = scheduleMap[dayKey];
+            if (existing) {
+                let windows = existing.time_windows;
+                if (typeof windows === "string") {
+                    try { windows = JSON.parse(windows); } catch (e) { windows = []; }
+                }
+                if (!Array.isArray(windows) || windows.length === 0) {
+                    if (existing.start_time && existing.end_time) {
+                        windows = [{ start_time: existing.start_time, end_time: existing.end_time }];
+                    } else {
+                        windows = [];
+                    }
+                }
+                return {
+                    id: existing.id,
+                    doctor_id: actualDoctorId,
+                    day_of_week: day,
+                    is_available: Boolean(existing.is_available),
+                    start_time: existing.start_time || "09:00 AM",
+                    end_time: existing.end_time || "05:00 PM",
+                    slot_duration_minutes: existing.slot_duration_minutes || existing.slot_duration || 30,
+                    time_windows: windows
+                };
+            }
+            return {
+                doctor_id: actualDoctorId,
+                day_of_week: day,
+                is_available: false,
+                start_time: "09:00 AM",
+                end_time: "05:00 PM",
+                slot_duration_minutes: 30,
+                time_windows: []
+            };
+        });
+
+        return res.json({
+            success: true,
+            doctorId: actualDoctorId,
+            availability: fullSchedule,
+            blockedDates: blockedData || []
+        });
+    } catch (err) {
+        console.error("[Staff Doctor Availability API Error]:", err);
+        return res.status(500).json({ success: false, message: err.message || "Failed to fetch doctor availability." });
+    }
+});
+
+/**
  * GET /api/v1/staff/queue
  * Live queue overview of patient_visits and appointments for selected date
  * Unified dataset supporting status tabs, doctor filtering, and appointment times
  */
+/**
+ * GET /api/v1/staff/queue
+ * Live queue overview of patient_visits, appointments, and QR intakes for selected date
+ * Doctor-scoped token sequence starting at 001 per doctor
+ * Strict clinical privacy (symptoms & complaints stripped from staff response)
+ */
 router.get("/queue", async (req, res) => {
     try {
         const db = getSupabaseClient();
-        if (!db) return res.json({ success: true, queue: [], counts: { all: 0, scheduled: 0, checkedIn: 0, waiting: 0, inConsultation: 0, completed: 0, cancelled: 0 } });
+        if (!db) return res.json({ success: true, queue: [], counts: { all: 0, scheduled: 0, waiting: 0, inConsultation: 0, completed: 0, scheduledOtherDates: 0 } });
 
         const hospitalId = req.context.hospitalId;
         const requestedDate = req.query.date || new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date());
 
-        // 1. Fetch appointments for hospital (with resilient fallback)
+        const getIstDateStr = (dateIsoStr) => {
+            if (!dateIsoStr) return null;
+            try {
+                return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date(dateIsoStr));
+            } catch (e) {
+                return null;
+            }
+        };
+
+        // 1. Fetch appointments for hospital (filter by appointment_date = requestedDate)
         let appQuery = db
             .from("appointments")
             .select(`
@@ -873,7 +1052,6 @@ router.get("/queue", async (req, res) => {
                 appointment_time,
                 status,
                 source,
-                reason,
                 hospital_id,
                 hospital_patient_id,
                 created_at,
@@ -884,37 +1062,33 @@ router.get("/queue", async (req, res) => {
         if (hospitalId) {
             appQuery = appQuery.eq("hospital_id", hospitalId);
         }
-        appQuery = appQuery.order("created_at", { ascending: false }).limit(200);
+        appQuery = appQuery.eq("appointment_date", requestedDate).order("created_at", { ascending: true }).limit(200);
 
         let { data: appointmentsData, error: appErr } = await appQuery;
         if (appErr) {
-            console.warn("[Queue API] Appointments primary query fallback error:", appErr?.message);
+            console.warn("[Queue API] Appointments primary query fallback warning:", appErr?.message);
             let fallbackQuery = db
                 .from("appointments")
                 .select(`
-                    id, doctor_id, patient_id, appointment_date, appointment_time, status, source, reason, hospital_id, hospital_patient_id, created_at,
+                    id, doctor_id, patient_id, appointment_date, appointment_time, status, source, hospital_id, hospital_patient_id, created_at,
                     doctors(doctor_id, doctor_name, doctor_specialization),
                     hospital_patient_records(id, hospital_patient_code, full_name, phone, gender, date_of_birth)
-                `);
-            if (hospitalId) {
-                fallbackQuery = fallbackQuery.eq("hospital_id", hospitalId);
-            }
-            const { data: fallbackApps } = await fallbackQuery
-                .order("created_at", { ascending: false })
-                .limit(200);
+                `)
+                .eq("appointment_date", requestedDate);
+            if (hospitalId) fallbackQuery = fallbackQuery.eq("hospital_id", hospitalId);
+            const { data: fallbackApps } = await fallbackQuery.order("created_at", { ascending: true }).limit(200);
             appointmentsData = fallbackApps || [];
         } else if (!appointmentsData) {
             appointmentsData = [];
         }
 
-        // 2. Fetch patient visits for hospital
+        // 2. Fetch patient visits for hospital for requested date
         const selectFields = `
             id,
             hospital_patient_id,
             appointment_id,
             doctor_id,
             visit_stage,
-            chief_complaints,
             intake_vitals,
             checked_in_at,
             consultation_started_at,
@@ -927,37 +1101,70 @@ router.get("/queue", async (req, res) => {
         `;
 
         let visitQuery = db.from("patient_visits").select(selectFields);
-        if (hospitalId) {
-            visitQuery = visitQuery.eq("hospital_id", hospitalId);
-        }
-        visitQuery = visitQuery.order("created_at", { ascending: false }).limit(200);
+        if (hospitalId) visitQuery = visitQuery.eq("hospital_id", hospitalId);
+        visitQuery = visitQuery.order("created_at", { ascending: true }).limit(200);
 
         let { data: visitsData, error: visitErr } = await visitQuery;
         if (visitErr) {
             let fallbackQuery = db.from("patient_visits").select(selectFields);
-            if (hospitalId) {
-                fallbackQuery = fallbackQuery.eq("hospital_id", hospitalId);
-            }
-            const { data: fallbackVisits } = await fallbackQuery.order("created_at", { ascending: false }).limit(200);
+            if (hospitalId) fallbackQuery = fallbackQuery.eq("hospital_id", hospitalId);
+            const { data: fallbackVisits } = await fallbackQuery.order("created_at", { ascending: true }).limit(200);
             visitsData = fallbackVisits || [];
         } else if (!visitsData) {
             visitsData = [];
         }
 
-        // 3. Fetch clinical notes & prescriptions counts for delete eligibility check
-        const appIds = [...new Set([
-            ...(appointmentsData || []).map(a => a.id),
-            ...(visitsData || []).map(v => v.appointment_id)
-        ].filter(Boolean))];
+        // 3. Fetch unregistered QR intake sessions for requestedDate (STRICTLY submitted today)
+        let qrSessions = [];
+        if (hospitalId) {
+            const todayStartIso = new Date(`${requestedDate}T00:00:00+05:30`).toISOString();
+            const todayEndIso = new Date(`${requestedDate}T23:59:59.999+05:30`).toISOString();
 
-        let notesMap = {};
-        let rxMap = {};
-        if (appIds.length > 0) {
-            const { data: notesData } = await db.from("consultation_notes").select("appointment_id").in("appointment_id", appIds);
-            (notesData || []).forEach(n => { if (n.appointment_id) notesMap[n.appointment_id] = true; });
+            const { data: qrData, error: qrErr } = await db
+                .from("qr_intake_sessions")
+                .select("id, hospital_id, full_name, first_name, last_name, gender, date_of_birth, phone, status, created_at, submitted_at")
+                .eq("hospital_id", hospitalId)
+                .in("status", ["submitted", "review", "safety_blocked"])
+                .not("submitted_at", "is", null)
+                .gte("submitted_at", todayStartIso)
+                .lte("submitted_at", todayEndIso)
+                .order("submitted_at", { ascending: false });
 
-            const { data: rxData } = await db.from("prescriptions").select("appointment_id").in("appointment_id", appIds);
-            (rxData || []).forEach(r => { if (r.appointment_id) rxMap[r.appointment_id] = true; });
+            if (qrErr) {
+                console.warn("[Queue API] QR intakes query warning:", qrErr.message);
+            }
+
+            // Filter strictly by IST date matching requestedDate
+            const validQrIntakes = (qrData || []).filter(qr => {
+                if (!qr.submitted_at) return false;
+                const istDate = getIstDateStr(qr.submitted_at);
+                return istDate === requestedDate;
+            });
+
+            // Deduplicate by phone / patient name if multiple intakes submitted today, keeping the latest one
+            const seenPatients = new Set();
+            const uniqueQrData = [];
+            validQrIntakes.forEach(qr => {
+                const key = (qr.phone || qr.full_name || qr.id).trim().toLowerCase();
+                if (!seenPatients.has(key)) {
+                    seenPatients.add(key);
+                    uniqueQrData.push(qr);
+                }
+            });
+
+            qrSessions = uniqueQrData.reverse(); // ascending sequence
+        }
+
+        // 4. Fetch scheduled future date appointments count
+        let scheduledOtherDatesCount = 0;
+        if (hospitalId) {
+            const { count: futureCount } = await db
+                .from("appointments")
+                .select("id", { count: "exact", head: true })
+                .eq("hospital_id", hospitalId)
+                .gt("appointment_date", requestedDate)
+                .neq("status", "cancelled");
+            scheduledOtherDatesCount = futureCount || 0;
         }
 
         // Map visits by appointment_id and hospital_patient_id
@@ -972,30 +1179,25 @@ router.get("/queue", async (req, res) => {
         });
 
         const processedVisits = new Set();
-        const queueItems = [];
+        const rawItems = [];
 
-        // First process all appointments
+        // Process all appointments for requestedDate
         (appointmentsData || []).forEach((app) => {
-            const visit = visitsByAppId[app.id] || (app.hospital_patient_id && visitsByHprId[app.hospital_patient_id] ? visitsByHprId[app.hospital_patient_id][0] : null);
+            const todayVisit = (visitsByHprId[app.hospital_patient_id] || []).find(v => {
+                const vDate = getIstDateStr(v.checked_in_at || v.created_at);
+                return vDate === requestedDate;
+            });
+            const visit = visitsByAppId[app.id] || todayVisit || null;
             if (visit) processedVisits.add(visit.id);
 
             const decHpr = decryptRecord("hospital_patient_records", app.hospital_patient_records || visit?.hospital_patient_records);
             const decVisit = decryptRecord("patient_visits", visit);
 
-            const rawStage = visit?.visit_stage || (app.status === "cancelled" ? "cancelled" : (app.status === "completed" ? "completed" : "scheduled"));
-            const visitStage = rawStage === "exited" ? "completed" : rawStage;
+            const rawStage = visit?.visit_stage || (app.status === "cancelled" ? "cancelled" : (app.status === "completed" ? "completed" : "waiting"));
+            const visitStage = rawStage === "exited" ? "completed" : (rawStage === "scheduled" ? "waiting" : rawStage);
+            const queueStatus = visitStage === "in_consultation" ? "IN_CONSULTATION" : (visitStage === "completed" ? "COMPLETED" : "WAITING");
 
-            const isScheduled = visitStage === "scheduled";
-            const isCancelled = visitStage === "cancelled" || app.status === "cancelled";
-            const isCompleted = visitStage === "completed" || app.status === "completed";
-            const hasClinicalNotes = Boolean(notesMap[app.id] || rxMap[app.id]);
-            const hasProgressedVisit = visitStage && !["scheduled", "cancelled"].includes(visitStage);
-
-            const canCheckIn = isScheduled && !isCancelled && !isCompleted;
-            const canCancel = !isCancelled && !isCompleted;
-            const canDelete = isScheduled && !hasProgressedVisit && !hasClinicalNotes;
-
-            queueItems.push({
+            rawItems.push({
                 id: app.id,
                 appointmentId: app.id,
                 visitId: visit?.id || null,
@@ -1006,49 +1208,40 @@ router.get("/queue", async (req, res) => {
                 patientCode: decHpr?.hospital_patient_code || "",
                 gender: decHpr?.gender || null,
                 dateOfBirth: decHpr?.date_of_birth || null,
-                isRegistered: Boolean(app.patient_id || decHpr?.patient_id),
-                doctorId: app.doctor_id || visit?.doctor_id,
+                isRegistered: true,
+                isUnregisteredQr: false,
+                doctorId: app.doctor_id || visit?.doctor_id || "unassigned",
                 doctorName: app.doctors?.doctor_name || visit?.doctors?.doctor_name || "Assigned Doctor",
                 specialization: app.doctors?.doctor_specialization || visit?.doctors?.doctor_specialization || "General Medicine",
                 appointmentDate: app.appointment_date || requestedDate,
-                appointmentTime: app.appointment_time || "Walk-in",
-                reason: app.reason || decVisit?.chief_complaints || "Routine Checkup",
+                appointmentTime: app.appointment_time || "09:00 AM",
                 source: app.source || "walk_in",
-                status: app.status || "confirmed",
+                status: queueStatus,
                 visitStage: visitStage,
                 checkedInAt: visit?.checked_in_at || null,
                 consultationStartedAt: visit?.consultation_started_at || visit?.started_at || null,
                 consultationCompletedAt: visit?.consultation_completed_at || visit?.completed_at || null,
-                exitedAt: visit?.exited_at || null,
-                chiefComplaints: decVisit?.chief_complaints || app.reason || "",
+                vitals: decVisit?.intake_vitals || {},
                 intakeVitals: decVisit?.intake_vitals || {},
-                can_check_in: canCheckIn,
-                can_cancel: canCancel,
-                can_delete: canDelete,
                 createdAt: app.created_at || visit?.created_at
             });
         });
 
-        // Add remaining standalone walk-in visits without appointment links
+        // Add remaining standalone walk-in visits without appointment links (STRICTLY for requestedDate)
         (visitsData || []).forEach((visit) => {
             if (processedVisits.has(visit.id)) return;
+
+            const visitDate = getIstDateStr(visit.checked_in_at || visit.created_at);
+            if (!visitDate || visitDate !== requestedDate) return;
+
             processedVisits.add(visit.id);
 
             const decHpr = decryptRecord("hospital_patient_records", visit.hospital_patient_records);
             const decVisit = decryptRecord("patient_visits", visit);
-            const visitStage = visit.visit_stage === "exited" ? "completed" : (visit.visit_stage || "scheduled");
+            const visitStage = visit.visit_stage === "exited" ? "completed" : (visit.visit_stage === "scheduled" ? "waiting" : (visit.visit_stage || "waiting"));
+            const queueStatus = visitStage === "in_consultation" ? "IN_CONSULTATION" : (visitStage === "completed" ? "COMPLETED" : "WAITING");
 
-            const isScheduled = visitStage === "scheduled";
-            const isCancelled = visitStage === "cancelled";
-            const isCompleted = visitStage === "completed";
-            const hasClinicalNotes = visit.appointment_id ? Boolean(notesMap[visit.appointment_id] || rxMap[visit.appointment_id]) : false;
-            const hasProgressedVisit = !["scheduled", "cancelled"].includes(visitStage);
-
-            const canCheckIn = isScheduled;
-            const canCancel = !isCancelled && !isCompleted;
-            const canDelete = isScheduled && !hasProgressedVisit && !hasClinicalNotes;
-
-            queueItems.push({
+            rawItems.push({
                 id: visit.appointment_id || visit.id,
                 appointmentId: visit.appointment_id || null,
                 visitId: visit.id,
@@ -1059,54 +1252,196 @@ router.get("/queue", async (req, res) => {
                 patientCode: decHpr?.hospital_patient_code || "",
                 gender: decHpr?.gender || null,
                 dateOfBirth: decHpr?.date_of_birth || null,
-                isRegistered: Boolean(visit.patient_id || decHpr?.patient_id),
-                doctorId: visit.doctor_id,
+                isRegistered: true,
+                isUnregisteredQr: false,
+                doctorId: visit.doctor_id || "unassigned",
                 doctorName: visit.doctors?.doctor_name || "Assigned Doctor",
                 specialization: visit.doctors?.doctor_specialization || "General Medicine",
                 appointmentDate: requestedDate,
                 appointmentTime: "Walk-in",
-                reason: decVisit?.chief_complaints || "Walk-in Consultation",
                 source: "walk_in",
-                status: isCompleted ? "completed" : (isCancelled ? "cancelled" : "confirmed"),
+                status: queueStatus,
                 visitStage: visitStage,
                 checkedInAt: visit.checked_in_at || null,
                 consultationStartedAt: visit.consultation_started_at || visit.started_at || null,
                 consultationCompletedAt: visit.consultation_completed_at || visit.completed_at || null,
-                exitedAt: visit.exited_at || null,
-                chiefComplaints: decVisit?.chief_complaints || "",
+                vitals: decVisit?.intake_vitals || {},
                 intakeVitals: decVisit?.intake_vitals || {},
-                can_check_in: canCheckIn,
-                can_cancel: canCancel,
-                can_delete: canDelete,
                 createdAt: visit.created_at
             });
         });
 
-        // Add token numbers
-        const queueList = queueItems.map((item, idx) => ({
-            ...item,
-            token: String(idx + 1).padStart(2, "0")
-        }));
+        // Add unregistered QR intake sessions to queue (STRICTLY for requestedDate)
+        qrSessions.forEach((qr) => {
+            if (!qr.submitted_at) return;
+            const qrDate = getIstDateStr(qr.submitted_at);
+            if (!qrDate || qrDate !== requestedDate) return;
 
-        // Calculate dynamic stage counts
+            rawItems.push({
+                id: `qr_${qr.id}`,
+                appointmentId: null,
+                visitId: null,
+                qrSessionId: qr.id,
+                hprId: null,
+                patientId: null,
+                patientName: qr.full_name || `${qr.first_name || 'Patient'} ${qr.last_name || ''}`.trim(),
+                phone: qr.phone || "",
+                patientCode: "QR-PENDING",
+                gender: qr.gender || null,
+                dateOfBirth: qr.date_of_birth || null,
+                isRegistered: false,
+                isUnregisteredQr: true,
+                doctorId: "unassigned",
+                doctorName: "Pending Assignment",
+                specialization: "General Medicine",
+                appointmentDate: requestedDate,
+                appointmentTime: "12:45 PM",
+                source: "qr_intake",
+                status: "qr_pending",
+                visitStage: "qr_pending",
+                checkedInAt: null,
+                consultationStartedAt: null,
+                consultationCompletedAt: null,
+                intakeVitals: {},
+                createdAt: qr.created_at
+            });
+        });
+
+        // 5. DOCTOR-SCOPED TOKEN ASSIGNMENT & SHIFT ORDERING
+        // Helper to parse 12-hour time string into minutes from midnight
+        function parseMinutes(tStr) {
+            if (!tStr) return 540;
+            const str = String(tStr).trim();
+            const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+            if (!match) return 540;
+            let h = parseInt(match[1], 10);
+            const m = parseInt(match[2], 10);
+            const period = match[3] ? match[3].toUpperCase() : null;
+            if (period === "PM" && h < 12) h += 12;
+            if (period === "AM" && h === 12) h = 0;
+            return h * 60 + m;
+        }
+
+        // Group items by doctorId
+        const itemsByDoctor = {};
+        rawItems.forEach(item => {
+            const docId = item.doctorId || "unassigned";
+            if (!itemsByDoctor[docId]) itemsByDoctor[docId] = [];
+            itemsByDoctor[docId].push(item);
+        });
+
+        const finalQueue = [];
+
+        // For each doctor, sort by scheduled time then assign Tokens 001, 002, 003...
+        Object.keys(itemsByDoctor).forEach(docId => {
+            const docItems = itemsByDoctor[docId];
+            
+            docItems.sort((a, b) => {
+                const timeA = parseMinutes(a.appointmentTime);
+                const timeB = parseMinutes(b.appointmentTime);
+                if (timeA !== timeB) return timeA - timeB;
+                return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+            });
+
+            docItems.forEach((item, idx) => {
+                item.token = String(idx + 1).padStart(3, "0");
+                item.queuePosition = idx + 1;
+                finalQueue.push(item);
+            });
+        });
+
+        // 6. Calculate summary counts (registered patients only)
+        const registeredQueue = finalQueue.filter(q => !q.isUnregisteredQr);
+        const totalPatients = registeredQueue.length;
+        const waiting = registeredQueue.filter(q => q.visitStage === "waiting" || q.visitStage === "checked_in").length;
+        const inConsultation = registeredQueue.filter(q => q.visitStage === "in_consultation").length;
+        const completed = registeredQueue.filter(q => q.visitStage === "completed" || q.visitStage === "exited").length;
+        const pendingAssignment = finalQueue.filter(q => q.isUnregisteredQr).length;
+
         const counts = {
-            all: queueList.length,
-            scheduled: queueList.filter(q => q.visitStage === "scheduled").length,
-            checkedIn: queueList.filter(q => q.visitStage === "checked_in").length,
-            waiting: queueList.filter(q => q.visitStage === "waiting").length,
-            inConsultation: queueList.filter(q => q.visitStage === "in_consultation").length,
-            completed: queueList.filter(q => q.visitStage === "completed").length,
-            cancelled: queueList.filter(q => q.visitStage === "cancelled").length
+            totalPatients,
+            waiting,
+            inConsultation,
+            completed,
+            pendingAssignment,
+            scheduledOtherDates: scheduledOtherDatesCount
         };
 
         return res.json({
             success: true,
             date: requestedDate,
             counts,
-            queue: queueList
+            queue: finalQueue
         });
     } catch (err) {
         console.error("[Staff Queue Error]:", err);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+/**
+ * POST /api/v1/staff/queue/next
+ * Advance doctor queue to next waiting patient (Waiting -> In Consultation)
+ */
+router.post("/queue/next", requirePermission("queue.view"), async (req, res) => {
+    try {
+        const { doctorId, date } = req.body;
+        const hospitalId = req.context.hospitalId;
+        const db = getSupabaseClient();
+
+        if (!db || !doctorId) {
+            return res.status(400).json({ success: false, message: "doctorId is required." });
+        }
+
+        const targetDate = date || new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date());
+
+        // 1. Complete any active in_consultation visit for this doctor today
+        const { data: activeVisits } = await db
+            .from("patient_visits")
+            .select("id, visit_stage")
+            .eq("hospital_id", hospitalId)
+            .eq("doctor_id", doctorId)
+            .eq("visit_stage", "in_consultation");
+
+        if (activeVisits && activeVisits.length > 0) {
+            for (const av of activeVisits) {
+                await db.from("patient_visits")
+                    .update({
+                        visit_stage: "completed",
+                        consultation_completed_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq("id", av.id);
+            }
+        }
+
+        // 2. Find next waiting / checked_in visit for this doctor
+        const { data: waitingVisits } = await db
+            .from("patient_visits")
+            .select("id, appointment_id, visit_stage, created_at")
+            .eq("hospital_id", hospitalId)
+            .eq("doctor_id", doctorId)
+            .in("visit_stage", ["waiting", "checked_in"])
+            .order("created_at", { ascending: true })
+            .limit(1);
+
+        if (!waitingVisits || waitingVisits.length === 0) {
+            return res.json({
+                success: true,
+                message: "No waiting patients remaining for this doctor.",
+                nextVisit: null
+            });
+        }
+
+        const nextVisit = waitingVisits[0];
+
+        return res.json({
+            success: true,
+            message: "Advanced queue to next patient successfully.",
+            nextVisit: nextVisit
+        });
+    } catch (err) {
+        console.error("[Queue Next Error]:", err);
         return res.status(500).json({ success: false, message: err.message });
     }
 });
@@ -1444,7 +1779,33 @@ async function validateSessionCapacityAndConflict(db, { doctorId, date, time, ho
     const targetDateStr = String(date).trim();
     const targetTimeStr = time ? String(time).trim() : null;
 
-    // 1. Check Blocked Dates
+    // 1. Verify Doctor Membership in Hospital
+    if (hospitalId) {
+        const { data: members, error: memErr } = await db
+            .from("hospital_members")
+            .select("id")
+            .eq("hospital_id", hospitalId)
+            .or(`doctor_id.eq.${doctorId},user_id.eq.${doctorId}`);
+        if (memErr || !members || members.length === 0) {
+            return {
+                isAllowed: false,
+                statusCode: 403,
+                message: "Selected doctor is not assigned to this hospital."
+            };
+        }
+    }
+
+    // 2. Check for Past Date (compared to today in Asia/Kolkata)
+    const todayKolkata = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date());
+    if (targetDateStr < todayKolkata) {
+        return {
+            isAllowed: false,
+            statusCode: 400,
+            message: `Selected registration date (${targetDateStr}) cannot be in the past.`
+        };
+    }
+
+    // 3. Check Blocked Dates
     const { data: blockedRows } = await db
         .from("blocked_dates")
         .select("reason")
@@ -1460,52 +1821,157 @@ async function validateSessionCapacityAndConflict(db, { doctorId, date, time, ho
         };
     }
 
-    // 2. Check Doctor Availability on day of week
-    const dateObj = new Date(targetDateStr);
-    const daysOfWeek = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-    const dayName = daysOfWeek[dateObj.getDay()];
+    // 4. Check Doctor Availability on day of week
+    let dayName = "Monday";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)) {
+        const [y, m, d] = targetDateStr.split("-").map(Number);
+        const utcDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+        dayName = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "Asia/Kolkata" }).format(utcDate);
+    } else {
+        const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        dayName = daysOfWeek[new Date(targetDateStr).getDay()] || "Monday";
+    }
 
     const { data: availRows } = await db
         .from("availability")
-        .select("is_available")
-        .eq("doctor_id", doctorId)
-        .eq("day_of_week", dayName)
-        .limit(1);
+        .select("*")
+        .eq("doctor_id", doctorId);
 
-    if (availRows && availRows.length > 0 && availRows[0].is_available === false) {
+    if (availRows && availRows.length > 0) {
+        const dayMatch = availRows.find(a => a.day_of_week && a.day_of_week.trim().toLowerCase() === dayName.toLowerCase());
+        if (!dayMatch || dayMatch.is_available === false) {
+            return {
+                isAllowed: false,
+                statusCode: 400,
+                message: `Doctor does not consult on ${dayName}s.`
+            };
+        }
+
+        // Check if shift is specified and validate against time_windows
+        if (targetTimeStr && targetTimeStr.includes("-")) {
+            let windows = dayMatch.time_windows;
+            if (typeof windows === "string") {
+                try { windows = JSON.parse(windows); } catch(e) { windows = []; }
+            }
+            if (!Array.isArray(windows) || windows.length === 0) {
+                if (dayMatch.start_time && dayMatch.end_time) {
+                    windows = [{ start_time: dayMatch.start_time, end_time: dayMatch.end_time }];
+                }
+            }
+            if (Array.isArray(windows) && windows.length > 0) {
+                const isValidShift = windows.some(w => {
+                    const winStr = `${w.start_time} - ${w.end_time}`.trim().toLowerCase();
+                    return targetTimeStr.trim().toLowerCase() === winStr;
+                });
+                if (!isValidShift) {
+                    return {
+                        isAllowed: false,
+                        statusCode: 400,
+                        message: `Selected shift (${targetTimeStr}) is not valid for doctor's schedule on ${targetDateStr}.`
+                    };
+                }
+            }
+        }
+    } else {
+        // No schedule found for doctor
         return {
             isAllowed: false,
             statusCode: 400,
-            message: `Doctor does not consult on ${dayName}s.`
+            message: `No availability schedule configured for doctor on ${dayName}s.`
         };
     }
 
-    // 3. Time Slot Conflict Check (excluding cancelled appointments)
-    if (targetTimeStr) {
-        let conflictQuery = db
-            .from("appointments")
-            .select("id")
-            .eq("doctor_id", doctorId)
-            .eq("appointment_date", targetDateStr)
-            .eq("appointment_time", targetTimeStr)
-            .neq("status", "cancelled");
+    return { isAllowed: true };
+}
 
-        if (excludeAppointmentId) {
-            conflictQuery = conflictQuery.neq("id", excludeAppointmentId);
-        }
-
-        const { data: conflicts } = await conflictQuery;
-
-        if (conflicts && conflicts.length > 0) {
-            return {
-                isAllowed: false,
-                statusCode: 409,
-                message: `The time slot ${targetTimeStr} on ${targetDateStr} is already booked by another appointment.`
-            };
-        }
+/**
+ * Allocate a collision-free appointment_time within the doctor's selected shift.
+ * Allows multiple patients to register for the same shift while satisfying
+ * idx_unique_active_doctor_slot unique constraint in appointments table.
+ */
+async function resolveAvailableShiftSlot(db, doctorId, targetDate, shiftStr) {
+    if (!doctorId || !targetDate || !shiftStr) {
+        return shiftStr || "09:00 AM";
     }
 
-    return { isAllowed: true };
+    const rawStr = String(shiftStr).trim();
+
+    // Helper: Parse 12-hour time like "10:30 AM" into minutes from midnight
+    function timeToMinutes(t) {
+        if (!t) return null;
+        const m = String(t).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        const mins = parseInt(m[2], 10);
+        const p = m[3] ? m[3].toUpperCase() : null;
+        if (p === "PM" && h < 12) h += 12;
+        if (p === "AM" && h === 12) h = 0;
+        return h * 60 + mins;
+    }
+
+    // Helper: Format minutes from midnight to "10:30 AM"
+    function minutesTo12h(mins) {
+        const total = ((mins % 1440) + 1440) % 1440;
+        let h = Math.floor(total / 60);
+        const m = total % 60;
+        const p = h >= 12 ? "PM" : "AM";
+        if (h === 0) h = 12;
+        else if (h > 12) h -= 12;
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${p}`;
+    }
+
+    try {
+        // Fetch existing active appointments for doctor on targetDate
+        const { data: existingApps } = await db
+            .from("appointments")
+            .select("appointment_time")
+            .eq("doctor_id", doctorId)
+            .eq("appointment_date", targetDate)
+            .neq("status", "cancelled");
+
+        const takenTimes = new Set(
+            (existingApps || []).map(a => String(a.appointment_time || "").trim().toLowerCase())
+        );
+
+        // If shiftStr is a range: e.g. "10:30 AM - 12:30 PM" or "10:30 AM – 12:30 PM"
+        const rangeParts = rawStr.split(/\s*[-–—]\s*/);
+        if (rangeParts.length >= 2) {
+            const startMin = timeToMinutes(rangeParts[0]) ?? 540;
+            const endMin = timeToMinutes(rangeParts[1]) ?? (startMin + 120);
+
+            // Try increments of 10 minutes within the window, then 5 minutes, then 1 minute
+            for (const step of [10, 5, 2, 1]) {
+                for (let m = startMin; m < endMin; m += step) {
+                    const candidate = minutesTo12h(m);
+                    if (!takenTimes.has(candidate.toLowerCase()) && !takenTimes.has(rawStr.toLowerCase())) {
+                        return candidate;
+                    }
+                }
+            }
+
+            // Fallback offset within window
+            const count = (existingApps || []).length + 1;
+            return minutesTo12h(startMin + (count % Math.max(1, endMin - startMin)));
+        }
+
+        // If shiftStr is a single time like "10:30 AM"
+        if (!takenTimes.has(rawStr.toLowerCase())) {
+            return rawStr;
+        }
+
+        // If exact single time taken, advance by 5 minutes within schedule
+        const baseMin = timeToMinutes(rawStr) ?? 540;
+        for (let offset = 5; offset <= 360; offset += 5) {
+            const candidate = minutesTo12h(baseMin + offset);
+            if (!takenTimes.has(candidate.toLowerCase())) {
+                return candidate;
+            }
+        }
+    } catch (slotErr) {
+        console.warn("[Shift Slot Allocation Warning]:", slotErr.message);
+    }
+
+    return rawStr;
 }
 
 /**
@@ -1523,6 +1989,9 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             gender,
             dateOfBirth,
             doctorId,
+            appointmentDate,
+            shift,
+            appointmentTime,
             chiefComplaints,
             vitals,
             actionType = "register_and_checkin" // 'register_only' | 'register_and_checkin'
@@ -1548,11 +2017,18 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
 
         const nowObj = new Date();
         const todayStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(nowObj);
+        const targetDate = appointmentDate || req.body.date || todayStr;
+        const targetShift = shift || appointmentTime || new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(nowObj);
+
+        if (!targetDate || !targetShift) {
+            return res.status(400).json({ success: false, message: "Registration date and shift selection are required." });
+        }
 
         // Validate session capacity, blocked dates, availability, and slot conflict
         const capCheck = await validateSessionCapacityAndConflict(db, {
             doctorId,
-            date: todayStr,
+            date: targetDate,
+            time: targetShift,
             hospitalId: req.context.hospitalId
         });
 
@@ -1647,13 +2123,13 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
         if (createHprErr) throw createHprErr;
 
         // 2. Create Appointment with patient_id = NULL
-        const nowTimeStr = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(nowObj);
+        const allocatedSlot = await resolveAvailableShiftSlot(db, doctorId, targetDate, targetShift);
 
         const appointmentData = {
             doctor_id: doctorId,
             patient_id: null, // Temporary walk-in
-            appointment_date: todayStr,
-            appointment_time: nowTimeStr,
+            appointment_date: targetDate,
+            appointment_time: allocatedSlot,
             status: "confirmed",
             reason: chiefComplaints || "Walk-in Consultation",
             payment_method: "pay_at_clinic",
@@ -1754,6 +2230,9 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
         const {
             selectedHprId,
             doctorId,
+            appointmentDate,
+            shift,
+            appointmentTime,
             chiefComplaints,
             vitals,
             actionType = "register_and_checkin"
@@ -1781,12 +2260,19 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
         }
 
         const decHprRecord = decryptRecord("hospital_patient_records", hprRecord);
-        const todayStr = new Date().toISOString().split("T")[0];
+        const todayStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date());
+        const targetDate = appointmentDate || req.body.date || todayStr;
+        const targetShift = shift || appointmentTime || new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(new Date());
+
+        if (!targetDate || !targetShift) {
+            return res.status(400).json({ success: false, message: "Registration date and shift selection are required." });
+        }
 
         // Validate session capacity, blocked dates, and doctor availability
         const capCheck = await validateSessionCapacityAndConflict(db, {
             doctorId,
-            date: todayStr,
+            date: targetDate,
+            time: targetShift,
             hospitalId: req.context.hospitalId
         });
 
@@ -1813,8 +2299,6 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
             });
         }
 
-        const nowTimeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
-        
         // Resolve Auth User ID if registered
         let authUserId = null;
         if (hprRecord.patient_id) {
@@ -1823,11 +2307,13 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
         }
 
         // Create new Appointment referencing existing HPR
+        const allocatedSlot = await resolveAvailableShiftSlot(db, doctorId, targetDate, targetShift);
+
         const appointmentData = {
             doctor_id: doctorId,
             patient_id: authUserId, // NULL if temporary, Auth User ID if registered
-            appointment_date: todayStr,
-            appointment_time: nowTimeStr,
+            appointment_date: targetDate,
+            appointment_time: allocatedSlot,
             status: "confirmed",
             reason: chiefComplaints || "Walk-in Consultation",
             payment_method: "pay_at_clinic",

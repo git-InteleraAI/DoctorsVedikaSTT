@@ -1,6 +1,8 @@
 const { supabase, supabaseAdmin } = require("../config/supabase");
 const db = supabaseAdmin || supabase;
 const crypto = require("crypto");
+const path = require("path");
+const fs = require("fs");
 const { encryptPayload, decryptRecord } = require("../services/encryptionService");
 
 // In-memory fallback maps for walk-in patients created without auth accounts
@@ -61,18 +63,42 @@ class PatientController {
      */
     async searchPatients(req, res) {
         try {
-            const { q } = req.query;
+            const { q, date, allDates } = req.query;
             const doctorIds = this._getDoctorIds(req.doctor);
             const searchStr = q && String(q).trim() ? `%${q.trim()}%` : null;
+
+            // Helper to get IST date string
+            const getIstDateStr = (dateVal) => {
+                if (!dateVal) return null;
+                try {
+                    const d = new Date(dateVal);
+                    if (isNaN(d.getTime())) return String(dateVal).split("T")[0];
+                    return new Intl.DateTimeFormat("en-CA", {
+                        timeZone: "Asia/Kolkata",
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit"
+                    }).format(d);
+                } catch (e) {
+                    return String(dateVal).split("T")[0];
+                }
+            };
+
+            const todayStr = getIstDateStr(new Date());
+            // Filter completed records to the present date (or requested date), unless allDates is explicitly requested
+            const targetDate = allDates === "true" ? null : (date ? String(date).trim() : todayStr);
 
             let docApps = [];
             let docNotes = [];
             let docVisits = [];
+            let completedApps = [];
+            let completedNotes = [];
+            let completedVisits = [];
             let allowedPatientIds = [];
             let allowedHospitalPatientIds = [];
 
             if (db && doctorIds.length > 0) {
-                // Fetch appointments for this doctor (all statuses, not just completed)
+                // Fetch appointments for this doctor
                 const { data: appsData } = await db
                     .from("appointments")
                     .select("id, patient_id, hospital_patient_id, appointment_date, status, doctor_id")
@@ -87,23 +113,45 @@ class PatientController {
                 // Fetch patient visits for this doctor
                 const { data: visitsData } = await db
                     .from("patient_visits")
-                    .select("id, patient_id, hospital_patient_id, doctor_id, created_at, visit_stage")
+                    .select("id, patient_id, hospital_patient_id, doctor_id, created_at, checked_in_at, consultation_completed_at, visit_stage")
                     .in("doctor_id", doctorIds);
 
                 docApps = appsData || [];
                 docNotes = notesData || [];
                 docVisits = visitsData || [];
 
+                // Filter to completed consultations / visits for this doctor on targetDate (present date by default)
+                completedApps = docApps.filter(a => {
+                    const isCompleted = (a.status || "").toLowerCase() === "completed";
+                    const matchDate = !targetDate || a.appointment_date === targetDate;
+                    return isCompleted && matchDate;
+                });
+
+                completedNotes = docNotes.filter(n => {
+                    if (!n.created_at) return false;
+                    const nDate = getIstDateStr(n.created_at);
+                    return !targetDate || nDate === targetDate;
+                });
+
+                completedVisits = docVisits.filter(v => {
+                    const stage = (v.visit_stage || "").toLowerCase();
+                    const isCompleted = stage === "completed" || stage === "exited" || Boolean(v.consultation_completed_at);
+                    const vDateStr = v.consultation_completed_at || v.checked_in_at || v.created_at;
+                    const vDate = getIstDateStr(vDateStr);
+                    const matchDate = !targetDate || vDate === targetDate;
+                    return isCompleted && matchDate;
+                });
+
                 allowedPatientIds = [...new Set([
-                    ...docApps.map(a => a.patient_id),
-                    ...docNotes.map(n => n.patient_id),
-                    ...docVisits.map(v => v.patient_id),
+                    ...completedApps.map(a => a.patient_id),
+                    ...completedNotes.map(n => n.patient_id),
+                    ...completedVisits.map(v => v.patient_id),
                 ].filter(Boolean))];
 
                 allowedHospitalPatientIds = [...new Set([
-                    ...docApps.map(a => a.hospital_patient_id),
-                    ...docNotes.map(n => n.hospital_patient_id),
-                    ...docVisits.map(v => v.hospital_patient_id),
+                    ...completedApps.map(a => a.hospital_patient_id),
+                    ...completedNotes.map(n => n.hospital_patient_id),
+                    ...completedVisits.map(v => v.hospital_patient_id),
                 ].filter(Boolean))];
             }
 
@@ -138,10 +186,10 @@ class PatientController {
                 if (pData) {
                     registeredPatients = pData.filter(p => {
                         const pKeys = [p.user_id, p.id, p.patient_code].filter(Boolean);
-                        const hasDocVisits = docApps.some(a => pKeys.includes(a.patient_id)) ||
-                            docNotes.some(n => pKeys.includes(n.patient_id)) ||
-                            docVisits.some(v => pKeys.includes(v.patient_id));
-                        return hasDocVisits;
+                        const hasCompleted = completedApps.some(a => pKeys.includes(a.patient_id)) ||
+                            completedNotes.some(n => pKeys.includes(n.patient_id)) ||
+                            completedVisits.some(v => pKeys.includes(v.patient_id));
+                        return hasCompleted;
                     });
                 }
             }
@@ -223,10 +271,10 @@ class PatientController {
                 if (hprData) {
                     walkinPatients = hprData.filter(hpr => {
                         const hprKeys = [hpr.id, hpr.hospital_patient_code].filter(Boolean);
-                        const hasDocVisits = docApps.some(a => hprKeys.includes(a.hospital_patient_id)) ||
-                            docNotes.some(n => hprKeys.includes(n.hospital_patient_id)) ||
-                            docVisits.some(v => hprKeys.includes(v.hospital_patient_id));
-                        return hasDocVisits;
+                        const hasCompleted = completedApps.some(a => hprKeys.includes(a.hospital_patient_id)) ||
+                            completedNotes.some(n => hprKeys.includes(n.hospital_patient_id)) ||
+                            completedVisits.some(v => hprKeys.includes(v.hospital_patient_id));
+                        return hasCompleted;
                     });
                 }
             }
@@ -284,13 +332,16 @@ class PatientController {
                 const qClean = q.trim().toLowerCase();
                 for (const [id, p] of inMemoryPatients.entries()) {
                     if (p.fullName?.toLowerCase().includes(qClean) || p.mobile?.includes(qClean) || p.patientCode?.toLowerCase().includes(qClean)) {
-                        if (!combinedMap.has(p.id)) {
-                            combinedMap.set(p.id, {
-                                ...p,
-                                totalVisits: 1,
-                                lastVisit: new Date().toISOString().split("T")[0],
-                                isWalkIn: true
-                            });
+                        const pDate = p.lastVisit || todayStr;
+                        if (!targetDate || pDate === targetDate) {
+                            if (!combinedMap.has(p.id)) {
+                                combinedMap.set(p.id, {
+                                    ...p,
+                                    totalVisits: 1,
+                                    lastVisit: pDate,
+                                    isWalkIn: true
+                                });
+                            }
                         }
                     }
                 }
@@ -455,12 +506,72 @@ class PatientController {
                 }
             }
 
+            const patientRecordsDir = path.join(__dirname, "../patient-records");
+
             const formattedVisits = (appointments || []).map(app => {
                 const note = (notes || []).find(n => n.appointment_id === app.id || n.hospital_patient_id === app.hospital_patient_id) || {};
                 const rx = (prescriptions || []).find(r => r.appointment_id === app.id || r.hospital_patient_id === app.hospital_patient_id) || {};
                 const pVisit = (visitsList || []).find(v => (v.appointment_id && v.appointment_id === app.id) || (v.hospital_patient_id && v.hospital_patient_id === app.hospital_patient_id)) || {};
 
-                const hasNoteContent = Boolean(note.id || note.diagnosis || note.symptoms || note.notes || rx.id || rx.medicines);
+                // Fallback to disk records if notes or prescriptions are not in database
+                let diskRecord = null;
+                const candFolders = [
+                    app.hospital_patient_id,
+                    formattedPatient.patientCode,
+                    app.id,
+                    patientId
+                ].filter(Boolean);
+
+                for (const cand of candFolders) {
+                    const fPath = path.join(patientRecordsDir, cand);
+                    if (!fs.existsSync(fPath)) continue;
+                    const candFiles = [
+                        path.join(fPath, `consultation-app-${app.id}.json`),
+                        path.join(fPath, `${app.id}.json`),
+                        path.join(fPath, `${cand}.json`)
+                    ];
+                    for (const cf of candFiles) {
+                        if (fs.existsSync(cf)) {
+                            try {
+                                const parsed = JSON.parse(fs.readFileSync(cf, "utf8"));
+                                if (parsed && (parsed.summary || parsed.prescription || parsed.medications)) {
+                                    diskRecord = parsed;
+                                    break;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    if (!diskRecord) {
+                        try {
+                            const allFiles = fs.readdirSync(fPath).filter(f => f.endsWith(".json"));
+                            for (const f of allFiles) {
+                                const parsed = JSON.parse(fs.readFileSync(path.join(fPath, f), "utf8"));
+                                if (parsed && (parsed.summary || parsed.prescription || parsed.medications)) {
+                                    diskRecord = parsed;
+                                    break;
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    if (diskRecord) break;
+                }
+
+                const medicinesList = (Array.isArray(rx.medicines) && rx.medicines.length > 0)
+                    ? rx.medicines
+                    : (diskRecord?.medications || diskRecord?.prescription?.medicines || []);
+
+                const hasPrescription = Boolean(
+                    rx.id ||
+                    (Array.isArray(rx.medicines) && rx.medicines.length > 0) ||
+                    (Array.isArray(rx.prescription_data) && rx.prescription_data.length > 0) ||
+                    (Array.isArray(medicinesList) && medicinesList.length > 0)
+                );
+
+                const noteContent = note.notes || diskRecord?.summary?.consultation_overview || "";
+                const symptomContent = note.symptoms || diskRecord?.summary?.symptoms || diskRecord?.summary?.chief_complaint || app.reason || "";
+                const diagnosisContent = note.diagnosis || diskRecord?.diagnosis || diskRecord?.summary?.diagnosis || "";
+
+                const hasNoteContent = Boolean(note.id || hasPrescription || noteContent || symptomContent || diagnosisContent);
                 const visitStage = pVisit.visit_stage || app.status || "scheduled";
                 const isCompleted = app.status === 'completed' || visitStage === 'completed' || visitStage === 'exited' || hasNoteContent;
 
@@ -475,15 +586,11 @@ class PatientController {
                     fee: req.doctor?.consultationFee || "500",
                     paymentStatus: app.payment_status || "pending",
                     reason: app.reason || "",
-                    chiefComplaint: note.symptoms || app.reason || "",
-                    diagnosis: note.diagnosis || "",
-                    notes: note.notes || "",
-                    prescription: rx.medicines || rx.prescription_data || null,
-                    prescriptionAvailable: Boolean(
-                        rx.id ||
-                        (Array.isArray(rx.medicines) && rx.medicines.length > 0) ||
-                        (Array.isArray(rx.prescription_data) && rx.prescription_data.length > 0)
-                    ),
+                    chiefComplaint: symptomContent,
+                    diagnosis: diagnosisContent,
+                    notes: noteContent,
+                    prescription: medicinesList.length > 0 ? medicinesList : (rx.prescription_data || null),
+                    prescriptionAvailable: hasPrescription,
                     doctorId: app.doctor_id
                 };
             });

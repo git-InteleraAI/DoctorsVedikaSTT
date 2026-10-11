@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useRef } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import DashboardLayout from "../components/DashboardLayout";
@@ -13,9 +13,47 @@ const Patients = () => {
     const location = useLocation();
     const { doctor, loading: authLoading } = useAuth();
 
+    const getTodayDateStr = () => {
+        try {
+            return new Intl.DateTimeFormat("en-CA", {
+                timeZone: "Asia/Kolkata",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit"
+            }).format(new Date());
+        } catch (e) {
+            return new Date().toISOString().split("T")[0];
+        }
+    };
+
     // UI States
+    const [searchParams, setSearchParams] = useSearchParams();
+    const dateInputRef = useRef(null);
+
+    const getInitialDate = () => {
+        const urlDate = searchParams.get("date");
+        if (urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate)) {
+            return urlDate;
+        }
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const directUrlDate = params.get("date");
+            if (directUrlDate && /^\d{4}-\d{2}-\d{2}$/.test(directUrlDate)) {
+                return directUrlDate;
+            }
+        } catch (e) {}
+        try {
+            const stored = localStorage.getItem("doctors_vedika_doctor_patients_date");
+            if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) {
+                return stored;
+            }
+        } catch (e) {}
+        return getTodayDateStr();
+    };
+
     const [view, setView] = useState("search"); // 'search', 'walkin', 'profile'
     const [searchQuery, setSearchQuery] = useState("");
+    const [selectedDate, setSelectedDate] = useState(getInitialDate);
     const [patients, setPatients] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -229,18 +267,41 @@ const Patients = () => {
             if (!doctor) {
                 navigate("/login");
             } else {
-                fetchPatients("");
+                const currentUrlDate = searchParams.get("date");
+                if (currentUrlDate !== selectedDate) {
+                    setSearchParams(prev => {
+                        const next = new URLSearchParams(prev);
+                        next.set("date", selectedDate);
+                        return next;
+                    }, { replace: true });
+                }
+                fetchPatients("", selectedDate);
             }
         }
     }, [doctor, authLoading, navigate]);
 
-    const fetchPatients = async (q = "") => {
+    useEffect(() => {
+        const urlDate = searchParams.get("date");
+        if (urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate) && urlDate !== selectedDate) {
+            setSelectedDate(urlDate);
+            try {
+                localStorage.setItem("doctors_vedika_doctor_patients_date", urlDate);
+            } catch (e) {}
+            fetchPatients(searchQuery, urlDate);
+        }
+    }, [searchParams]);
+
+    const fetchPatients = async (q = "", dateOverride = selectedDate) => {
         setLoading(true);
         setError("");
         try {
             const token = getToken();
+            const params = { q };
+            if (dateOverride) {
+                params.date = dateOverride;
+            }
             const response = await axios.get(`${API}/api/patients/search`, {
-                params: { q },
+                params,
                 headers: { Authorization: `Bearer ${token}` }
             });
             setPatients(response.data.patients || []);
@@ -254,7 +315,21 @@ const Patients = () => {
 
     const handleSearch = (e) => {
         e.preventDefault();
-        fetchPatients(searchQuery);
+        fetchPatients(searchQuery, selectedDate);
+    };
+
+    const handleDateChange = (newDate) => {
+        const val = newDate || getTodayDateStr();
+        setSelectedDate(val);
+        try {
+            localStorage.setItem("doctors_vedika_doctor_patients_date", val);
+        } catch (e) {}
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set("date", val);
+            return next;
+        }, { replace: true });
+        fetchPatients(searchQuery, val);
     };
 
     const handleWalkinSubmit = async (e) => {
@@ -444,9 +519,88 @@ const Patients = () => {
         >
             {/* PAGE TITLE */}
             <section className="theme-section-light">
-                <div style={{ marginBottom: "0" }}>
-                    <h1 style={{ color: "var(--navy-deep,#082B68)", fontWeight: 800, fontSize: "1.8rem", margin: 0 }}>Patient Directory</h1>
-                    <p style={{ color: "#64748b", marginTop: 4, fontSize: "1rem" }}>Manage patient records and medical history</p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px", marginBottom: "0" }}>
+                    <div>
+                        <h1 style={{ color: "var(--navy-deep,#082B68)", fontWeight: 800, fontSize: "1.8rem", margin: 0 }}>Patient Directory</h1>
+                        <p style={{ color: "#64748b", marginTop: 4, fontSize: "1rem" }}>
+                            {selectedDate === getTodayDateStr() ? "Showing completed patient records for Today" : `Showing completed patient records for ${selectedDate}`}
+                        </p>
+                    </div>
+
+                    <div 
+                        onClick={() => {
+                            try {
+                                if (dateInputRef.current) {
+                                    if (typeof dateInputRef.current.showPicker === "function") {
+                                        dateInputRef.current.showPicker();
+                                    } else {
+                                        dateInputRef.current.focus();
+                                    }
+                                }
+                            } catch (e) {}
+                        }}
+                        style={{ 
+                            display: "flex", 
+                            alignItems: "center", 
+                            gap: "8px", 
+                            background: "#f8fafc", 
+                            padding: "6px 14px", 
+                            borderRadius: "10px", 
+                            border: "1.5px solid #cbd5e1",
+                            cursor: "pointer",
+                            userSelect: "none"
+                        }}
+                    >
+                        <i className="fa-solid fa-calendar-day" style={{ color: "#0d9488", fontSize: "0.95rem" }} />
+                        <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#475569" }}>Date:</span>
+                        <input
+                            ref={dateInputRef}
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ border: "none", backgroundColor: "transparent", fontSize: "0.85rem", fontWeight: 800, color: "#0b1c2d", outline: "none", cursor: "pointer" }}
+                        />
+                        <button
+                            type="button"
+                            title="Jump to today's patient records"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDateChange(getTodayDateStr());
+                            }}
+                            style={{ 
+                                border: "none", 
+                                backgroundColor: selectedDate === getTodayDateStr() ? "#0d9488" : "#0f766e", 
+                                color: "#ffffff", 
+                                padding: "5px 12px", 
+                                borderRadius: "6px", 
+                                fontSize: "0.78rem", 
+                                fontWeight: 800, 
+                                cursor: "pointer",
+                                transition: "all 0.15s ease-in-out",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px"
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = "#0b5c55";
+                                e.currentTarget.style.transform = "scale(1.03)";
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = selectedDate === getTodayDateStr() ? "#0d9488" : "#0f766e";
+                                e.currentTarget.style.transform = "scale(1)";
+                            }}
+                            onMouseDown={(e) => {
+                                e.currentTarget.style.transform = "scale(0.96)";
+                            }}
+                            onMouseUp={(e) => {
+                                e.currentTarget.style.transform = "scale(1.03)";
+                            }}
+                        >
+                            Today
+                        </button>
+                    </div>
                 </div>
             </section>
 
@@ -473,9 +627,6 @@ const Patients = () => {
                         </div>
                         <button type="submit" style={{ background: "#0f172a", color: "white", padding: "0 24px", borderRadius: "10px", fontWeight: 600, border: "none", cursor: "pointer" }}>
                             Search
-                        </button>
-                        <button type="button" onClick={() => setView("walkin")} style={{ background: "#0d9488", color: "white", padding: "0 24px", borderRadius: "10px", fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <i className="fa-solid fa-plus" /> Walk-in
                         </button>
                     </form>
 
@@ -560,7 +711,8 @@ const Patients = () => {
                             ))}
                             {patients.length === 0 && (
                                 <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "50px 20px", background: "#f8fafc", borderRadius: "14px", border: "1px dashed #cbd5e1", color: "#64748b" }}>
-                                    No patients found. Try adjusting your search.
+                                    <i className="fa-solid fa-clipboard-user" style={{ fontSize: "2rem", color: "#cbd5e1", marginBottom: "10px", display: "block" }} />
+                                    No completed patient records found for {selectedDate === getTodayDateStr() ? "today" : selectedDate}.
                                 </div>
                             )}
                         </div>

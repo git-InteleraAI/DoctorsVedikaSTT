@@ -198,14 +198,14 @@
 .auth-showcase-title {
   font-size: 38px;
   font-weight: 900;
-  color: var(--navy-darkest);
+  color: var(--teal-primary);
   line-height: 1.15;
   margin: 0 0 8px 0;
   letter-spacing: -1px;
 }
 
 .auth-showcase-title .text-highlight {
-  color: var(--teal-primary);
+  color: var(--navy-darkest);
 }
 
 .auth-showcase-subtitle {
@@ -822,10 +822,12 @@
     transform: perspective(1400px) rotateY(-22deg) scale(0.9) translateZ(-80px);
     filter: blur(6px);
   }
+
   40% {
     opacity: 0.85;
     filter: blur(0px);
   }
+
   100% {
     opacity: 1;
     transform: perspective(1400px) rotateY(0deg) scale(1) translateZ(0);
@@ -838,6 +840,7 @@
     opacity: 0;
     transform: perspective(1200px) rotateY(-38deg) translateX(-30px);
   }
+
   100% {
     opacity: 1;
     transform: perspective(1200px) rotateY(0deg) translateX(0);
@@ -849,6 +852,7 @@
     opacity: 0;
     transform: perspective(1200px) rotateY(30deg) translateX(30px);
   }
+
   100% {
     opacity: 1;
     transform: perspective(1200px) rotateY(0deg) translateX(0);

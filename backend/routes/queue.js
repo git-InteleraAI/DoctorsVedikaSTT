@@ -115,7 +115,12 @@ router.get("/live", async (req, res) => {
 router.post("/transition", async (req, res) => {
     try {
         const { visitId, appointmentId, expectedStage, targetStage } = req.body;
-        const targetId = visitId || appointmentId;
+        const rawTargetId = visitId || appointmentId;
+        const targetId = String(rawTargetId || "")
+            .replace(/^consultation-(app|pat|db)-/, "")
+            .replace(/^visit-/, "")
+            .replace(/^app-/, "")
+            .trim();
 
         if (!targetId || !targetStage) {
             return res.status(400).json({
@@ -135,23 +140,33 @@ router.post("/transition", async (req, res) => {
         // Try hardened atomic RPC if expectedStage is provided (except for in_consultation stage transition where consultation_started_at must NOT be set until mic starts)
         if (expectedStage && targetStage !== "in_consultation" && isUuid(targetId)) {
             try {
-                const { data, error } = await db.rpc("transition_visit_stage_hardened", {
-                    p_visit_id: targetId,
-                    p_expected_stage: expectedStage,
-                    p_target_stage: targetStage
-                });
+                // Verify hospital ownership first to ensure tenant isolation
+                const { data: hospCheck } = await db
+                    .from("patient_visits")
+                    .select("id")
+                    .eq("id", targetId)
+                    .eq("hospital_id", req.context.hospitalId)
+                    .maybeSingle();
 
-                if (!error && data && data.success === true) {
-                    rpcSuccess = true;
-                    rpcResult = data;
-                    if (targetStage === "completed" || targetStage === "exited") {
-                        try {
-                            const appTargetId = appointmentId || targetId;
-                            if (isUuid(appTargetId)) {
-                                await db.from("appointments").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", appTargetId);
+                if (hospCheck) {
+                    const { data, error } = await db.rpc("transition_visit_stage_hardened", {
+                        p_visit_id: targetId,
+                        p_expected_stage: expectedStage,
+                        p_target_stage: targetStage
+                    });
+
+                    if (!error && data && data.success === true) {
+                        rpcSuccess = true;
+                        rpcResult = data;
+                        if (targetStage === "completed" || targetStage === "exited") {
+                            try {
+                                const appTargetId = appointmentId || targetId;
+                                if (isUuid(appTargetId)) {
+                                    await db.from("appointments").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", appTargetId).eq("hospital_id", req.context.hospitalId);
+                                }
+                            } catch (appSyncErr) {
+                                console.warn("[Queue Transition] RPC appointment sync notice:", appSyncErr.message);
                             }
-                        } catch (appSyncErr) {
-                            console.warn("[Queue Transition] RPC appointment sync notice:", appSyncErr.message);
                         }
                     }
                 }
@@ -160,15 +175,16 @@ router.post("/transition", async (req, res) => {
             }
         }
 
-        // If RPC was not used or failed/returned conflict, perform resilient direct update
+        // If RPC was not used or failed/returned conflict, perform resilient direct update scoped to hospital
         if (!rpcSuccess) {
-            // Find patient_visits row by ID or appointment_id
+            // Find patient_visits row by ID or appointment_id strictly scoped to hospital
             let vRow = null;
 
             if (isUuid(targetId)) {
                 const { data: byId } = await db
                     .from("patient_visits")
-                    .select("id, appointment_id, visit_stage, checked_in_at, consultation_started_at, started_at, consultation_completed_at, completed_at, intake_vitals")
+                    .select("id, hospital_id, appointment_id, visit_stage, checked_in_at, consultation_started_at, started_at, consultation_completed_at, completed_at, intake_vitals")
+                    .eq("hospital_id", req.context.hospitalId)
                     .or(`id.eq.${targetId},appointment_id.eq.${targetId},hospital_patient_id.eq.${targetId},patient_id.eq.${targetId}`)
                     .order("created_at", { ascending: false })
                     .limit(1)
@@ -176,12 +192,18 @@ router.post("/transition", async (req, res) => {
 
                 vRow = byId;
             } else {
-                const { data: hpr } = await db.from("hospital_patient_records").select("id").eq("hospital_patient_code", targetId).maybeSingle();
+                const { data: hpr } = await db
+                    .from("hospital_patient_records")
+                    .select("id")
+                    .eq("hospital_id", req.context.hospitalId)
+                    .eq("hospital_patient_code", targetId)
+                    .maybeSingle();
                 const hprId = hpr?.id;
                 if (hprId) {
                     const { data: byHpr } = await db
                         .from("patient_visits")
-                        .select("id, appointment_id, visit_stage, checked_in_at, consultation_started_at, started_at, consultation_completed_at, completed_at, intake_vitals")
+                        .select("id, hospital_id, appointment_id, visit_stage, checked_in_at, consultation_started_at, started_at, consultation_completed_at, completed_at, intake_vitals")
+                        .eq("hospital_id", req.context.hospitalId)
                         .eq("hospital_patient_id", hprId)
                         .order("created_at", { ascending: false })
                         .limit(1)
@@ -191,6 +213,28 @@ router.post("/transition", async (req, res) => {
             }
 
             if (!vRow) {
+                // Check if targetId is an appointment in appointments table belonging to current hospital
+                if (isUuid(targetId) && (targetStage === "completed" || targetStage === "exited")) {
+                    const nowIso = new Date().toISOString();
+                    const { data: appRow } = await db
+                        .from("appointments")
+                        .select("id")
+                        .eq("hospital_id", req.context.hospitalId)
+                        .eq("id", targetId)
+                        .maybeSingle();
+                    if (appRow) {
+                        await db.from("appointments").update({ status: "completed", updated_at: nowIso }).eq("id", targetId).eq("hospital_id", req.context.hospitalId);
+                        await db.from("patient_visits").update({
+                            visit_stage: "completed",
+                            status: "completed",
+                            completed_at: nowIso,
+                            consultation_completed_at: nowIso,
+                            updated_at: nowIso
+                        }).eq("appointment_id", targetId).eq("hospital_id", req.context.hospitalId);
+                        return res.json({ success: true, message: "Appointment updated to completed successfully.", newStage: targetStage });
+                    }
+                }
+
                 return res.status(404).json({
                     success: false,
                     message: `Patient visit record not found for ID '${targetId}'.`
@@ -237,6 +281,7 @@ router.post("/transition", async (req, res) => {
                 .from("patient_visits")
                 .update(updatePayload)
                 .eq("id", vRow.id)
+                .eq("hospital_id", req.context.hospitalId)
                 .select()
                 .single();
 
@@ -250,6 +295,7 @@ router.post("/transition", async (req, res) => {
                     .from("patient_visits")
                     .update(updatePayload)
                     .eq("id", vRow.id)
+                    .eq("hospital_id", req.context.hospitalId)
                     .select()
                     .single();
                 updated = retryRes.data;
@@ -320,6 +366,7 @@ router.post("/start-recording", async (req, res) => {
             const { data } = await db
                 .from("patient_visits")
                 .select("id, consultation_started_at, started_at, visit_stage")
+                .eq("hospital_id", req.context.hospitalId)
                 .or(`id.eq.${targetId},appointment_id.eq.${targetId}`)
                 .order("created_at", { ascending: false })
                 .limit(1)
@@ -359,6 +406,7 @@ router.post("/start-recording", async (req, res) => {
             .from("patient_visits")
             .update(updatePayload)
             .eq("id", vRow.id)
+            .eq("hospital_id", req.context.hospitalId)
             .select("id, consultation_started_at, started_at, visit_stage")
             .single();
 
@@ -418,6 +466,7 @@ router.get("/visit/:id", async (req, res) => {
                 hospital_patient_records(id, hospital_patient_code, full_name, first_name, last_name, phone, gender, date_of_birth, blood_group),
                 doctors(doctor_id, doctor_name, doctor_specialization)
             `)
+            .eq("hospital_id", req.context.hospitalId)
             .or(`id.eq.${visitId},appointment_id.eq.${visitId},hospital_patient_id.eq.${visitId},patient_id.eq.${visitId}`)
             .order("created_at", { ascending: false })
             .limit(1)

@@ -7,16 +7,17 @@ const {
     isSupabaseConfigured,
 } = require("../config/supabase");
 
-const JWT_SECRET =
-    process.env.JWT_SECRET ||
-    "doctors-vedika-super-secret-jwt-key-2026";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.warn("[AuthService Warning] JWT_SECRET environment variable is not defined!");
+}
 
 const JWT_EXPIRES_IN =
     process.env.JWT_EXPIRES_IN ||
     "7d";
 
 /*
- * In-memory fallback.
+ * In-memory fallback (isolated for development / tests only).
  */
 let inMemoryDoctors = [
     {
@@ -47,6 +48,9 @@ class AuthService {
      */
 
     generateToken(doctor) {
+        if (!process.env.JWT_SECRET) {
+            throw new Error("Server configuration error: JWT_SECRET is not configured.");
+        }
         const canonicalUserId = doctor.user_id || doctor.id;
         return jwt.sign(
             {
@@ -62,7 +66,7 @@ class AuthService {
                     doctor.full_name ||
                     doctor.fullName,
             },
-            JWT_SECRET,
+            process.env.JWT_SECRET,
             {
                 expiresIn:
                     JWT_EXPIRES_IN,
@@ -325,24 +329,27 @@ class AuthService {
             }
         }
 
-        // Evaluate roles and capabilities
-        if (targetPortal === "staff" || targetEmail.includes("staff") || targetEmail === "swetha@gmail.com" || userRole === "staff" || capabilities.staff) {
+        // Evaluate roles and capabilities strictly based on verified authorization
+        if (targetPortal === "staff" && capabilities.staff) {
             profile.role = "staff";
             profile.staff_role = staffRole || "Reception / Front Desk";
             profile.hospitalRole = staffRole || "Reception Staff";
-            capabilities.staff = true;
-        } else if (targetPortal === "admin" || targetEmail.includes("admin") || userRole === "hospital_admin" || userRole === "admin" || capabilities.hospitalAdmin) {
+        } else if (targetPortal === "admin" && capabilities.hospitalAdmin) {
             profile.role = "hospital_admin";
             profile.hospitalRole = "Hospital Administrator";
-            capabilities.hospitalAdmin = true;
+        } else if (userRole === "hospital_admin" || (capabilities.hospitalAdmin && !capabilities.doctor && !capabilities.staff)) {
+            profile.role = "hospital_admin";
+            profile.hospitalRole = "Hospital Administrator";
+        } else if (userRole === "staff" || (capabilities.staff && !capabilities.doctor)) {
+            profile.role = "staff";
+            profile.staff_role = staffRole || "Reception / Front Desk";
+            profile.hospitalRole = staffRole || "Reception Staff";
         } else {
             profile.role = profile.role || userRole || "doctor";
             profile.hospitalRole = profile.hospitalRole || "Doctor";
-            capabilities.doctor = true;
         }
 
         profile.capabilities = capabilities;
-        return profile;
         return profile;
     }
 
@@ -1001,47 +1008,50 @@ class AuthService {
             supabaseAdmin;
 
         /*
-         * STEP 3
-         * Set Google user's role to doctor.
+         * STEP 3 & 4
+         * Inspect existing user record and hospital membership to preserve roles.
+         * Do NOT blindly overwrite hospital_admin or staff accounts with doctor role.
          */
-        try {
-            const {
-                error: metadataError,
-            } =
+        const { data: existingUser } = await db
+            .from("users")
+            .select("id, email, role, full_name, status")
+            .or(`id.eq.${user.id},email.ilike.${normalizedEmail}`)
+            .maybeSingle();
+
+        const { data: existingMembers } = await db
+            .from("hospital_members")
+            .select("id, role, hospital_id, doctor_id")
+            .eq("user_id", user.id);
+
+        let userRole = existingUser?.role || (existingMembers && existingMembers.length > 0 ? existingMembers[0].role : null);
+        const isExistingStaffOrAdmin = userRole === "staff" || userRole === "hospital_admin" || userRole === "admin";
+        const targetRole = isExistingStaffOrAdmin ? userRole : (user.user_metadata?.role || "doctor");
+
+        if (!isExistingStaffOrAdmin) {
+            try {
                 await db.auth.admin.updateUserById(
                     user.id,
                     {
                         user_metadata: {
-                            ...(user.user_metadata ||
-                                {}),
-
-                            role: "doctor",
+                            ...(user.user_metadata || {}),
+                            role: targetRole,
                         },
                     }
                 );
-
-            if (metadataError) {
+            } catch (error) {
                 console.warn(
                     "[GoogleAuth] Metadata update warning:",
-                    metadataError.message
+                    error.message
                 );
             }
-        } catch (error) {
-            console.warn(
-                "[GoogleAuth] Metadata update warning:",
-                error.message
-            );
         }
 
-        /*
-         * STEP 4
-         * Ensure public.users record exists with all required fields.
-         */
         const metadata =
             user.user_metadata ||
             {};
 
         const fullName =
+            existingUser?.full_name ||
             metadata.full_name ||
             metadata.name ||
             metadata.fullName ||
@@ -1063,17 +1073,10 @@ class AuthService {
                 .upsert(
                     {
                         id: user.id,
-
-                        email:
-                            normalizedEmail,
-
-                        role: "doctor",
-
-                        full_name:
-                            fullName,
-
-                        status:
-                            "active",
+                        email: normalizedEmail,
+                        role: targetRole,
+                        full_name: fullName,
+                        status: existingUser?.status || "active",
                     },
                     {
                         onConflict:
@@ -1089,8 +1092,8 @@ class AuthService {
         }
 
         /*
-         * STEP 5
-         * Find Doctor using Supabase user ID.
+         * STEP 5 & 6
+         * Find Doctor using Supabase user ID or email.
          */
         let doctorRecord = null;
 
@@ -1121,17 +1124,8 @@ class AuthService {
         if (doctorByUserId) {
             doctorRecord =
                 doctorByUserId;
-
-            console.log(
-                "[GoogleAuth] Existing Doctor found by user_id:",
-                doctorRecord.doctor_id
-            );
         }
 
-        /*
-         * STEP 6
-         * If not found by user_id, find Doctor by email (case-insensitive).
-         */
         if (!doctorRecord) {
             const {
                 data: doctorByEmail,
@@ -1158,25 +1152,25 @@ class AuthService {
             }
 
             if (doctorByEmail) {
+                // Safety check: Prevent account takeover if doctor profile is already linked to another user ID
+                if (doctorByEmail.user_id && doctorByEmail.user_id !== user.id) {
+                    throw new Error(
+                        "Account conflict: A doctor profile with this email address is already linked to another authentication account."
+                    );
+                }
                 doctorRecord =
                     doctorByEmail;
-
-                console.log(
-                    "[GoogleAuth] Existing Doctor found by email:",
-                    doctorRecord.doctor_id
-                );
             }
         }
 
         /*
          * STEP 7
-         * Existing Doctor:
-         * link the Google/Supabase user.
+         * Existing Doctor: safely link user_id if needed.
          */
         if (doctorRecord) {
             if (
-                doctorRecord.user_id !==
-                user.id
+                !doctorRecord.user_id ||
+                doctorRecord.user_id !== user.id
             ) {
                 const {
                     data: linkedDoctor,
@@ -1210,21 +1204,49 @@ class AuthService {
                     linkedDoctor;
             }
 
-            /*
-             * Existing doctor has successfully
-             * authenticated with Google.
-             */
             const token =
                 this.generateToken(
                     doctorRecord
                 );
 
-            return {
-                doctor:
-                    this.formatDoctorProfile(
-                        doctorRecord
-                    ),
+            const enrichedDoctor = await this.enrichUserProfile(
+                this.formatDoctorProfile(
+                    doctorRecord
+                ),
+                user.id,
+                normalizedEmail
+            );
 
+            return {
+                doctor: enrichedDoctor,
+                token,
+            };
+        }
+
+        /*
+         * If user already has an established staff or hospital_admin role, return their profile
+         */
+        if (isExistingStaffOrAdmin) {
+            const token = this.generateToken({
+                id: user.id,
+                user_id: user.id,
+                email: normalizedEmail,
+                full_name: fullName,
+            });
+
+            const enrichedProfile = await this.enrichUserProfile(
+                {
+                    id: user.id,
+                    fullName,
+                    email: normalizedEmail,
+                    role: targetRole,
+                },
+                user.id,
+                normalizedEmail
+            );
+
+            return {
+                doctor: enrichedProfile,
                 token,
             };
         }
@@ -1272,7 +1294,7 @@ class AuthService {
                         "Pending",
 
                     doctor_is_active:
-                        true,
+                        false,
 
                     doctor_specialization:
                         null,
@@ -1481,17 +1503,6 @@ class AuthService {
                         authError.message
                     );
                 }
-            }
-
-            // Step 5: Preserve the existing fallback for unresolved IDs.
-            if (!finalUserRow && id) {
-                finalUserRow = {
-                    id: String(id),
-                    email: "user@doctorsvedika.com",
-                    full_name: "Staff User",
-                    role: "staff",
-                    status: "active",
-                };
             }
 
             if (!finalUserRow) {

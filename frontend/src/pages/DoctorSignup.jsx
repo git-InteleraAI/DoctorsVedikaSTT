@@ -143,10 +143,7 @@ const DoctorSignup = () => {
       {/* Absolute Top Left Branding (Logo & Title) */}
       <Link to="/" className="auth-top-left-brand">
         <img src={vedikaLogo} alt="Doctors Vedika Logo" className="auth-brand-logo-img" />
-        <div className="auth-brand-info">
-          <div className="auth-brand-title">Doctors <span>Vedika</span></div>
-          <div className="auth-brand-subtitle">Care. Consult. Cure.</div>
-        </div>
+
       </Link>
 
       {/* Main Content Grid */}

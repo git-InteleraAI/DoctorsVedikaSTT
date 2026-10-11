@@ -1133,24 +1133,6 @@ export default function Sidebar({
                                             >
                                                 Directory
                                             </SubmenuButton>
-
-                                            <SubmenuButton
-                                                itemKey="walkin"
-                                                theme="orange"
-                                                active={
-                                                    isPatients &&
-                                                    patientView ===
-                                                    "walkin"
-                                                }
-                                                iconClass="fa-solid fa-user-plus"
-                                                onClick={() =>
-                                                    goPatientView(
-                                                        "walkin"
-                                                    )
-                                                }
-                                            >
-                                                Add Walk-in
-                                            </SubmenuButton>
                                         </div>
                                     </div>
                                 </li>

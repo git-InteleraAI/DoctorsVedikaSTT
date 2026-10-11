@@ -114,8 +114,17 @@ function formatISTTime(rawTime, fallbackTimestamp) {
 
     if (hasValue(rawTime) && !isZeroOrPlaceholder(rawTime)) {
         const str = String(rawTime).trim();
-        if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(str)) {
-            return str;
+        const timeMatch = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+        if (timeMatch) {
+            let h = parseInt(timeMatch[1], 10);
+            const m = timeMatch[2];
+            let meridiem = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+            if (!meridiem) {
+                meridiem = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+            }
+            const hh = String(h).padStart(2, '0');
+            return `${hh}:${m} ${meridiem}`;
         }
         const dTime = new Date(str);
         if (!isNaN(dTime.getTime())) {
@@ -803,7 +812,7 @@ function renderPdfToStream(patientRecord, stream) {
     doc.strokeColor(COLORS.border).lineWidth(0.7)
         .moveTo(confCardX + 90, confirmY + 15).lineTo(confCardX + leftW - 15, confirmY + 15).stroke();
 
-    const dateFormatted = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+    const dateFormatted = formatISTDate(patientRecord.consultationDate) || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
     doc.fillColor(COLORS.navy).font(fontBold).fontSize(7.5)
         .text('Date', confCardX + 12, confirmY + 24, { continued: true });
     doc.font(fontRegular).text(`                       :  ${dateFormatted}`);

@@ -1509,7 +1509,7 @@ export default function HospitalAdmin() {
                                     <div>
                                         <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Full Name</div>
                                         <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0b1c2d", marginTop: "2px" }}>
-                                            {currentUser?.fullName || currentUser?.doctor_name || "Dr. Harshini"}
+                                            {currentUser?.fullName || currentUser?.doctor_name || "Hospital Admin"}
                                         </div>
                                     </div>
 

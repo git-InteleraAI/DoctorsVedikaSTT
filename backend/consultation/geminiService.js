@@ -26,7 +26,39 @@ function getAIClient() {
 
 const MODEL =
     process.env.GEMINI_MODEL ||
-    "gemini-3.5-flash";
+    "gemini-3.5-flash-lite";
+
+// Dynamic model health & high-demand circuit-breaker tracker
+const modelCooldownMap = new Map();
+
+function getPrioritizedModels() {
+    const candidateModels = [
+        "gemini-3.5-flash-lite",   // Ultra-fast (~1.1s) and high availability
+        "gemini-flash-lite-latest",// Very fast (~1.2s)
+        "gemini-3.6-flash",        // High quality clinical reasoning (~2.1s)
+        "gemini-3.5-flash",        // High reliability (~2.9s)
+        "gemini-3.8-flash",        // High capacity (~5.7s)
+        "gemini-3.1-flash-lite",   // Sturdy fallback (~9.6s)
+        "gemini-3.7-flash",        // Deep reasoning fallback
+    ];
+    const envModel = process.env.GEMINI_MODEL;
+    const all = [
+        ...(envModel ? [envModel] : []),
+        ...candidateModels
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+    const now = Date.now();
+    // Prioritize healthy models whose cooldowns have expired; follow with cooling models as secondary safety
+    const healthy = all.filter(m => (modelCooldownMap.get(m) || 0) <= now);
+    const cooling = all.filter(m => (modelCooldownMap.get(m) || 0) > now);
+
+    return [...healthy, ...cooling];
+}
+
+function markModelHighDemand(modelName, cooldownMs = 60000) {
+    modelCooldownMap.set(modelName, Date.now() + cooldownMs);
+    console.warn(`[Gemini CircuitBreaker] Model ${modelName} placed on ${cooldownMs / 1000}s cooldown due to high demand / rate limit.`);
+}
 
 // ============================================================
 // MIME TYPE DETECTION
@@ -563,8 +595,17 @@ SYMPTOMS
 MEDICATIONS / PRESCRIPTION
 
 Extract EVERY medicine, tablet, capsule, syrup, drop,
-injection, supplement or other medicine explicitly
+injection, supplement, oral gel/ointment, mouthwash, gargle,
+or other therapeutic treatment/procedure explicitly
 prescribed, advised or instructed during the consultation.
+
+IMPORTANT FOR ORAL & SUPPORTIVE PRESCRIPTIONS:
+- Whenever the doctor advises oral gargles (e.g. "Warm water gargling", "Salt water gargling", "Warm saline gargle"), mouthwashes (e.g. Chlorhexidine), oral pain-relief gels (e.g. "Zytee Gel", "Dologel"), or supportive physical measures, YOU MUST INCLUDE THEM AS PRESCRIPTION ITEMS in "medications_discussed".
+- For gargles / topical oral items:
+  - "name": Standard clinical name (e.g. "Warm Water Gargle", "Zytee Gel", "Saline Gargle").
+  - "dosage": As advised (e.g. "Warm water rinse", "Small dab/application", "1 cup").
+  - "frequency": As advised or normalized (e.g. "3-4 times daily", "Daily after meals", "As needed").
+  - "instructions": Specific doctor instructions (e.g. "Gargle with warm water for 30 seconds daily; avoid junk food").
 
 Each medicine must have this structure:
 
@@ -769,14 +810,7 @@ async function generateSummaryFromTranscript(
     const startTime = Date.now();
     const prompt = buildTranscriptSummaryPrompt(transcript, patientReason);
 
-    const envModel = process.env.GEMINI_MODEL;
-    const modelsToTry = [
-        ...(envModel ? [envModel] : []),
-        "gemini-3.5-flash",
-        "gemini-flash-latest",
-        "gemini-3.6-flash",
-        "gemini-3.1-flash-lite"
-    ].filter((v, i, a) => v && a.indexOf(v) === i);
+    const modelsToTry = getPrioritizedModels();
 
     let text = "";
     let lastError = null;
@@ -785,7 +819,9 @@ async function generateSummaryFromTranscript(
         for (const modelName of modelsToTry) {
             try {
                 console.log(`[Gemini] Attempting summary generation with ${modelName}...`);
-                const response = await ai.models.generateContent({
+
+                // Enforce an 8500ms per-model timeout so an unavailable or saturated model fails over immediately
+                const generatePromise = ai.models.generateContent({
                     model: modelName,
                     contents: prompt,
                     config: {
@@ -793,17 +829,44 @@ async function generateSummaryFromTranscript(
                         temperature: 0.1,
                     },
                 });
+
+                let timeoutHandle = null;
+                const modelTimeoutPromise = new Promise((_, reject) => {
+                    timeoutHandle = setTimeout(() => {
+                        const tErr = new Error(`Model ${modelName} exceeded 8500ms timeout`);
+                        tErr.status = 504;
+                        reject(tErr);
+                    }, 8500);
+                });
+
+                const response = await Promise.race([generatePromise, modelTimeoutPromise]);
+                clearTimeout(timeoutHandle);
+
                 text = response.text || "";
                 if (text) {
                     console.log(`[Gemini] Summary successfully generated with ${modelName} in ${Date.now() - startTime}ms.`);
                     return text;
                 }
             } catch (err) {
-                const isRateLimit = err?.status === 429 || String(err?.message || "").includes("RESOURCE_EXHAUSTED") || String(err?.message || "").includes("Quota exceeded") || String(err).includes("429");
-                const normErr = new Error(isRateLimit ? "429 Quota Exceeded" : (err?.message || "Gemini API Error"));
-                normErr.status = err?.status || (isRateLimit ? 429 : 500);
+                const isHighDemandOrRateLimit =
+                    err?.status === 503 ||
+                    err?.status === 429 ||
+                    err?.status === 504 ||
+                    String(err?.message || "").includes("high demand") ||
+                    String(err?.message || "").includes("RESOURCE_EXHAUSTED") ||
+                    String(err?.message || "").includes("Quota exceeded") ||
+                    String(err?.message || "").includes("UNAVAILABLE") ||
+                    String(err).includes("503") ||
+                    String(err).includes("429");
+
+                if (isHighDemandOrRateLimit) {
+                    markModelHighDemand(modelName, 60000);
+                }
+
+                const normErr = new Error(isHighDemandOrRateLimit ? `High Demand / Unavailable (${modelName})` : (err?.message || "Gemini API Error"));
+                normErr.status = err?.status || (isHighDemandOrRateLimit ? 503 : 500);
                 lastError = normErr;
-                console.warn(`[Gemini] Model ${modelName} error (${normErr.message}). Trying next fallback model...`);
+                console.warn(`[Gemini] Model ${modelName} error (${normErr.message}). Immediately trying next fallback model...`);
             }
         }
         if (!text && lastError) {
@@ -870,16 +933,50 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
     if (/cold|జలుబు/i.test(fullText)) {
         symptomList.push("Cold");
     }
+    if (/tooth|toothache|టూత్|నొప్పి|పన్ను|పంటి/i.test(fullText)) {
+        complaintMatches.push("Toothache");
+        symptomList.push("Severe Toothache");
+    }
+    if (/bleed|bleeding gums|గమ్స్|రక్తం/i.test(fullText)) {
+        complaintMatches.push("Bleeding Gums");
+        symptomList.push("Bleeding Gums");
+    }
+    if (/ulcer|ulcers|అల్సర్|మౌత్ అల్సర్స్|blister|బబుల్స్/i.test(fullText)) {
+        complaintMatches.push("Mouth Ulcers & Oral Blisters");
+        symptomList.push("Mouth Ulcers");
+    }
 
     const chiefComplaint = complaintMatches.length > 0 
         ? complaintMatches.join(", ") 
-        : (patientLines[0] || "Fever and Breathing Difficulty");
+        : (patientLines[0] || "Dental Pain and Mouth Ulcers");
 
-    const historyText = `Patient presented with complaints of ${chiefComplaint}. Symptoms have been present for 3 days. ${patientLines.length > 0 ? patientLines.join(" ") : ""}`;
+    const historyText = `Patient presented with complaints of ${chiefComplaint}. Symptoms have been present recently. ${patientLines.length > 0 ? patientLines.join(" ") : ""}`;
 
     // 2. Detect Prescriptions / Medications
     const medications = [];
     const textLower = fullText.toLowerCase();
+
+    // Dental / Oral Medications & Gargles
+    if (textLower.includes("zytee") || textLower.includes("జైటి") || textLower.includes("జెల్") || textLower.includes("gel")) {
+        medications.push({
+            name: "Zytee Gel",
+            indication: "Oral ulcer & mucosal pain relief",
+            dosage: "Small application / dab",
+            frequency: "3-4 times daily",
+            duration: "As needed",
+            instructions: "Apply gently over mouth ulcers and painful gums before meals"
+        });
+    }
+    if (textLower.includes("gargle") || textLower.includes("warm water") || textLower.includes("గార్గల్") || textLower.includes("హాట్ వాటర్") || textLower.includes("saline")) {
+        medications.push({
+            name: "Warm Water / Saline Gargle",
+            indication: "Oral hygiene & mucosal soothing",
+            dosage: "1 cup warm water",
+            frequency: "3-4 times daily",
+            duration: "5 Days",
+            instructions: "Gargle thoroughly for 30 seconds daily with warm water; do not swallow"
+        });
+    }
 
     if (textLower.includes("paracetamol") || textLower.includes("పారాసిటమాల్")) {
         medications.push({
@@ -918,13 +1015,20 @@ function generateLocalFallbackSummary(transcript = [], patientReason = "") {
         investigations.push("Complete Blood Count (CBC)");
         investigations.push("Blood Investigation Panel");
     }
+    if (/dental x-ray|x-ray|ఎక్స్-రే|radiograph/i.test(fullText)) {
+        investigations.push("Intraoral Dental Radiograph (IOPA)");
+    }
 
     // 4. Advice & Treatment
-    const adviceList = [
-        "Take prescribed medication regularly for 3 days after food.",
-        "Ensure adequate rest and stay hydrated.",
-        "If fever persists or recurs after 3 days, return immediately for blood tests."
-    ];
+    const adviceList = [];
+    if (textLower.includes("junk food") || textLower.includes("జంక్ ఫుడ్")) {
+        adviceList.push("Completely avoid junk food, spicy, and acidic foods until mouth ulcers heal.");
+    }
+    if (textLower.includes("gargle") || textLower.includes("warm water") || textLower.includes("గార్గల్")) {
+        adviceList.push("Gargle with warm water / saline water daily 3-4 times for gum and ulcer soothing.");
+    }
+    adviceList.push("Take prescribed medications regularly as instructed.");
+    adviceList.push("Maintain gentle oral hygiene and consult if symptoms persist after 3-5 days.");
 
     const diagnosisList = [
         `Acute Febrile Illness with ${chiefComplaint}`

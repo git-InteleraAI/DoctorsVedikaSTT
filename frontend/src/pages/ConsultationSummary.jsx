@@ -1707,8 +1707,8 @@ const ConsultationSummary = () => {
             };
 
             // Trigger queue transition to completed stage for staff portal live sync
-            const targetEncounterId = appointmentId || state?.visitId || resolvedPatientId || consultationRecord.consultationId;
-            if (targetEncounterId) {
+            const targetEncounterId = appointmentId || state?.visitId || state?.appointmentId || resolvedPatientId || consultationRecord.consultationId;
+            if (targetEncounterId || resolvedPatientId || appointmentId) {
                 try {
                     const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || localStorage.getItem("doctor_token");
                     await fetch(`${NODE_API_URL}/api/v1/queue/transition`, {
@@ -1719,6 +1719,8 @@ const ConsultationSummary = () => {
                         },
                         body: JSON.stringify({
                             visitId: targetEncounterId,
+                            appointmentId: appointmentId || state?.appointmentId || (targetEncounterId && String(targetEncounterId).startsWith("consultation-app-") ? targetEncounterId.replace("consultation-app-", "") : null),
+                            patientId: resolvedPatientId,
                             targetStage: "completed"
                         })
                     });

@@ -84,9 +84,26 @@ function formatISTDate(rawDate) {
 }
 
 function formatISTTime(rawTime, fallbackTimestamp) {
-    if (hasValue(rawTime) && !String(rawTime).includes('05:30')) {
+    const isZeroOrPlaceholder = (val) => {
+        if (!val) return true;
+        const s = String(val).trim().toLowerCase();
+        return s === '05:30:00' || s === '05:30 am' || s === '05:30' || s === '00:00:00' || s === '00:00' || s === 'n/a';
+    };
+
+    if (hasValue(rawTime) && !isZeroOrPlaceholder(rawTime)) {
         const str = String(rawTime).trim();
-        if (/^\d{1,2}:\d{2}\s*(AM|PM)?$/i.test(str)) return str;
+        const timeMatch = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+        if (timeMatch) {
+            let h = parseInt(timeMatch[1], 10);
+            const m = timeMatch[2];
+            let meridiem = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+            if (!meridiem) {
+                meridiem = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+            }
+            const hh = String(h).padStart(2, '0');
+            return `${hh}:${m} ${meridiem}`;
+        }
         const dTime = new Date(str);
         if (!isNaN(dTime.getTime())) {
             return dTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });

@@ -230,8 +230,8 @@ export default function Appointments() {
                             className="btn-quick-action primary"
                             onClick={() => navigate("/patients")}
                         >
-                            <i className="fa-solid fa-user-plus"></i>
-                            Add Patient / Walk-in
+                            <i className="fa-solid fa-users"></i>
+                            Patient Directory
                         </button>
                     </div>
                 </div>
