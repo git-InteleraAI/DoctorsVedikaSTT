@@ -1,0 +1,199 @@
+/* Doctors Vedika – QR intake theme (form + success screens).
+   Everything is scoped under .qr-root so the legacy global CSS
+   (styles.css / dashboard.css) cannot leak in. */
+
+.qr-root {
+  --qr-teal: #00b3ad;
+  --qr-teal-dark: #00635f;
+  --qr-navy: #0e2a63;
+  --qr-muted: #456079;
+  --qr-border: #d3e5e9;
+  --qr-tint: #f5fafb;
+
+  position: relative;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+  padding: 28px 24px 120px;
+  font-family: "Montserrat", Inter, system-ui, sans-serif;
+  color: var(--qr-navy);
+  background: linear-gradient(180deg, #f3fafb 0%, #e9f6f8 100%);
+}
+.qr-root *,
+.qr-root *::before,
+.qr-root *::after { box-sizing: border-box; }
+.qr-root h1, .qr-root h2, .qr-root p { margin: 0; }
+
+/* wave footer */
+.qr-root::after {
+  content: "";
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: 110px;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 390 110' preserveAspectRatio='none'%3E%3Cpath d='M0 40C100 8 210 18 390 50V110H0Z' fill='%23C3EBF3'/%3E%3Cpath d='M0 68C130 44 250 52 390 70V110H0Z' fill='%2335C8DE' opacity='.8'/%3E%3Cpath d='M0 92C130 80 250 84 390 92V110H0Z' fill='%230F2A5E'/%3E%3C/svg%3E")
+    center bottom / 100% 100% no-repeat;
+}
+
+/* top bar */
+.qr-topbar {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 520px;
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; margin-bottom: 16px;
+}
+.qr-topbar.stack { flex-direction: column; gap: 10px; }
+.qr-logo { height: 44px; width: auto; display: block; }
+.qr-back {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border: 0; border-radius: 14px;
+  background: #fff; display: grid; place-items: center; cursor: pointer;
+  box-shadow: 0 6px 16px rgba(15, 42, 99, .1);
+}
+.qr-chip {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 520px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 12px 14px; margin-bottom: 16px;
+  background: #fff; border: 1px solid #ddeef1; border-radius: 18px;
+}
+.qr-chip img { height: 38px; width: auto; display: block; }
+.qr-chip-sep { width: 1px; align-self: stretch; background: #ddeef1; }
+.qr-chip-name { font-size: 12px; font-weight: 700; line-height: 1.3; }
+.qr-chip-code { font-size: 11px; font-weight: 600; color: var(--qr-teal-dark); letter-spacing: .03em; }
+
+/* card */
+.qr-card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 520px;
+  padding: 26px 22px 22px;
+  display: flex; flex-direction: column; gap: 18px;
+  background: #fff; border-radius: 28px;
+  box-shadow: 0 18px 44px rgba(15, 42, 99, .12);
+}
+.qr-title { font-size: 24px; font-weight: 800; line-height: 1.2; }
+.qr-sub { font-size: 13px; font-weight: 500; line-height: 1.55; color: var(--qr-muted); }
+
+/* fields */
+.qr-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.qr-label { font-size: 13px; font-weight: 700; }
+.qr-input-wrap {
+  display: flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 14px;
+  border: 1.5px solid var(--qr-border); border-radius: 14px; background: #f8fcfc;
+}
+.qr-input-wrap:focus-within { border-color: var(--qr-teal); box-shadow: 0 0 0 3px rgba(0, 179, 173, .2); }
+.qr-input-wrap svg { flex: none; }
+.qr-input {
+  flex: 1; min-width: 0; width: 100%;
+  border: 0; outline: 0; background: transparent;
+  font: 500 14px "Montserrat", Inter, sans-serif; color: var(--qr-navy);
+  appearance: none; -webkit-appearance: none;
+}
+.qr-input::placeholder { color: #5f7788; opacity: 1; }
+input.qr-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input.qr-input[type="number"]::-webkit-outer-spin-button,
+input.qr-input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qr-row { display: grid; grid-template-columns: 1fr; gap: 18px; }
+@media (min-width: 520px) { .qr-row { grid-template-columns: 1fr 1fr; gap: 14px; } }
+
+.qr-error {
+  padding: 12px 14px; border-radius: 14px; font-size: 13px; font-weight: 600;
+  color: #9b1c1c; background: #fef2f2; border: 1px solid #fecaca;
+}
+
+/* buttons */
+.qr-btn {
+  height: 56px; border: 0; border-radius: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  font: 700 16px "Montserrat", Inter, sans-serif; color: #fff;
+}
+.qr-btn { min-height: 52px; flex-shrink: 0; }
+.qr-btn:disabled { opacity: .7; cursor: not-allowed; }
+.qr-btn:focus-visible { outline: 3px solid rgba(0, 179, 173, .45); outline-offset: 2px; }
+.qr-btn-teal { background: var(--qr-teal); box-shadow: 0 10px 22px rgba(0, 179, 173, .32); }
+.qr-btn-navy { background: var(--qr-navy); box-shadow: 0 10px 22px rgba(14, 42, 99, .32); }
+.qr-secure {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--qr-muted);
+}
+
+/* success */
+.qr-success { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.qr-badge-wrap { width: 112px; height: 112px; display: grid; place-items: center; }
+.qr-badge {
+  width: 72px; height: 72px; border-radius: 50%; background: var(--qr-navy);
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 10px #dde3f0, 0 0 0 22px #eef5ff, 0 14px 30px rgba(14, 42, 99, .35);
+}
+.qr-patient {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  border-radius: 18px; background: var(--qr-tint); border: 1px solid #ddeef1;
+}
+.qr-patient-icon {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: #fff; border: 1px solid #e6f1f3; flex: none;
+}
+.qr-patient small { display: block; font-size: 12px; font-weight: 600; color: var(--qr-muted); }
+.qr-patient strong { font-size: 16px; font-weight: 700; }
+.qr-next { padding: 16px; border-radius: 18px; background: #e8f8f7; border: 1px solid #bfe9e6; }
+.qr-next h2 { font-size: 14px; font-weight: 700; color: var(--qr-teal-dark); margin-bottom: 6px; }
+.qr-next p { font-size: 13px; font-weight: 500; line-height: 1.55; color: #34506a; }
+.qr-note {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px;
+  border-radius: 16px; background: #fff8ea; border: 1px solid #f3e2b8;
+  font-size: 12px; font-weight: 500; line-height: 1.55; color: #5a4410;
+}
+
+/* desktop */
+@media (min-width: 900px) {
+  .qr-root { padding: 28px 56px 140px; }
+  .qr-logo { height: 48px; }
+  .qr-root::after { height: 130px; }
+  .qr-card { padding: 32px 32px 26px; }
+  .qr-title { font-size: 26px; }
+}
+
+/* ===== Welcome screen ===== */
+.qr-tagline { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--qr-muted); }
+.qr-tagline span { width: 24px; height: 1px; background: #b9ccd6; }
+.qr-clinic { padding: 20px; display: flex; flex-direction: column; gap: 14px; border-radius: 20px; background: var(--qr-tint); border: 1px solid #ddeef1; }
+.qr-logo-tile { display: flex; align-items: center; justify-content: center; padding: 16px; background: #fff; border: 1px solid #e6f1f3; border-radius: 14px; }
+.qr-logo-tile img { width: 200px; max-width: 100%; height: auto; display: block; }
+.qr-clinic-name { font-size: 20px; font-weight: 700; line-height: 1.3; }
+.qr-code-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #e0f5f4; color: var(--qr-teal-dark); font-size: 12px; font-weight: 700; letter-spacing: .03em; }
+.qr-address { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; font-weight: 500; line-height: 1.55; color: var(--qr-muted); }
+
+/* ===== Language / consent / ready ===== */
+.qr-badge-wrap.sm { width: 92px; height: 92px; }
+.qr-badge.sm { width: 60px; height: 60px; box-shadow: 0 0 0 8px #dde3f0, 0 0 0 16px #eef1f8, 0 12px 26px rgba(14, 42, 99, .3); }
+.qr-lang-list { display: flex; flex-direction: column; gap: 10px; }
+.qr-lang-btn {
+  height: 56px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between;
+  border: 1.5px solid var(--qr-border); border-radius: 16px; background: #f8fcfc; cursor: pointer;
+  font: 700 16px "Montserrat", "Noto Sans Telugu", "Noto Sans Devanagari", Inter, sans-serif; color: var(--qr-navy);
+}
+.qr-lang-btn:hover { border-color: var(--qr-teal); }
+.qr-lang-btn.selected { border-color: var(--qr-teal); background: #e8f8f7; }
+.qr-lang-btn:focus-visible { outline: 3px solid rgba(0, 179, 173, .45); outline-offset: 2px; }
+.qr-next-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+.qr-info { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; background: var(--qr-tint); border: 1px solid #ddeef1; }
+.qr-info p { font-size: 12px; font-weight: 500; line-height: 1.55; color: var(--qr-muted); }
+.qr-actions { display: flex; flex-direction: column-reverse; gap: 8px; }
+.qr-root .qr-actions .qr-btn { flex: 0 0 auto; width: 100%; }
+.qr-btn-outline { background: #fff; color: var(--qr-navy); border: 1.5px solid var(--qr-border); height: 52px; font-size: 14px; }
+.qr-link { align-self: center; min-height: 44px; padding: 0 12px; border: 0; background: none; cursor: pointer; font: 600 13px "Montserrat", "Noto Sans Telugu", "Noto Sans Devanagari", Inter, sans-serif; color: var(--qr-muted); text-decoration: underline; }
+.qr-link:hover { color: var(--qr-navy); }
+
+/* Telugu / Hindi glyph fallback for all QR text */
+.qr-root { font-family: "Montserrat", "Noto Sans Telugu", "Noto Sans Devanagari", Inter, system-ui, sans-serif; }
+
+@media (min-width: 900px) {
+  .qr-root .qr-actions { flex-direction: row; }
+  .qr-root .qr-actions .qr-btn { flex: 1 1 0; width: auto; }
+  .qr-root .qr-actions .qr-btn-teal { flex: 1.4 1 0; }
+}

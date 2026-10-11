@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { getApiBaseUrl } from "../../utils/apiConfig";
 
+import DvLogo from "../../assets/dv-logo.png";
+import { getHospitalLogo } from "../../data/hospitalLogos";
+import "./qr-theme.css";
 import "./QREducationVideos.css";
 
 
@@ -68,6 +71,24 @@ function getVideoThumbnail(video) {
     }
 
     return "";
+}
+
+/* Page shell: Doctors Vedika logo (centered) + hospital logo, then the content */
+function EduShell({ hospitalCode, children }) {
+    const logo = getHospitalLogo(hospitalCode);
+    return (
+        <div className="qr-root qr-edu">
+            <div className="qr-topbar">
+                <img className="qr-logo" src={DvLogo} alt="Doctors Vedika" />
+            </div>
+            {logo && (
+                <div className="qr-chip">
+                    <img src={logo} alt="Hospital" />
+                </div>
+            )}
+            {children}
+        </div>
+    );
 }
 
 export default function QREducationVideos() {
@@ -165,7 +186,8 @@ export default function QREducationVideos() {
 
     if (loading) {
         return (
-            <section className="qr-education-section">
+            <EduShell hospitalCode={hospitalCode}>
+<section className="qr-education-section">
                 <Link
     to={`/qr/${encodeURIComponent(
         hospitalCode || ""
@@ -191,12 +213,14 @@ export default function QREducationVideos() {
                     <p>Loading health education...</p>
                 </div>
             </section>
+</EduShell>
         );
     }
 
     if (error) {
         return (
-            <section className="qr-education-section">
+            <EduShell hospitalCode={hospitalCode}>
+<section className="qr-education-section">
                 <div className="qr-education-header">
                     <div>
                         <span className="qr-education-eyebrow">
@@ -224,11 +248,13 @@ export default function QREducationVideos() {
                     </button>
                 </div>
             </section>
+</EduShell>
         );
     }
 
     return (
-        <section className="qr-education-section">
+        <EduShell hospitalCode={hospitalCode}>
+<section className="qr-education-section">
             {/* Header */}
             <div className="qr-education-header">
                 <div>
@@ -460,5 +486,6 @@ export default function QREducationVideos() {
                     </div>
                 )}
         </section>
+</EduShell>
     );
 }
