@@ -1122,7 +1122,7 @@ router.get("/queue", async (req, res) => {
 
             const { data: qrData, error: qrErr } = await db
                 .from("qr_intake_sessions")
-                .select("id, hospital_id, full_name, first_name, last_name, gender, date_of_birth, phone, status, created_at, submitted_at")
+                .select("id, hospital_id, full_name, first_name, last_name, gender, date_of_birth, phone, status, clinical_intake, safety_status, safety_result, created_at, submitted_at")
                 .eq("hospital_id", hospitalId)
                 .in("status", ["submitted", "review", "safety_blocked"])
                 .not("submitted_at", "is", null)
@@ -1277,6 +1277,10 @@ router.get("/queue", async (req, res) => {
             const qrDate = getIstDateStr(qr.submitted_at);
             if (!qrDate || qrDate !== requestedDate) return;
 
+            const qrIntakeObj = qr.clinical_intake || {};
+            const qrSymptoms = Array.isArray(qrIntakeObj.symptoms) ? qrIntakeObj.symptoms.join(", ") : (qrIntakeObj.symptoms || "");
+            const qrComplaint = qrSymptoms ? `Symptoms: ${qrSymptoms}` : (qrIntakeObj.chief_complaint || qrIntakeObj.chiefComplaint || "");
+
             rawItems.push({
                 id: `qr_${qr.id}`,
                 appointmentId: null,
@@ -1302,7 +1306,12 @@ router.get("/queue", async (req, res) => {
                 checkedInAt: null,
                 consultationStartedAt: null,
                 consultationCompletedAt: null,
-                intakeVitals: {},
+                intakeVitals: qrIntakeObj.vitals || qrIntakeObj.intake_vitals || {},
+                clinicalIntake: qrIntakeObj,
+                safetyStatus: qr.safety_status || "safe",
+                safetyResult: qr.safety_result || null,
+                chiefComplaints: qrComplaint,
+                reason: qrComplaint,
                 createdAt: qr.created_at
             });
         });
@@ -2125,13 +2134,48 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
         // 2. Create Appointment with patient_id = NULL
         const allocatedSlot = await resolveAvailableShiftSlot(db, doctorId, targetDate, targetShift);
 
+        let resolvedChiefComplaints = chiefComplaints || null;
+        let resolvedVitals = vitals || {};
+        const cleanQrSessionId = req.body.qrSessionId ? String(req.body.qrSessionId).replace(/^qr_/, "") : null;
+
+        if (cleanQrSessionId) {
+            try {
+                const { data: qSession } = await db
+                    .from("qr_intake_sessions")
+                    .select("id, clinical_intake")
+                    .eq("id", cleanQrSessionId)
+                    .maybeSingle();
+
+                if (qSession?.clinical_intake) {
+                    const qi = qSession.clinical_intake;
+                    if (!resolvedChiefComplaints) {
+                        const qrSyms = Array.isArray(qi.symptoms) ? qi.symptoms.join(", ") : (qi.symptoms || "");
+                        const parts = [];
+                        if (qrSyms) parts.push(`Symptoms: ${qrSyms}`);
+                        if (qi.duration) parts.push(`Duration: ${qi.duration}`);
+                        if (qi.severity) parts.push(`Severity: ${qi.severity}`);
+                        if (qi.location) parts.push(`Location: ${qi.location}`);
+                        if (qi.recent_actions) parts.push(`Actions: ${qi.recent_actions}`);
+                        resolvedChiefComplaints = parts.join(" | ") || qrSyms || qi.chief_complaint || qi.chiefComplaint || null;
+                    }
+                    if (!resolvedVitals || Object.keys(resolvedVitals).length === 0) {
+                        if (qi.vitals || qi.intake_vitals) {
+                            resolvedVitals = qi.vitals || qi.intake_vitals || {};
+                        }
+                    }
+                }
+            } catch (qrLookupErr) {
+                console.warn("[Walkin Register] QR Intake lookup notice:", qrLookupErr.message);
+            }
+        }
+
         const appointmentData = {
             doctor_id: doctorId,
             patient_id: null, // Temporary walk-in
             appointment_date: targetDate,
             appointment_time: allocatedSlot,
             status: "confirmed",
-            reason: chiefComplaints || "Walk-in Consultation",
+            reason: resolvedChiefComplaints || "Walk-in Consultation",
             payment_method: "pay_at_clinic",
             payment_status: "pending",
             hospital_id: req.context.hospitalId,
@@ -2162,8 +2206,8 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             appointment_id: appRow.id,
             doctor_id: doctorId,
             visit_stage: targetVisitStage,
-            chief_complaints: chiefComplaints || null,
-            intake_vitals: vitals || {},
+            chief_complaints: resolvedChiefComplaints || null,
+            intake_vitals: resolvedVitals || {},
             checked_in_at: targetVisitStage === "waiting" ? new Date().toISOString() : null,
             created_by: req.context.userId
         };
@@ -2193,7 +2237,7 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
             metadata: { hprId: hprRecord.id, appointmentId: appRow.id, doctorId, actionType }
         });
 
-        if (req.body.qrSessionId) {
+        if (cleanQrSessionId) {
             await db
                 .from("qr_intake_sessions")
                 .update({
@@ -2203,7 +2247,7 @@ router.post("/patients/walkin", requirePermission("walkin.register"), async (req
                     converted_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
                 })
-                .eq("id", req.body.qrSessionId)
+                .eq("id", cleanQrSessionId)
                 .eq("hospital_id", req.context.hospitalId);
         }
 
@@ -2309,13 +2353,48 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
         // Create new Appointment referencing existing HPR
         const allocatedSlot = await resolveAvailableShiftSlot(db, doctorId, targetDate, targetShift);
 
+        let resolvedChiefComplaints = chiefComplaints || null;
+        let resolvedVitals = vitals || {};
+        const cleanQrSessionId = req.body.qrSessionId ? String(req.body.qrSessionId).replace(/^qr_/, "") : null;
+
+        if (cleanQrSessionId) {
+            try {
+                const { data: qSession } = await db
+                    .from("qr_intake_sessions")
+                    .select("id, clinical_intake")
+                    .eq("id", cleanQrSessionId)
+                    .maybeSingle();
+
+                if (qSession?.clinical_intake) {
+                    const qi = qSession.clinical_intake;
+                    if (!resolvedChiefComplaints) {
+                        const qrSyms = Array.isArray(qi.symptoms) ? qi.symptoms.join(", ") : (qi.symptoms || "");
+                        const parts = [];
+                        if (qrSyms) parts.push(`Symptoms: ${qrSyms}`);
+                        if (qi.duration) parts.push(`Duration: ${qi.duration}`);
+                        if (qi.severity) parts.push(`Severity: ${qi.severity}`);
+                        if (qi.location) parts.push(`Location: ${qi.location}`);
+                        if (qi.recent_actions) parts.push(`Actions: ${qi.recent_actions}`);
+                        resolvedChiefComplaints = parts.join(" | ") || qrSyms || qi.chief_complaint || qi.chiefComplaint || null;
+                    }
+                    if (!resolvedVitals || Object.keys(resolvedVitals).length === 0) {
+                        if (qi.vitals || qi.intake_vitals) {
+                            resolvedVitals = qi.vitals || qi.intake_vitals || {};
+                        }
+                    }
+                }
+            } catch (qrLookupErr) {
+                console.warn("[Existing Walkin Register] QR Intake lookup notice:", qrLookupErr.message);
+            }
+        }
+
         const appointmentData = {
             doctor_id: doctorId,
             patient_id: authUserId, // NULL if temporary, Auth User ID if registered
             appointment_date: targetDate,
             appointment_time: allocatedSlot,
             status: "confirmed",
-            reason: chiefComplaints || "Walk-in Consultation",
+            reason: resolvedChiefComplaints || "Walk-in Consultation",
             payment_method: "pay_at_clinic",
             payment_status: "pending",
             hospital_id: req.context.hospitalId,
@@ -2341,8 +2420,8 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
             appointment_id: appRow.id,
             doctor_id: doctorId,
             visit_stage: targetVisitStage,
-            chief_complaints: chiefComplaints || null,
-            intake_vitals: vitals || {},
+            chief_complaints: resolvedChiefComplaints || null,
+            intake_vitals: resolvedVitals || {},
             checked_in_at: targetVisitStage === "checked_in" ? new Date().toISOString() : null,
             created_by: req.context.userId
         };
@@ -2368,7 +2447,7 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
             metadata: { hprId: hprRecord.id, appointmentId: appRow.id, doctorId, actionType }
         });
 
-        if (req.body.qrSessionId) {
+        if (cleanQrSessionId) {
             await db
                 .from("qr_intake_sessions")
                 .update({
@@ -2378,7 +2457,7 @@ router.post("/patients/existing-walkin", requirePermission("walkin.register"), a
                     converted_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
                 })
-                .eq("id", req.body.qrSessionId)
+                .eq("id", cleanQrSessionId)
                 .eq("hospital_id", req.context.hospitalId);
         }
 

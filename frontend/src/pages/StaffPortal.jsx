@@ -1562,7 +1562,8 @@ export default function StaffPortal() {
     setWalkinDob(intake.dateOfBirth || "");
     setWalkinGender(intake.gender ? (intake.gender.charAt(0).toUpperCase() + intake.gender.slice(1)) : "Male");
     setChiefComplaints(complaintText);
-    setActiveQrSessionId(intake.id);
+    const cleanId = intake.qrSessionId || (String(intake.id || "").startsWith("qr_") ? String(intake.id).slice(3) : intake.id);
+    setActiveQrSessionId(cleanId);
     setCandidatePhoneQuery(intake.phone || "");
 
     setShowWalkinModal(true);
@@ -1661,6 +1662,7 @@ export default function StaffPortal() {
         doctorId: selectedDoctorId,
         appointmentDate: walkinDate,
         shift: walkinShift,
+        chiefComplaints: chiefComplaints || "",
         actionType, // 'register_only' | 'register_and_checkin'
         qrSessionId: activeQrSessionId || null
       };
@@ -3842,6 +3844,38 @@ export default function StaffPortal() {
                       <option value="Other">Other</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Chief Complaints / Reported Symptoms */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "0.82rem", fontWeight: 800, color: "#0b1c2d" }}>
+                      Chief Complaints / Reported Symptoms
+                    </label>
+                    {activeQrSessionId && (
+                      <span style={{ fontSize: "0.72rem", color: "#00a8b5", fontWeight: 700, backgroundColor: "#e6f7f9", padding: "2px 8px", borderRadius: "4px" }}>
+                        Imported from QR Intake
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Toothache, Bleeding gums | Duration: 3 days"
+                    value={chiefComplaints}
+                    onChange={(e) => setChiefComplaints(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.88rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                      color: "#0b1c2d",
+                      resize: "vertical",
+                      backgroundColor: activeQrSessionId ? "#f8fafc" : "#ffffff"
+                    }}
+                  />
                 </div>
 
                 {/* Row 3: Assign Doctor */}

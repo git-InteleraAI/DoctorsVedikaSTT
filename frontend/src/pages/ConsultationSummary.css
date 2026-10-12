@@ -30,7 +30,8 @@
 }
 
 /* --- TOP HEADER NAVBAR --- */
-.summary-header, .cs-navbar {
+.summary-header,
+.cs-navbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -76,7 +77,8 @@
 }
 
 /* --- REVIEW NOTICE BANNER --- */
-.review-notice, .review-banner {
+.review-notice,
+.review-banner {
     display: flex;
     align-items: center;
     gap: 16px;
@@ -101,14 +103,16 @@
     flex-shrink: 0;
 }
 
-.review-notice h2, .review-banner h2 {
+.review-notice h2,
+.review-banner h2 {
     font-size: 1.02rem;
     font-weight: 700;
     margin: 0 0 2px;
     color: #0369a1;
 }
 
-.review-notice p, .review-banner p {
+.review-notice p,
+.review-banner p {
     font-size: 0.86rem;
     margin: 0;
     color: #334155;
@@ -130,6 +134,7 @@
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
     transition: border-color 0.2s ease;
 }
+
 .meta-card:hover {
     border-color: var(--ehr-border-hover);
 }
@@ -163,13 +168,15 @@
     }
 }
 
-.report-column, .cs-left-column {
+.report-column,
+.cs-left-column {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-.side-column, .cs-right-column {
+.side-column,
+.cs-right-column {
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -180,7 +187,11 @@
 }
 
 /* --- CARDS & EDITABLE SECTIONS --- */
-.editable-section, .report-card, .side-card, .card-box, .cs-card {
+.editable-section,
+.report-card,
+.side-card,
+.card-box,
+.cs-card {
     background: var(--ehr-surface);
     border: 1px solid var(--ehr-border);
     border-radius: 14px;
@@ -188,14 +199,16 @@
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
-.section-heading, .section-heading-row {
+.section-heading,
+.section-heading-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 14px;
 }
 
-.section-heading h2, .section-heading-row h2 {
+.section-heading h2,
+.section-heading-row h2 {
     font-size: 1.05rem;
     font-weight: 700;
     color: var(--ehr-text-main);
@@ -236,6 +249,7 @@
     box-sizing: border-box;
     transition: all 0.2s ease;
 }
+
 .editable-section textarea:focus,
 .input-field textarea:focus,
 .cs-textarea:focus {
@@ -259,6 +273,7 @@
     box-sizing: border-box;
     transition: all 0.2s ease;
 }
+
 .input-field input:focus,
 .medicine-select:focus {
     outline: none;
@@ -283,14 +298,16 @@
 }
 
 /* --- LIST EDITING --- */
-.editable-list-row, .cs-list-row {
+.editable-list-row,
+.cs-list-row {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 10px;
 }
 
-.list-remove, .cs-btn-remove {
+.list-remove,
+.cs-btn-remove {
     background: var(--ehr-danger-bg);
     border: 1px solid var(--ehr-danger-border);
     color: var(--ehr-danger);
@@ -302,11 +319,15 @@
     white-space: nowrap;
     transition: all 0.2s ease;
 }
-.list-remove:hover, .cs-btn-remove:hover {
+
+.list-remove:hover,
+.cs-btn-remove:hover {
     background: #fee2e2;
 }
 
-.list-add, .add-button, .cs-btn-add {
+.list-add,
+.add-button,
+.cs-btn-add {
     background: var(--ehr-primary-light);
     border: 1px solid #99f6e4;
     color: var(--ehr-primary-hover);
@@ -320,7 +341,10 @@
     gap: 6px;
     transition: all 0.2s ease;
 }
-.list-add:hover, .add-button:hover, .cs-btn-add:hover {
+
+.list-add:hover,
+.add-button:hover,
+.cs-btn-add:hover {
     background: #5eead4;
     color: #042f2e;
 }
@@ -383,6 +407,7 @@
     cursor: pointer;
     transition: all 0.2s ease;
 }
+
 .delete-medicine:hover {
     background: #fee2e2;
 }
@@ -399,14 +424,17 @@
 }
 
 /* --- DETAIL ROW --- */
-.cs-detail-row, .detail-row {
+.cs-detail-row,
+.detail-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 9px 0;
     border-bottom: 1px dashed #e2e8f0;
 }
-.cs-detail-row:last-child, .detail-row:last-child {
+
+.cs-detail-row:last-child,
+.detail-row:last-child {
     border-bottom: none;
 }
 
@@ -414,6 +442,7 @@
     color: var(--ehr-text-muted);
     font-size: 0.84rem;
 }
+
 .detail-value {
     font-weight: 600;
     color: var(--ehr-text-main);
@@ -444,18 +473,22 @@
     margin-bottom: 6px;
 }
 
-.speaker-badge, .transcript-meta strong {
+.speaker-badge,
+.transcript-meta strong {
     font-size: 0.76rem;
     font-weight: 700;
     padding: 2px 9px;
     border-radius: 50px;
     display: inline-block;
 }
-.speaker-badge.doctor, .transcript-meta strong {
+
+.speaker-badge.doctor,
+.transcript-meta strong {
     background: var(--ehr-primary-light);
     color: var(--ehr-primary-hover);
     border: 1px solid #99f6e4;
 }
+
 .speaker-badge.patient {
     background: #dbeafe;
     color: #1e40af;
@@ -485,6 +518,7 @@
     cursor: pointer;
     transition: all 0.2s ease;
 }
+
 .small-outline-button:hover {
     border-color: var(--ehr-primary);
     color: var(--ehr-primary);
@@ -535,7 +569,7 @@
     font-size: 1.3rem;
     font-weight: 700;
     margin: 0 0 8px;
-    color: #0f172a;
+    color: #ffffff;
 }
 
 .save-modal p {

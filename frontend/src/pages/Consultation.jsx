@@ -198,22 +198,32 @@ const Consultation = () => {
                                 dateOfBirth: hpr.date_of_birth || ""
                             }));
 
+                            const qr = v.qr_intake || {};
+                            const qv = qr.vitals || qr.intake_vitals || {};
+
                             setVitals(prev => ({
                                 ...prev,
-                                bloodGroup: iv.bloodGroup || iv.blood_group || hpr.blood_group || prev.bloodGroup || "",
-                                weight: iv.weight || prev.weight || "",
-                                bloodPressure: iv.bp || iv.bloodPressure || iv.blood_pressure || prev.bloodPressure || "",
-                                allergies: iv.allergies || prev.allergies || "",
-                                temperature: iv.temperature || iv.temp || prev.temperature || "",
-                                pulse: iv.pulse || iv.heart_rate || prev.pulse || "",
-                                spo2: iv.spo2 || prev.spo2 || "",
-                                height: iv.height || prev.height || ""
+                                bloodGroup: iv.bloodGroup || iv.blood_group || qv.bloodGroup || qv.blood_group || hpr.blood_group || prev.bloodGroup || "",
+                                weight: iv.weight || qv.weight || prev.weight || "",
+                                bloodPressure: iv.bp || iv.bloodPressure || iv.blood_pressure || qv.bp || qv.bloodPressure || qv.blood_pressure || prev.bloodPressure || "",
+                                allergies: iv.allergies || qv.allergies || prev.allergies || "",
+                                temperature: iv.temperature || iv.temp || qv.temperature || qv.temp || prev.temperature || "",
+                                pulse: iv.pulse || iv.heart_rate || qv.pulse || qv.heart_rate || prev.pulse || "",
+                                spo2: iv.spo2 || qv.spo2 || prev.spo2 || "",
+                                height: iv.height || qv.height || prev.height || ""
                             }));
 
-                            if (v.chief_complaints) {
+                            const qrSymptoms = Array.isArray(qr.symptoms) ? qr.symptoms.join(", ") : (qr.symptoms || "");
+                            const extractedSymptoms = v.chief_complaints || (qrSymptoms ? `Symptoms: ${qrSymptoms}` : "") || "";
+
+                            if (extractedSymptoms || qr.severity || qr.duration || qr.notes || qr.recent_actions || qr.current_medications) {
                                 setProblemDetails(prev => ({
                                     ...prev,
-                                    symptoms: prev.symptoms || v.chief_complaints
+                                    symptoms: extractedSymptoms || prev.symptoms,
+                                    severity: qr.severity || prev.severity || "",
+                                    duration: qr.duration || prev.duration || "",
+                                    currentMedications: qr.current_medications || prev.currentMedications || "",
+                                    additionalNotes: qr.notes || qr.recent_actions || qr.additional_notes || prev.additionalNotes || ""
                                 }));
                             }
 

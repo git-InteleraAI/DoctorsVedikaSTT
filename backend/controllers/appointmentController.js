@@ -520,17 +520,25 @@ class AppointmentController {
                 }
             }
 
-            let symptomsMap = {};
-            if (appointmentIds.length > 0 && db) {
-                const { data: symptomsData } = await db
-                    .from("appointment_symptoms")
-                    .select("*")
-                    .in("appointment_id", appointmentIds);
-
-                if (symptomsData) {
-                    symptomsData.forEach(s => {
-                        symptomsMap[s.appointment_id] = decryptRecord("appointment_symptoms", s);
-                    });
+            let qrIntakeMap = {};
+            if ((hospitalPatientIds.length > 0 || appointmentIds.length > 0) && db) {
+                try {
+                    const orConds = [];
+                    if (hospitalPatientIds.length > 0) orConds.push(`hospital_patient_id.in.(${hospitalPatientIds.join(",")})`);
+                    if (appointmentIds.length > 0) orConds.push(`id.in.(${appointmentIds.join(",")})`);
+                    const { data: qrSessionsData } = await db
+                        .from("qr_intake_sessions")
+                        .select("id, hospital_patient_id, patient_visit_id, clinical_intake, safety_status")
+                        .or(orConds.join(","));
+                    if (qrSessionsData) {
+                        qrSessionsData.forEach(q => {
+                            if (q.hospital_patient_id) qrIntakeMap[q.hospital_patient_id] = q;
+                            if (q.patient_visit_id) qrIntakeMap[q.patient_visit_id] = q;
+                            if (q.id) qrIntakeMap[q.id] = q;
+                        });
+                    }
+                } catch (e) {
+                    console.warn("[Appointments Controller] QR Intake sessions query warning:", e.message);
                 }
             }
 
@@ -557,6 +565,10 @@ class AppointmentController {
                 const isCompletedVisit = resolvedVisitStage === "completed" || resolvedVisitStage === "exited" || (app.status || "").toLowerCase() === "completed";
                 const resolvedStatus = isCompletedVisit ? "completed" : app.status;
 
+                const qrSession = qrIntakeMap[app.hospital_patient_id] || qrIntakeMap[visit.id] || qrIntakeMap[app.id] || {};
+                const qi = qrSession.clinical_intake || {};
+                const qrSyms = Array.isArray(qi.symptoms) ? qi.symptoms.join(", ") : (qi.symptoms || "");
+
                 return {
                     id: app.id,
                     visitId: visit.id || null,
@@ -582,14 +594,14 @@ class AppointmentController {
                     completedAt: visit.consultation_completed_at || null,
                     type: app.appointment_type || "Consultation",
                     status: resolvedStatus,
-                    reason: visit.chief_complaints || sym.symptoms || app.reason || app.notes || "",
-                    symptoms: visit.chief_complaints || sym.symptoms || app.reason || "",
-                    duration: sym.duration || "",
-                    severity: sym.severity || "",
-                    current_medications: sym.current_medications || "",
-                    currentMedications: sym.current_medications || "",
-                    additional_notes: sym.additional_notes || "",
-                    additionalNotes: sym.additional_notes || "",
+                    reason: visit.chief_complaints || sym.symptoms || qrSyms || app.reason || app.notes || "",
+                    symptoms: visit.chief_complaints || sym.symptoms || qrSyms || app.reason || "",
+                    duration: sym.duration || qi.duration || "",
+                    severity: sym.severity || qi.severity || "",
+                    current_medications: sym.current_medications || qi.current_medications || "",
+                    currentMedications: sym.current_medications || qi.current_medications || "",
+                    additional_notes: sym.additional_notes || qi.additional_notes || qi.notes || "",
+                    additionalNotes: sym.additional_notes || qi.additional_notes || qi.notes || "",
                     paymentMethod: app.payment_method || "pay_at_clinic",
                     payment_method: app.payment_method || "pay_at_clinic",
                     paymentStatus: app.payment_status || "pending",

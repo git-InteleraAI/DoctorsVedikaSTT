@@ -475,9 +475,56 @@ router.get("/visit/:id", async (req, res) => {
         const { data: visit, error } = await query;
         if (error) throw error;
 
+        if (!visit) {
+            return res.json({ success: true, visit: null });
+        }
+
+        const decVisit = decryptRecord("patient_visits", visit);
+
+        // Enrich with QR intake if chief_complaints or vitals are missing or if QR session exists
+        try {
+            const orConds = [];
+            if (decVisit.id) orConds.push(`patient_visit_id.eq.${decVisit.id}`);
+            if (decVisit.hospital_patient_id) orConds.push(`hospital_patient_id.eq.${decVisit.hospital_patient_id}`);
+            if (decVisit.appointment_id) orConds.push(`id.eq.${decVisit.appointment_id}`);
+
+            if (orConds.length > 0) {
+                const { data: linkedQr } = await db
+                    .from("qr_intake_sessions")
+                    .select("id, clinical_intake, safety_status, safety_result, status")
+                    .or(orConds.join(","))
+                    .order("created_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (linkedQr?.clinical_intake) {
+                    const qi = linkedQr.clinical_intake;
+                    decVisit.qr_intake = qi;
+                    decVisit.safety_status = linkedQr.safety_status;
+
+                    if (!decVisit.chief_complaints) {
+                        const qrSyms = Array.isArray(qi.symptoms) ? qi.symptoms.join(", ") : (qi.symptoms || "");
+                        const parts = [];
+                        if (qrSyms) parts.push(`Symptoms: ${qrSyms}`);
+                        if (qi.duration) parts.push(`Duration: ${qi.duration}`);
+                        if (qi.severity) parts.push(`Severity: ${qi.severity}`);
+                        if (qi.location) parts.push(`Location: ${qi.location}`);
+                        if (qi.recent_actions) parts.push(`Actions: ${qi.recent_actions}`);
+                        decVisit.chief_complaints = parts.join(" | ") || qrSyms || qi.chief_complaint || qi.chiefComplaint || "";
+                    }
+
+                    if (!decVisit.intake_vitals || Object.keys(decVisit.intake_vitals).length === 0) {
+                        decVisit.intake_vitals = qi.vitals || qi.intake_vitals || {};
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("[Queue Visit] QR enrichment notice:", e.message);
+        }
+
         return res.json({
             success: true,
-            visit: visit ? decryptRecord("patient_visits", visit) : null
+            visit: decVisit
         });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });

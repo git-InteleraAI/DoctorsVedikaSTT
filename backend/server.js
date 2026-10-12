@@ -1017,6 +1017,30 @@ app.get(
                 if (note) note = decryptRecord("consultation_notes", note);
                 if (rx) rx = decryptRecord("prescriptions", rx);
                 if (visitData) visitData = decryptRecord("patient_visits", visitData);
+
+                if (!visitData?.chief_complaints) {
+                    try {
+                        const orQ = [];
+                        if (visitData?.id) orQ.push(`patient_visit_id.eq.${visitData.id}`);
+                        if (appointment?.hospital_patient_id) orQ.push(`hospital_patient_id.eq.${appointment.hospital_patient_id}`);
+                        if (rawAppId) orQ.push(`id.eq.${rawAppId}`);
+                        if (orQ.length > 0) {
+                            const { data: qSes } = await targetDb
+                                .from("qr_intake_sessions")
+                                .select("clinical_intake")
+                                .or(orQ.join(","))
+                                .order("created_at", { ascending: false })
+                                .limit(1)
+                                .maybeSingle();
+                            if (qSes?.clinical_intake) {
+                                const qi = qSes.clinical_intake;
+                                const qrSyms = Array.isArray(qi.symptoms) ? qi.symptoms.join(", ") : (qi.symptoms || "");
+                                if (!visitData) visitData = {};
+                                visitData.chief_complaints = qrSyms || qi.chief_complaint || qi.chiefComplaint || "";
+                            }
+                        }
+                    } catch (e) {}
+                }
             }
 
             const patientName = patient?.full_name || `${patient?.first_name || ""}`.trim() || visitData?.hospital_patient_records?.full_name || "Patient";
