@@ -501,19 +501,51 @@ class PatientController {
                     const pvOrs = quotedApps
                         ? `hospital_patient_id.in.(${quoted}),appointment_id.in.(${quotedApps})`
                         : `hospital_patient_id.in.(${quoted})`;
-                    const { data: pvData } = await db.from("patient_visits").select("appointment_id, hospital_patient_id, visit_stage").or(pvOrs);
+                    const { data: pvData } = await db
+                        .from("patient_visits")
+                        .select("id, appointment_id, hospital_patient_id, visit_stage, checked_in_at, consultation_started_at, consultation_completed_at, chief_complaints")
+                        .or(pvOrs);
                     if (pvData) visitsList = pvData;
                 }
             }
 
             const patientRecordsDir = path.join(__dirname, "../patient-records");
 
-            const formattedVisits = (appointments || []).map(app => {
-                const note = (notes || []).find(n => n.appointment_id === app.id || n.hospital_patient_id === app.hospital_patient_id) || {};
-                const rx = (prescriptions || []).find(r => r.appointment_id === app.id || r.hospital_patient_id === app.hospital_patient_id) || {};
-                const pVisit = (visitsList || []).find(v => (v.appointment_id && v.appointment_id === app.id) || (v.hospital_patient_id && v.hospital_patient_id === app.hospital_patient_id)) || {};
+            const formatDisplayTime = (timeVal) => {
+                if (!timeVal) return "";
+                const str = String(timeVal).trim();
+                if (str.toLowerCase().includes("am") || str.toLowerCase().includes("pm")) {
+                    return str.toUpperCase();
+                }
+                if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)) {
+                    const parts = str.split(":");
+                    const h = parseInt(parts[0], 10);
+                    const m = parts[1];
+                    const ampm = h >= 12 ? "PM" : "AM";
+                    const h12 = h % 12 || 12;
+                    return `${String(h12).padStart(2, "0")}:${m} ${ampm}`;
+                }
+                try {
+                    const d = new Date(str);
+                    if (!isNaN(d.getTime())) {
+                        return new Intl.DateTimeFormat("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                            timeZone: "Asia/Kolkata"
+                        }).format(d);
+                    }
+                } catch (e) {}
+                return str;
+            };
 
-                // Fallback to disk records if notes or prescriptions are not in database
+            const formattedVisits = (appointments || []).map(app => {
+                // Strictly match note, rx, and visit to this specific appointment ID (no patient-wide bleeding)
+                const note = (notes || []).find(n => n.appointment_id === app.id) || {};
+                const rx = (prescriptions || []).find(r => r.appointment_id === app.id) || {};
+                const pVisit = (visitsList || []).find(v => (v.appointment_id && v.appointment_id === app.id) || v.id === app.id) || {};
+
+                // Strictly locate disk records belonging to THIS specific appointment
                 let diskRecord = null;
                 const candFolders = [
                     app.hospital_patient_id,
@@ -525,15 +557,15 @@ class PatientController {
                 for (const cand of candFolders) {
                     const fPath = path.join(patientRecordsDir, cand);
                     if (!fs.existsSync(fPath)) continue;
-                    const candFiles = [
+
+                    const specificFiles = [
                         path.join(fPath, `consultation-app-${app.id}.json`),
-                        path.join(fPath, `${app.id}.json`),
-                        path.join(fPath, `${cand}.json`)
+                        path.join(fPath, `${app.id}.json`)
                     ];
-                    for (const cf of candFiles) {
-                        if (fs.existsSync(cf)) {
+                    for (const sf of specificFiles) {
+                        if (fs.existsSync(sf)) {
                             try {
-                                const parsed = JSON.parse(fs.readFileSync(cf, "utf8"));
+                                const parsed = JSON.parse(fs.readFileSync(sf, "utf8"));
                                 if (parsed && (parsed.summary || parsed.prescription || parsed.medications)) {
                                     diskRecord = parsed;
                                     break;
@@ -541,15 +573,18 @@ class PatientController {
                             } catch (e) {}
                         }
                     }
+
                     if (!diskRecord) {
                         try {
                             const allFiles = fs.readdirSync(fPath).filter(f => f.endsWith(".json"));
                             for (const f of allFiles) {
-                                const parsed = JSON.parse(fs.readFileSync(path.join(fPath, f), "utf8"));
-                                if (parsed && (parsed.summary || parsed.prescription || parsed.medications)) {
-                                    diskRecord = parsed;
-                                    break;
-                                }
+                                try {
+                                    const parsed = JSON.parse(fs.readFileSync(path.join(fPath, f), "utf8"));
+                                    if (parsed && parsed.appointmentId === app.id && (parsed.summary || parsed.prescription || parsed.medications)) {
+                                        diskRecord = parsed;
+                                        break;
+                                    }
+                                } catch (e) {}
                             }
                         } catch (e) {}
                     }
@@ -568,21 +603,51 @@ class PatientController {
                 );
 
                 const noteContent = note.notes || diskRecord?.summary?.consultation_overview || "";
-                const symptomContent = note.symptoms || diskRecord?.summary?.symptoms || diskRecord?.summary?.chief_complaint || app.reason || "";
-                const diagnosisContent = note.diagnosis || diskRecord?.diagnosis || diskRecord?.summary?.diagnosis || "";
 
-                const hasNoteContent = Boolean(note.id || hasPrescription || noteContent || symptomContent || diagnosisContent);
-                const visitStage = pVisit.visit_stage || app.status || "scheduled";
-                const isCompleted = app.status === 'completed' || visitStage === 'completed' || visitStage === 'exited' || hasNoteContent;
+                // Symptoms / Chief Complaint: strictly for THIS consultation
+                const rawSymptom = note.symptoms || diskRecord?.summary?.symptoms;
+                let symptomContent = "";
+                if (Array.isArray(rawSymptom) && rawSymptom.length > 0) {
+                    symptomContent = rawSymptom.join(", ");
+                } else if (rawSymptom && typeof rawSymptom === "string") {
+                    symptomContent = rawSymptom;
+                } else if (diskRecord?.summary?.chief_complaint && diskRecord.summary.chief_complaint !== "Walk-in Consultation") {
+                    symptomContent = diskRecord.summary.chief_complaint;
+                } else {
+                    symptomContent = pVisit.chief_complaints || app.reason || "Walk-in Consultation";
+                }
+
+                const rawDiag = note.diagnosis || diskRecord?.diagnosis || diskRecord?.summary?.diagnosis;
+                let diagnosisContent = "";
+                if (Array.isArray(rawDiag) && rawDiag.length > 0) {
+                    diagnosisContent = rawDiag.join(", ");
+                } else if (rawDiag && typeof rawDiag === "string") {
+                    diagnosisContent = rawDiag;
+                }
+
+                const visitStage = pVisit.visit_stage || (app.status === "confirmed" ? "waiting" : app.status) || "scheduled";
+                const hasCompletedNoteOrDisk = Boolean(note.id || diskRecord);
+                const isCompleted = app.status === 'completed' || visitStage === 'completed' || visitStage === 'exited' || (hasCompletedNoteOrDisk && visitStage !== 'waiting' && visitStage !== 'checked_in');
+                const resolvedStatus = isCompleted ? 'completed' : (visitStage === 'in_consultation' ? 'in_consultation' : (app.status || 'waiting'));
+
+                // Actual consultation / visit time
+                const actualConsultationTime = 
+                    (diskRecord?.consultationTime ? formatDisplayTime(diskRecord.consultationTime) : null) ||
+                    (note.consultation_time ? formatDisplayTime(note.consultation_time) : null) ||
+                    (pVisit.consultation_started_at ? formatDisplayTime(pVisit.consultation_started_at) : null);
+
+                const resolvedTime = (isCompleted && actualConsultationTime)
+                    ? actualConsultationTime
+                    : formatDisplayTime(app.appointment_time || pVisit.checked_in_at || app.created_at);
 
                 return {
                     appointmentId: app.id,
                     date: app.appointment_date,
-                    time: app.appointment_time,
+                    time: resolvedTime,
                     type: app.appointment_type || "Consultation",
-                    status: isCompleted ? 'completed' : (app.status || 'scheduled'),
+                    status: resolvedStatus,
                     visitStage: visitStage,
-                    hasNotes: hasNoteContent,
+                    hasNotes: isCompleted && Boolean(note.id || diskRecord),
                     fee: req.doctor?.consultationFee || "500",
                     paymentStatus: app.payment_status || "pending",
                     reason: app.reason || "",
@@ -590,7 +655,7 @@ class PatientController {
                     diagnosis: diagnosisContent,
                     notes: noteContent,
                     prescription: medicinesList.length > 0 ? medicinesList : (rx.prescription_data || null),
-                    prescriptionAvailable: hasPrescription,
+                    prescriptionAvailable: isCompleted && hasPrescription,
                     doctorId: app.doctor_id
                 };
             });
@@ -989,15 +1054,16 @@ class PatientController {
 
             const now = new Date();
             const dateStr = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Kolkata" }).format(now);
-            const timeStr = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(now);
+            const timeStr = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).format(now);
             const visitKey = `${doctorId}_${patientId}_${dateStr}`;
 
-            // Prevent duplicate visits on the same day from repeated clicks
-            if (inMemoryVisits.has(visitKey)) {
+            // Prevent duplicate visits on the same day from repeated clicks (only reuse if visit is NOT completed)
+            const cachedVisit = inMemoryVisits.get(visitKey);
+            if (cachedVisit && cachedVisit.status !== "completed") {
                 return res.status(200).json({
                     success: true,
-                    appointment: inMemoryVisits.get(visitKey),
-                    message: "Existing walk-in visit reused for today"
+                    appointment: cachedVisit,
+                    message: "Existing active walk-in visit reused for today"
                 });
             }
 
@@ -1009,7 +1075,10 @@ class PatientController {
                     .select("*")
                     .eq("doctor_id", doctorId)
                     .eq("appointment_date", dateStr)
+                    .neq("status", "completed")
                     .or(patOr)
+                    .order("created_at", { ascending: false })
+                    .limit(1)
                     .maybeSingle();
 
                 if (existingApp) {
@@ -1017,7 +1086,7 @@ class PatientController {
                     return res.status(200).json({
                         success: true,
                         appointment: existingApp,
-                        message: "Existing walk-in visit reused for today"
+                        message: "Existing active walk-in visit reused for today"
                     });
                 }
             }

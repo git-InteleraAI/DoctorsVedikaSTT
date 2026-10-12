@@ -367,6 +367,12 @@ class AppointmentController {
                     }
                 }
 
+                if (tab === "waiting") {
+                    if (isCompleted || status === "cancelled" || visitStage === "cancelled") return false;
+                    const isWaitingOrInConsult = visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation" || status === "confirmed";
+                    return isWaitingOrInConsult;
+                }
+
                 if (tab === "pending") {
                     if (isCompleted) return false;
                     const isExplicitPending = status === "pending" || status === "pending_consultation";
@@ -520,6 +526,22 @@ class AppointmentController {
                 }
             }
 
+            let symptomsMap = {};
+            if (appointmentIds.length > 0 && db) {
+                try {
+                    const { data: symData } = await db
+                        .from("appointment_symptoms")
+                        .select("*")
+                        .in("appointment_id", appointmentIds);
+                    if (symData) {
+                        symData.forEach(s => { symptomsMap[s.appointment_id] = decryptRecord("appointment_symptoms", s); });
+                    }
+                } catch (e) {
+                    console.warn("[Appointments Controller] appointment_symptoms query warning:", e.message);
+                }
+            }
+
+            const hospitalPatientIds = hprIds || [];
             let qrIntakeMap = {};
             if ((hospitalPatientIds.length > 0 || appointmentIds.length > 0) && db) {
                 try {
@@ -1399,6 +1421,15 @@ class AppointmentController {
                 return (status === "confirmed" || status === "scheduled") && app.appointment_date >= todayStr;
             });
 
+            const waitingAppsRaw = apps.filter((app) => {
+                const status = (app.status || "").toLowerCase();
+                const visit = visitsMap[app.id];
+                const visitStage = (visit?.visit_stage || "").toLowerCase();
+                const isCompleted = status === "completed" || visitStage === "completed" || visitStage === "exited";
+                if (isCompleted || status === "cancelled" || visitStage === "cancelled") return false;
+                return visitStage === "waiting" || visitStage === "checked_in" || visitStage === "in_consultation" || status === "confirmed";
+            });
+
             // ============================================================
             // 5. BUILD COMPLETED CONSULTATION SET FOR TODAY ONLY
             // ============================================================
@@ -1618,6 +1649,7 @@ class AppointmentController {
                     todayCount: todayAppsRaw.length,
                     tomorrowCount: tomorrowAppsRaw.length,
                     pendingCount: pendingAppsRaw.length,
+                    waitingCount: waitingAppsRaw.length,
                     completedCount,
                     confirmedCount: confirmedAppsRaw.length,
                     totalCount: apps.length

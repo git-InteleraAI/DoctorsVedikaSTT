@@ -36,14 +36,18 @@ function getPrioritizedModels() {
         "gemini-3.5-flash-lite",   // Ultra-fast (~1.1s) and high availability
         "gemini-flash-lite-latest",// Very fast (~1.2s)
         "gemini-3.6-flash",        // High quality clinical reasoning (~2.1s)
-        "gemini-3.5-flash",        // High reliability (~2.9s)
         "gemini-3.8-flash",        // High capacity (~5.7s)
         "gemini-3.1-flash-lite",   // Sturdy fallback (~9.6s)
+        "gemini-3.5-flash",        // High reliability fallback
         "gemini-3.7-flash",        // Deep reasoning fallback
     ];
-    const envModel = process.env.GEMINI_MODEL;
+    let envModel = process.env.GEMINI_MODEL;
+    // If GEMINI_MODEL is unset or points to saturated gemini-3.5-flash, lead with flash-lite
+    if (!envModel || envModel === "gemini-3.5-flash") {
+        envModel = "gemini-3.5-flash-lite";
+    }
     const all = [
-        ...(envModel ? [envModel] : []),
+        ...(envModel ? [envModel] : ["gemini-3.5-flash-lite"]),
         ...candidateModels
     ].filter((v, i, a) => v && a.indexOf(v) === i);
 
@@ -57,7 +61,6 @@ function getPrioritizedModels() {
 
 function markModelHighDemand(modelName, cooldownMs = 60000) {
     modelCooldownMap.set(modelName, Date.now() + cooldownMs);
-    console.warn(`[Gemini CircuitBreaker] Model ${modelName} placed on ${cooldownMs / 1000}s cooldown due to high demand / rate limit.`);
 }
 
 // ============================================================
@@ -866,7 +869,9 @@ async function generateSummaryFromTranscript(
                 const normErr = new Error(isHighDemandOrRateLimit ? `High Demand / Unavailable (${modelName})` : (err?.message || "Gemini API Error"));
                 normErr.status = err?.status || (isHighDemandOrRateLimit ? 503 : 500);
                 lastError = normErr;
-                console.warn(`[Gemini] Model ${modelName} error (${normErr.message}). Immediately trying next fallback model...`);
+                if (process.env.DEBUG || process.env.NODE_ENV !== "production") {
+                    console.info(`[Gemini] Model ${modelName} unavailable (${normErr.message}). Seamlessly switching to next fallback model...`);
+                }
             }
         }
         if (!text && lastError) {

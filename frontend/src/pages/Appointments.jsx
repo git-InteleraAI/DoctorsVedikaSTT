@@ -45,9 +45,9 @@ export default function Appointments() {
     const loadMetrics = async () => {
         if (!doctor) return;
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || "";
             const response = await axios.get(`${API}/api/appointments/metrics`, {
-                headers: { Authorization: `Bearer ${token}` },
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
             if (response.data?.metrics) {
                 setMetrics(response.data.metrics);
@@ -58,19 +58,19 @@ export default function Appointments() {
     };
 
     // Fetch Appointments
-    const loadAppointments = async () => {
+    const loadAppointments = async (silent = false) => {
         if (!doctor) return;
-        setLoading(true);
+        if (!silent) setLoading(true);
         setError("");
         try {
-            const token = localStorage.getItem("doctors_vedika_token");
+            const token = localStorage.getItem("doctors_vedika_token") || localStorage.getItem("token") || "";
             const response = await axios.get(`${API}/api/appointments`, {
                 params: {
                     tab: activeTab === "all" ? "" : activeTab,
                     dateFilter: dateFilter,
                     customDate: customDate,
                 },
-                headers: { Authorization: `Bearer ${token}` },
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
 
             const fetchedData = Array.isArray(response.data?.appointments)
@@ -82,10 +82,11 @@ export default function Appointments() {
             setAppointments(fetchedData);
         } catch (err) {
             console.error("Failed to fetch appointments:", err);
-            setError("Unable to load appointments. Please check backend connection.");
-            setAppointments([]);
+            if (!silent) {
+                setError("Unable to load appointments. Please check backend connection.");
+            }
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     };
 
@@ -93,6 +94,13 @@ export default function Appointments() {
         if (doctor) {
             loadAppointments();
             loadMetrics();
+
+            // Real-time dynamic polling matching Dashboard
+            const pollInterval = setInterval(() => {
+                loadAppointments(true);
+                loadMetrics();
+            }, 10000);
+            return () => clearInterval(pollInterval);
         }
     }, [activeTab, dateFilter, customDate, doctor]);
 
@@ -166,7 +174,8 @@ export default function Appointments() {
             const effectiveStatus = isCompleted ? "completed" : rawStatus;
 
             // Tab filter
-            if (activeTab === "confirmed" && (isCompleted || effectiveStatus !== "confirmed")) return false;
+            if (activeTab === "waiting" && (isCompleted || (rawVisitStage !== "waiting" && rawVisitStage !== "checked_in" && rawVisitStage !== "in_consultation" && rawStatus !== "confirmed"))) return false;
+            if (activeTab === "confirmed" && (isCompleted || (effectiveStatus !== "confirmed" && rawVisitStage !== "scheduled"))) return false;
             if (activeTab === "pending" && (isCompleted || effectiveStatus !== "pending")) return false;
             if (activeTab === "completed" && !isCompleted) return false;
             if (activeTab === "cancelled" && (app.status || "").toLowerCase() !== "cancelled") return false;
@@ -308,6 +317,14 @@ export default function Appointments() {
                             <span className="tab-badge">{appointments.length}</span>
                         </button>
                         <button
+                            className={`tab-btn ${activeTab === "waiting" ? "active" : ""}`}
+                            onClick={() => handleTabChange("waiting")}
+                        >
+                            <i className="fa-solid fa-user-clock" style={{ color: "#0284c7" }}></i>
+                            Waiting
+                            {metrics.waitingCount > 0 && <span className="tab-badge" style={{ background: "#e0f2fe", color: "#0369a1" }}>{metrics.waitingCount}</span>}
+                        </button>
+                        <button
                             className={`tab-btn ${activeTab === "confirmed" ? "active" : ""}`}
                             onClick={() => handleTabChange("confirmed")}
                         >
@@ -320,6 +337,7 @@ export default function Appointments() {
                         >
                             <i className="fa-solid fa-circle-check" style={{ color: "#10b981" }}></i>
                             Completed
+                            {metrics.completedCount > 0 && <span className="tab-badge" style={{ background: "#dcfce7", color: "#15803d" }}>{metrics.completedCount}</span>}
                         </button>
                         <button
                             className={`tab-btn ${activeTab === "cancelled" ? "active" : ""}`}
