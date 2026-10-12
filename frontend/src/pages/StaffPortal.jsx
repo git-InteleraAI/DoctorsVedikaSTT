@@ -3846,38 +3846,6 @@ export default function StaffPortal() {
                   </div>
                 </div>
 
-                {/* Chief Complaints / Reported Symptoms */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                    <label style={{ fontSize: "0.82rem", fontWeight: 800, color: "#0b1c2d" }}>
-                      Chief Complaints / Reported Symptoms
-                    </label>
-                    {activeQrSessionId && (
-                      <span style={{ fontSize: "0.72rem", color: "#00a8b5", fontWeight: 700, backgroundColor: "#e6f7f9", padding: "2px 8px", borderRadius: "4px" }}>
-                        Imported from QR Intake
-                      </span>
-                    )}
-                  </div>
-                  <textarea
-                    rows={2}
-                    placeholder="e.g. Toothache, Bleeding gums | Duration: 3 days"
-                    value={chiefComplaints}
-                    onChange={(e) => setChiefComplaints(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 14px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "0.88rem",
-                      outline: "none",
-                      boxSizing: "border-box",
-                      color: "#0b1c2d",
-                      resize: "vertical",
-                      backgroundColor: activeQrSessionId ? "#f8fafc" : "#ffffff"
-                    }}
-                  />
-                </div>
-
                 {/* Row 3: Assign Doctor */}
                 <div>
                   <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 800, color: "#0b1c2d", marginBottom: "6px" }}>Assign Doctor *</label>
